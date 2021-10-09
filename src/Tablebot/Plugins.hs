@@ -21,6 +21,13 @@ import Tablebot.Plugins.Cats (catPlugin)
 import Tablebot.Plugins.Ping (pingPlugin)
 import Tablebot.Plugins.Quote (quotePlugin)
 import Tablebot.Plugins.Reminder (reminderPlugin)
+import Tablebot.Plugins.Swap (swapPlugin)
 
 plugins :: [Plugin]
-plugins = [pingPlugin, quotePlugin, reminderPlugin, basicPlugin, catPlugin]
+plugins = [ pingPlugin
+          , quotePlugin
+          , reminderPlugin
+          , basicPlugin
+          , catPlugin
+          , swapPlugin
+          ]
