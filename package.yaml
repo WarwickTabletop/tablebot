@@ -57,6 +57,8 @@ library:
   - DataKinds
   - FlexibleInstances
   - DeriveGeneric
+  ghc-options:
+  - -Wall
 
 
 executables:
