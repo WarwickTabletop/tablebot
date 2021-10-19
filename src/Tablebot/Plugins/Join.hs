@@ -27,7 +27,7 @@ join = Command "join" (parseComm joinWithString)
     joinWithString :: RestOfInput Text -> Message -> DatabaseDiscord ()
     joinWithString (ROI t) m =
       sendMessage m $
-        (\(sep:text) -> joinify sep text) $
+        (\(sep : text) -> joinify sep text) $
           splitOn " " t
 
 clap :: Command
