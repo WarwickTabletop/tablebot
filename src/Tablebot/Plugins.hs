@@ -22,6 +22,7 @@ import Tablebot.Plugins.Ping (pingPlugin)
 import Tablebot.Plugins.Quote (quotePlugin)
 import Tablebot.Plugins.Reminder (reminderPlugin)
 import Tablebot.Plugins.Say (sayPlugin)
+import Tablebot.Plugins.Join (joinPlugin)
 import Tablebot.Plugins.Welcome (welcomePlugin)
 
 -- Use long list format to make additions and removals non-conflicting on git PRs
@@ -34,5 +35,6 @@ plugins =
     quotePlugin,
     reminderPlugin,
     sayPlugin,
+    joinPlugin,
     welcomePlugin
   ]
