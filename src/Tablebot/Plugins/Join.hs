@@ -18,7 +18,7 @@ import Tablebot.Plugin.SmartCommand (Quoted (Qu), RestOfInput (ROI), parseComm)
 import Text.RawString.QQ
 
 joinify :: Text -> [Text] -> Text
-joinify sep text = sep <> (intercalate sep text) <> sep
+joinify sep text = sep <> " " <> (intercalate (" " <> sep <> " ") text) <> " " <> sep
 
 -- | @join@ outputs the second input interspersed with the first.
 join :: Command
