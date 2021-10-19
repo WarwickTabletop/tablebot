@@ -26,6 +26,14 @@ join = Command "join" (parseComm joinWithString)
               $ intercalate toAdd
               $ splitOn " " t
 
+clap :: Command
+clap = Command "clap" (parseComm clappytime)
+    where clappytime :: RestOfInput Text -> Message -> DatabaseDiscord ()
+          clappytime (ROI t) m =
+              sendMessage m 
+              $ intercalate ":clap:"
+              $ splitOn " " t
+
 joinHelp :: HelpPage
 joinHelp = 
     HelpPage
@@ -38,6 +46,18 @@ Repeats the input with some interspersed string or emoji.
     []
     None
 
+clapHelp :: HelpPage
+clapHelp =
+    HelpPage
+        "clap"
+        "For:clap:All:clap:Your:clap:Clapping:clap:Needs"
+        [r|**Clap**
+Insert claps into a message.
+
+*Usage:* `clap This text will be interspersed with claps!`|]
+    []
+    None
+
 -- | @joinPlugin@ assembles the join plugin.
 joinPlugin :: Plugin
-joinPlugin = plug {commands = [join], helpPages=[joinHelp]}
+joinPlugin = plug {commands = [join,clap], helpPages=[joinHelp,clapHelp]}
