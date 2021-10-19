@@ -17,14 +17,17 @@ import Tablebot.Plugin.Parser (untilEnd)
 import Tablebot.Plugin.SmartCommand (Quoted (Qu), RestOfInput (ROI), parseComm)
 import Text.RawString.QQ
 
+joinify :: Text -> [Text] -> Text
+joinify sep text = sep <> (intercalate sep text) <> sep
+
 -- | @join@ outputs the second input interspersed with the first.
 join :: Command
 join = Command "join" (parseComm joinWithString)
   where
-    joinWithString :: Quoted Text -> RestOfInput Text -> Message -> DatabaseDiscord ()
-    joinWithString (Qu toAdd) (ROI t) m =
+    joinWithString :: RestOfInput Text -> Message -> DatabaseDiscord ()
+    joinWithString (ROI t) m =
       sendMessage m $
-        intercalate toAdd $
+        (\(sep:text) -> joinify sep text) $
           splitOn " " t
 
 clap :: Command
@@ -33,7 +36,7 @@ clap = Command "clap" (parseComm clappytime)
     clappytime :: RestOfInput Text -> Message -> DatabaseDiscord ()
     clappytime (ROI t) m =
       sendMessage m $
-        intercalate ":clap:" $
+        joinify ":clap:" $
           splitOn " " t
 
 joinHelp :: HelpPage
@@ -44,7 +47,7 @@ joinHelp =
     [r|**Join**
 Repeats the input with some interspersed string or emoji.
 
-*Usage:* `join ":clap:" This text will be interspersed with claps!`|]
+*Usage:* `join :clap: This text will be interspersed with claps!`|]
     []
     None
 
