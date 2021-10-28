@@ -46,15 +46,17 @@ quote =
 quoteComm ::
   WithError
     "Unknown quote functionality."
-    ( Either
-        (Exactly "add", Quoted String, Exactly "-", RestOfInput String)
-        (Either (Exactly "show", Int) (Exactly "delete", Int))
+    ( AnyOf
+        '[ (Exactly "add", Quoted String, Exactly "-", RestOfInput String),
+           (Exactly "show", Int),
+           (Exactly "delete", Int)
+         ]
     ) ->
   Message ->
   DatabaseDiscord ()
-quoteComm (WErr (Left (_, Qu qu, _, ROI author))) = addQ qu author
-quoteComm (WErr (Right (Left (_, qId)))) = showQ (fromIntegral qId)
-quoteComm (WErr (Right (Right (_, qId)))) = deleteQ (fromIntegral qId)
+quoteComm (WErr (Choice0 (_, Qu qu, _, ROI author))) = addQ qu author
+quoteComm (WErr (Choice1 (_, qId))) = showQ (fromIntegral qId)
+quoteComm (WErr (Choice2 (_, qId))) = deleteQ (fromIntegral qId)
 
 -- | @addQuote@, which looks for a message of the form
 -- @!quote add "quoted text" - author@, and then stores said quote in the

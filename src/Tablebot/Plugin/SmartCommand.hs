@@ -2,7 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-{-# OPTIONS_GHC -ddump-splices #-}
 
 -- |
 -- Module      : Tablebot.Plugin.SmartCommand
@@ -97,8 +96,11 @@ instance {-# OVERLAPPABLE #-} CanParse a => CanParse [a] where
 
 -- A parser for @Either a b@ attempts to parse @a@, and if that fails then
 -- attempts to parse @b@.
-instance (CanParse a, CanParse b) => CanParse (Either a b) where
+instance {-# OVERLAPPABLE #-} (CanParse a, CanParse b) => CanParse (Either a b) where
   pars = (Left <$> pars @a) <|> (Right <$> pars @b)
+
+instance {-# OVERLAPPING #-} (CanParse a) => CanParse (Either a Void) where
+  pars = Left <$> pars @a
 
 -- AnyOf, which generates a tree of Eithers for commands with many alternatives.
 type family AnyOf (xs :: [*]) :: * where
