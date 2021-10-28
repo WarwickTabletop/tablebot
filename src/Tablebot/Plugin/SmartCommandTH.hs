@@ -87,7 +87,7 @@ tupleAccessor x
   where
     var = mkName "x"
     decl :: Dec
-    decl = PatSynD (mkName $ "Choice" ++ show x) (PrefixPatSyn [var]) Unidir (xRightsThenLeft x)
+    decl = PatSynD (mkName $ "Choice" ++ show x) (PrefixPatSyn [var]) ImplBidir (xRightsThenLeft x)
     xRightsThenLeft :: Int -> Pat
     xRightsThenLeft 0 = ConP (mkName "Left") [VarP var]
     xRightsThenLeft n = ConP (mkName "Right") [xRightsThenLeft (n -1)]
