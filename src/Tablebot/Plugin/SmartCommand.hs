@@ -105,7 +105,8 @@ type family AnyOf (xs :: [*]) :: * where
   AnyOf '[] = Void
   AnyOf (x ': xs) = Either x (AnyOf xs)
 
--- TODO: generate patterns for n Left.
+-- Generates patterns for AnyOf accessors.
+$(makeTupleAccessors 10)
 
 -- Various tuple instances.
 $(canParseInstances 10)

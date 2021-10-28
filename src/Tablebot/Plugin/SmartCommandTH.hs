@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 -- |
 -- Module      : Tablebot.Plugin.SmartCommandTH
 -- Description : Automatic parser generation from function types.
@@ -15,11 +17,11 @@ import Language.Haskell.TH
 canParseInstances :: Int -> Q [Dec]
 canParseInstances x = concat <$> mapM parseTupleInstances [2 .. x]
 
+-- Builds a smart command for the n-tuple of length x.
 parseTupleInstances :: Int -> Q [Dec]
 parseTupleInstances x
   | x <= 1 = pure []
-  | otherwise = do
-    pure [iDecl]
+  | otherwise = pure [iDecl]
   where
     -- Type variable names t1..tn
     tvars :: [Name]
@@ -72,3 +74,21 @@ parseTupleInstances x
     -- return (x, ...)
     returnArgs :: Stmt
     returnArgs = NoBindS $ AppE (VarE (mkName "return")) $ TupE $ map (Just . VarE) vars
+
+makeTupleAccessors :: Int -> Q [Dec]
+makeTupleAccessors x = concat <$> mapM tupleAccessor [0 .. x]
+
+-- Builds ChoiceN, which accesses the nth element of an AnyOf.
+-- NOTE: accessor 0 is Left, 1 is Left . Right, 2 is Left . Right . Right and so on.
+tupleAccessor :: Int -> Q [Dec]
+tupleAccessor x
+  | x < 0 = pure []
+  | otherwise = pure [decl]
+  where
+    var = mkName "x"
+    decl :: Dec
+    decl = PatSynD (mkName $ "Choice" ++ show x) (PrefixPatSyn [var]) ImplBidir (xRightsThenLeft x)
+    xRightsThenLeft :: Int -> Pat
+    xRightsThenLeft 0 = VarP var
+    xRightsThenLeft 1 = ConP (mkName "Left") [VarP var]
+    xRightsThenLeft n = ConP (mkName "Right") [xRightsThenLeft (n -1)]
