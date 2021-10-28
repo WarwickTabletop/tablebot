@@ -1,5 +1,8 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -ddump-splices #-}
 
 -- |
 -- Module      : Tablebot.Plugin.SmartCommand
@@ -16,9 +19,11 @@ module Tablebot.Plugin.SmartCommand where
 
 import Data.Proxy
 import Data.Text (Text, pack)
+import Data.Void (Void)
 import Discord.Types (Message)
 import GHC.TypeLits
 import Tablebot.Plugin.Parser
+import Tablebot.Plugin.SmartCommandTH
 import Tablebot.Plugin.Types (DatabaseDiscord, Parser)
 import Text.Megaparsec
 
@@ -95,33 +100,15 @@ instance {-# OVERLAPPABLE #-} CanParse a => CanParse [a] where
 instance (CanParse a, CanParse b) => CanParse (Either a b) where
   pars = (Left <$> pars @a) <|> (Right <$> pars @b)
 
--- TODO: automate creation of tuple instances using TemplateHaskell
-instance (CanParse a, CanParse b) => CanParse (a, b) where
-  pars = do
-    x <- pars @a
-    space
-    y <- pars @b
-    return (x, y)
+-- AnyOf, which generates a tree of Eithers for commands with many alternatives.
+type family AnyOf (xs :: [*]) :: * where
+  AnyOf '[] = Void
+  AnyOf (x ': xs) = Either x (AnyOf xs)
 
-instance (CanParse a, CanParse b, CanParse c) => CanParse (a, b, c) where
-  pars = do
-    x <- pars @a
-    space
-    y <- pars @b
-    space
-    z <- pars @c
-    return (x, y, z)
+-- TODO: generate patterns for n Left.
 
-instance (CanParse a, CanParse b, CanParse c, CanParse d) => CanParse (a, b, c, d) where
-  pars = do
-    x <- pars @a
-    space
-    y <- pars @b
-    space
-    z <- pars @c
-    space
-    w <- pars @d
-    return (x, y, z, w)
+-- Various tuple instances.
+$(canParseInstances 10)
 
 -- | @Exactly s@ defines an input exactly matching @s@ and nothing else.
 data Exactly (s :: Symbol) = Ex
