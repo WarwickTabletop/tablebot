@@ -90,4 +90,4 @@ choiceAccessor x
     decl = PatSynD (mkName $ "Choice" ++ show x) (PrefixPatSyn [var]) ImplBidir (xRightsThenLeft x)
     xRightsThenLeft :: Int -> Pat
     xRightsThenLeft 0 = ConP (mkName "LeftS") [VarP var]
-    xRightsThenLeft n = ConP (mkName "RightS") [xRightsThenLeft (n -1)]
+    xRightsThenLeft n = ConP (mkName "RightS") [xRightsThenLeft (n - 1)]
