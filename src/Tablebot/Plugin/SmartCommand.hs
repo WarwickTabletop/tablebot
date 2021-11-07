@@ -99,16 +99,21 @@ instance {-# OVERLAPPABLE #-} CanParse a => CanParse [a] where
 instance {-# OVERLAPPABLE #-} (CanParse a, CanParse b) => CanParse (Either a b) where
   pars = (Left <$> pars @a) <|> (Right <$> pars @b)
 
-instance {-# OVERLAPPING #-} (CanParse a) => CanParse (Either a Void) where
-  pars = Left <$> pars @a
+instance {-# OVERLAPPABLE #-} (CanParse a, CanParse b) => CanParse (EitherS a b) where
+  pars = (LeftS <$> pars @a) <|> (RightS <$> pars @b)
+
+instance {-# OVERLAPPING #-} (CanParse a) => CanParse (EitherS a Void) where
+  pars = LeftS <$> pars @a
+
+data EitherS a b = LeftS !a | RightS !b
 
 -- AnyOf, which generates a tree of Eithers for commands with many alternatives.
 type family AnyOf (xs :: [*]) :: * where
   AnyOf '[] = Void
-  AnyOf (x ': xs) = Either x (AnyOf xs)
+  AnyOf (x ': xs) = EitherS x (AnyOf xs)
 
 -- Generates patterns for AnyOf accessors.
-$(makeTupleAccessors 10)
+$(makeChoiceAccessors 10)
 
 -- Various tuple instances.
 $(canParseInstances 10)

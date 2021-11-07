@@ -9,7 +9,7 @@
 -- Portability : POSIX
 --
 -- TemplateHaskell helpers for SmartCommands.
-module Tablebot.Plugin.SmartCommandTH where
+module Tablebot.Plugin.SmartCommandTH (canParseInstances, makeChoiceAccessors) where
 
 import Data.List (intersperse)
 import Language.Haskell.TH
@@ -75,13 +75,13 @@ parseTupleInstances x
     returnArgs :: Stmt
     returnArgs = NoBindS $ AppE (VarE (mkName "return")) $ TupE $ map (Just . VarE) vars
 
-makeTupleAccessors :: Int -> Q [Dec]
-makeTupleAccessors x = concat <$> mapM tupleAccessor [0 .. x]
+makeChoiceAccessors :: Int -> Q [Dec]
+makeChoiceAccessors x = concat <$> mapM choiceAccessor [0 .. x]
 
 -- Builds ChoiceN, which accesses the nth element of an AnyOf.
 -- NOTE: accessor 0 is Left, 1 is Left . Right, 2 is Left . Right . Right and so on.
-tupleAccessor :: Int -> Q [Dec]
-tupleAccessor x
+choiceAccessor :: Int -> Q [Dec]
+choiceAccessor x
   | x < 0 = pure []
   | otherwise = pure [decl]
   where
@@ -89,5 +89,5 @@ tupleAccessor x
     decl :: Dec
     decl = PatSynD (mkName $ "Choice" ++ show x) (PrefixPatSyn [var]) ImplBidir (xRightsThenLeft x)
     xRightsThenLeft :: Int -> Pat
-    xRightsThenLeft 0 = ConP (mkName "Left") [VarP var]
-    xRightsThenLeft n = ConP (mkName "Right") [xRightsThenLeft (n -1)]
+    xRightsThenLeft 0 = ConP (mkName "LeftS") [VarP var]
+    xRightsThenLeft n = ConP (mkName "RightS") [xRightsThenLeft (n -1)]
