@@ -30,12 +30,7 @@ import Tablebot.Plugin.Types
   )
 
 -- | @ShibeAPI@ is the basic data type for the JSON object that the Shibe API returns
-data ShibeAPI = ShibeAPI
-  { url :: !Text
-  }
-  deriving (Show, Generic)
-
-instance FromJSON ShibeAPI
+type ShibeAPI = Text
 
 -- | @shibe@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a shibe. Uses https://shibe.online/ for shibe images.
@@ -67,7 +62,7 @@ getShibeAPI = do
 getShibe :: Either String ShibeAPI -> Text
 getShibe esc = case esc of
   (Left r) -> "no shibe today, sorry :(. (error is `" <> pack r <> "`)"
-  (Right r) -> url r
+  (Right r) -> r
 
 -- | @shibeHelp@ has the help text for the shibe command
 shibeHelp :: HelpPage
