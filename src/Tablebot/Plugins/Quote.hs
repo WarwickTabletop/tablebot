@@ -197,7 +197,7 @@ filteredRandomQuote' quoteFilter errorMessage m = do
 addQ :: Text -> Text -> Message -> DatabaseDiscord ()
 addQ qu author m = do
   now <- liftIO $ systemToUTCTime <$> getSystemTime
-  let new = Quote qu author (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannel m) now
+  let new = Quote qu author (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
   added <- insert new
   let res = pack $ show $ fromSqlKey added
   renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m
@@ -227,11 +227,11 @@ addMessageQuote submitter q' m = do
           now <- liftIO $ systemToUTCTime <$> getSystemTime
           let new =
                 Quote
-                  (messageText q')
+                  (messageContent q')
                   (toMention $ messageAuthor q')
                   (toMention' submitter)
                   (fromIntegral $ messageId q')
-                  (fromIntegral $ messageChannel q')
+                  (fromIntegral $ messageChannelId q')
                   now
           added <- insert new
           let res = pack $ show $ fromSqlKey added
@@ -251,7 +251,7 @@ editQ qId qu author m =
           case oQu of
             Just Quote {} -> do
               now <- liftIO $ systemToUTCTime <$> getSystemTime
-              let new = Quote qu author (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannel m) now
+              let new = Quote qu author (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
               replace k new
               renderCustomQuoteMessage "Quote updated" new qId m
             Nothing -> sendMessage m "Couldn't update that quote!"

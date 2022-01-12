@@ -94,7 +94,7 @@ reminderParser (WErr (Qu content, ROI rawString)) m = do
 -- currently ignores the user's timezone... (TODO fix)
 addReminder :: UTCTime -> String -> Message -> DatabaseDiscord ()
 addReminder time content m = do
-  let (Snowflake cid) = messageChannel m
+  let (Snowflake cid) = messageChannelId m
       (Snowflake mid) = messageId m
       (Snowflake uid) = userId $ messageAuthor m
   added <- insert $ Reminder cid mid uid time content

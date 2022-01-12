@@ -67,7 +67,7 @@ sendMessage ::
   Text ->
   EnvDatabaseDiscord s ()
 sendMessage m t = do
-  res <- liftDiscord . restCall $ R.CreateMessage (messageChannel m) t
+  res <- liftDiscord . restCall $ R.CreateMessage (messageChannelId m) t
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
@@ -94,7 +94,7 @@ sendReplyMessage ::
   EnvDatabaseDiscord s ()
 sendReplyMessage m t = do
   let ref = MessageReference (Just (messageId m)) Nothing Nothing False
-  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannel m) (R.MessageDetailedOpts t False Nothing Nothing Nothing (Just ref))
+  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannelId m) (R.MessageDetailedOpts t False Nothing Nothing Nothing (Just ref) Nothing Nothing)
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
@@ -111,7 +111,7 @@ sendCustomReplyMessage ::
   EnvDatabaseDiscord s ()
 sendCustomReplyMessage m mid fail' t = do
   let ref = MessageReference (Just mid) Nothing Nothing fail'
-  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannel m) (R.MessageDetailedOpts t False Nothing Nothing Nothing (Just ref))
+  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannelId m) (R.MessageDetailedOpts t False Nothing Nothing Nothing (Just ref) Nothing Nothing)
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
@@ -130,7 +130,7 @@ sendEmbedMessage ::
   e ->
   EnvDatabaseDiscord s ()
 sendEmbedMessage m t e = do
-  res <- liftDiscord . restCall $ TablebotEmbedRequest (messageChannel m) t (asEmbed e)
+  res <- liftDiscord . restCall $ TablebotEmbedRequest (messageChannelId m) t (asEmbed e)
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
@@ -159,12 +159,12 @@ reactToMessage ::
   EnvDatabaseDiscord s (Either RestCallErrorCode ())
 reactToMessage m e =
   liftDiscord . restCall $
-    R.CreateReaction (messageChannel m, messageId m) e
+    R.CreateReaction (messageChannelId m, messageId m) e
 
 -- | @getReplyMessage@ returns the message being replied to (if applicable)
 getReplyMessage :: Message -> EnvDatabaseDiscord s (Maybe Message)
 getReplyMessage m = do
-  let m' = referencedMessage m
+  let m' = messageReferencedMessage m
   let mRef = messageReference m
   case m' of
     Just msg -> return $ Just msg
@@ -183,7 +183,7 @@ getReplyMessage m = do
 -- | @getPrecedingMessage@ returns the message immediately above the provided message
 getPrecedingMessage :: Message -> EnvDatabaseDiscord s (Maybe Message)
 getPrecedingMessage m = do
-  mlst <- liftDiscord . restCall $ R.GetChannelMessages (messageChannel m) (1, R.BeforeMessage (messageId m))
+  mlst <- liftDiscord . restCall $ R.GetChannelMessages (messageChannelId m) (1, R.BeforeMessage (messageId m))
   case mlst of
     Right mlst' ->
       return $ listToMaybe mlst'
@@ -192,7 +192,7 @@ getPrecedingMessage m = do
 -- | @getMessageMember@ returns the message member object if it was sent from a Discord server,
 -- or @Nothing@ if it was sent from a DM (or the API fails)
 getMessageMember :: Message -> EnvDatabaseDiscord s (Maybe GuildMember)
-getMessageMember m = gMM (messageGuild m) m
+getMessageMember m = gMM (messageGuildId m) m
   where
     maybeRight :: Either a b -> Maybe b
     maybeRight (Left _) = Nothing
@@ -204,10 +204,10 @@ getMessageMember m = gMM (messageGuild m) m
       return $ maybeRight a
 
 findGuild :: Message -> EnvDatabaseDiscord s (Maybe GuildId)
-findGuild m = case messageGuild m of
+findGuild m = case messageGuildId m of
   Just a -> pure $ Just a
   Nothing -> do
-    let chanId = messageChannel m
+    let chanId = messageChannelId m
     channel <- getChannel chanId
     case fmap channelGuild channel of
       Right a -> pure $ Just a

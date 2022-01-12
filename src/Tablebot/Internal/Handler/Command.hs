@@ -21,7 +21,7 @@ import Data.Maybe (catMaybes)
 import Data.Set (singleton, toList)
 import Data.Text (Text)
 import Data.Void (Void)
-import Discord.Types (Message (messageText))
+import Discord.Types (Message (messageContent))
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (sendEmbedMessage)
@@ -36,7 +36,7 @@ import qualified UnliftIO.Exception as UIOE (tryAny)
 -- to find inline commands.
 parseNewMessage :: PluginActions -> Text -> Message -> CompiledDatabaseDiscord ()
 parseNewMessage pl prefix m =
-  if isCommandCall $ messageText m
+  if isCommandCall $ messageContent m
     then parseCommands (compiledCommands pl) m prefix
     else parseInlineCommands (compiledInlineCommands pl) m
   where
@@ -58,7 +58,7 @@ parseNewMessage pl prefix m =
 -- If the parser errors, the last error (which is hopefully one created by
 -- '<?>') is sent to the user as a Discord message.
 parseCommands :: [CompiledCommand] -> Message -> Text -> CompiledDatabaseDiscord ()
-parseCommands cs m prefix = case parse (parser cs) "" (messageText m) of
+parseCommands cs m prefix = case parse (parser cs) "" (messageContent m) of
   Right p -> p m
   Left e ->
     let (errs, title) = makeBundleReadable e
@@ -123,7 +123,7 @@ makeReadable e = (mapParseError (const UnknownError) e, Nothing)
 -- command's parser on the message text. Errors are not sent to the user, and do
 -- not halt command attempts (achieved using 'tryAny').
 parseInlineCommands :: [CompiledInlineCommand] -> Message -> CompiledDatabaseDiscord ()
-parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandParser cic) "" (messageText m))) cs
+parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandParser cic) "" (messageContent m))) cs
   where
     fromResult (Right p) = UIOE.tryAny (p m)
     fromResult _ = return $ return ()
