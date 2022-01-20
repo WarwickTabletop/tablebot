@@ -87,12 +87,12 @@ newtype StartUp d = StartUp
 -- It will first try to match against any subcommands, and if that fails it runs the commandParser
 data EnvCommand d = Command
   { -- | The name of the command.
-    name :: Text,
+    commandName :: Text,
     -- | A parser to run on the command arguments, returning a computation to
     -- run in 'DatabaseDiscord'.
     commandParser :: Parser (Message -> EnvDatabaseDiscord d ()),
     -- | A list of subcommands to attempt to parse before the bare command, matching their name.
-    subcommands :: [EnvCommand d]
+    commandSubcommands :: [EnvCommand d]
   }
 
 type Command = EnvCommand ()
