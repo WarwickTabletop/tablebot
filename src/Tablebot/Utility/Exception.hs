@@ -37,6 +37,7 @@ data BotException
   | EvaluationException String [String]
   | IOException String
   | NetrunnerException String
+  | InteractionException String
   deriving (Show, Eq)
 
 instance Exception BotException
@@ -126,3 +127,4 @@ errorInfo (EvaluationException msg' locs) = ErrorInfo "EvaluationException" $ ms
         else connectVs (reverse locs)
 errorInfo (IOException msg') = ErrorInfo "IOException" msg'
 errorInfo (NetrunnerException msg') = ErrorInfo "NetrunnerException" msg'
+errorInfo (InteractionException msg') = ErrorInfo "InteractionException" msg'

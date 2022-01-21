@@ -10,6 +10,7 @@
 -- without having to lift Discord operations constantly.
 module Tablebot.Utility.Discord
   ( sendMessage,
+    sendCustomMessage,
     sendChannelMessage,
     sendReplyMessage,
     sendCustomReplyMessage,
@@ -53,9 +54,9 @@ import Data.Text (Text, pack, unpack)
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
-import Discord.Interactions (ApplicationCommand (applicationCommandId), CreateApplicationCommand)
+import Discord.Interactions
 import Discord.Internal.Gateway.Cache
-import qualified Discord.Requests as R
+import Discord.Requests qualified as R
 import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache
@@ -64,8 +65,7 @@ import Tablebot.Utility (EnvDatabaseDiscord, liftDiscord)
 import Tablebot.Utility.Exception (BotException (..))
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
--- @m@. This returns an @Either RestCallErrorCode Message@ to denote failure or
--- return the 'Message' that was just sent.
+-- @m@.
 sendMessage ::
   Message ->
   Text ->
@@ -76,9 +76,24 @@ sendMessage m t = do
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
 
+-- | @sendCustomMessage@ sends the input message @mdo@ in the same channel as 
+-- message @m@. 
+--
+-- As opposed to @sendMessage@, this function takes in a MessageDetailedOpts, to
+-- allow full functionality. Unless you are dealing with components or some 
+-- other specific message data, you shouldn't use this function.
+sendCustomMessage ::
+  Message ->
+  R.MessageDetailedOpts ->
+  EnvDatabaseDiscord s ()
+sendCustomMessage m t = do
+  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannelId m) t
+  case res of
+    Left _ -> throw $ MessageSendException "Failed to send message."
+    Right _ -> return ()
+
 -- | @sendChannelMessage@ sends the input message @t@ into the provided channel
--- @m@. This returns an @Either RestCallErrorCode Message@ to denote failure or
--- return the 'Message' that was just sent.
+-- @m@.
 sendChannelMessage ::
   ChannelId ->
   Text ->
@@ -89,9 +104,8 @@ sendChannelMessage c t = do
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
 
--- | @sendReplyMessage@ sends the input message @t@ as a reply to the triggering message
--- @m@. This returns an @Either RestCallErrorCode Message@ to denote failure or
--- return the 'Message' that was just sent.
+-- | @sendReplyMessage@ sends the input message @t@ as a reply to the triggering
+-- message @m@. 
 sendReplyMessage ::
   Message ->
   Text ->
@@ -103,9 +117,9 @@ sendReplyMessage m t = do
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
 
--- | @sendCustomReplyMessage@ sends the input message @t@ as a reply to a provided message id
--- @m@. This returns an @Either RestCallErrorCode Message@ to denote failure or
--- return the 'Message' that was just sent.
+-- | @sendCustomReplyMessage@ sends the input message @t@ as a reply to a 
+-- provided message id @m@. 
+--
 -- @fail'@ indicates whether the message should still send if the provided message id is invalid
 sendCustomReplyMessage ::
   Message ->
@@ -121,8 +135,8 @@ sendCustomReplyMessage m mid fail' t = do
     Right _ -> return ()
 
 -- | @sendEmbedMessage@ sends the input message @t@ in the same channel as message
--- @m@ with an additional full Embed. This returns an @Either RestCallErrorCode Message@ to denote failure or
--- return the 'Message' that was just sent.
+-- @m@ with an additional full Embed. 
+--
 -- This is *really* janky. The library exposes *no way* to create a coloured embed through its main api,
 -- so I'm having to manually reimplement the sending logic just to add this in.
 -- If you suffer from nightmares, don't look in 'Tablebot.Handler.Embed'. Nothing good lives there.
@@ -320,11 +334,28 @@ extractFromSnowflake (Snowflake w) = w
 
 createApplicationCommand :: ApplicationId -> GuildId -> CreateApplicationCommand -> DiscordHandler ApplicationCommand
 createApplicationCommand aid gid cac = do
-  a <- restCall $ R.CreateGuildApplicationCommand aid gid cac
-  either (const (fail "could not create guild application command")) return a
+  res <- restCall $ R.CreateGuildApplicationCommand aid gid cac
+  case res of
+    Left _ -> throw $ InteractionException "Failed to create application command."
+    Right a -> return a
 
 removeApplicationCommandsNotInList :: ApplicationId -> GuildId -> [ApplicationCommandId] -> DiscordHandler ()
 removeApplicationCommandsNotInList aid gid aciToKeep = do
   allACs' <- restCall $ R.GetGuildApplicationCommands aid gid
-  allACs <- (applicationCommandId <$>) <$> either (const (fail "could not get all applicationCommands")) return allACs'
-  mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)
+  case allACs' of
+    Left _ -> throw $ InteractionException "Failed to defer get all application commands."
+    Right aacs ->
+      let allACs = applicationCommandId <$> aacs
+       in mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)
+
+interactionResponseDefer :: Interaction -> EnvDatabaseDiscord s ()
+interactionResponseDefer i = do
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse (typ i) Nothing)
+  case res of
+    Left _ -> throw $ InteractionException "Failed to defer interaction."
+    Right _ -> return ()
+  where
+    typ InteractionComponent {} = InteractionCallbackTypeDeferredUpdateMessage
+    typ _ = InteractionCallbackTypeDeferredChannelMessageWithSource
+
+interactionResponseMessage :: Interaction -> 
