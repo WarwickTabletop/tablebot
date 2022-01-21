@@ -40,6 +40,11 @@ module Tablebot.Utility.Discord
     extractFromSnowflake,
     createApplicationCommand,
     removeApplicationCommandsNotInList,
+    interactionResponseDefer,
+    interactionResponseDeferUpdateMessage,
+    interactionResponseMessage,
+    interactionResponseComponentsUpdateMessage,
+    interactionResponseAutocomplete,
   )
 where
 
@@ -53,6 +58,7 @@ import Data.String (IsString (fromString))
 import Data.Text (Text, pack, unpack)
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+import Debug.Trace (trace)
 import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
 import Discord.Interactions
 import Discord.Internal.Gateway.Cache
@@ -76,11 +82,11 @@ sendMessage m t = do
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
 
--- | @sendCustomMessage@ sends the input message @mdo@ in the same channel as 
--- message @m@. 
+-- | @sendCustomMessage@ sends the input message @mdo@ in the same channel as
+-- message @m@.
 --
 -- As opposed to @sendMessage@, this function takes in a MessageDetailedOpts, to
--- allow full functionality. Unless you are dealing with components or some 
+-- allow full functionality. Unless you are dealing with components or some
 -- other specific message data, you shouldn't use this function.
 sendCustomMessage ::
   Message ->
@@ -105,7 +111,7 @@ sendChannelMessage c t = do
     Right _ -> return ()
 
 -- | @sendReplyMessage@ sends the input message @t@ as a reply to the triggering
--- message @m@. 
+-- message @m@.
 sendReplyMessage ::
   Message ->
   Text ->
@@ -117,8 +123,8 @@ sendReplyMessage m t = do
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
 
--- | @sendCustomReplyMessage@ sends the input message @t@ as a reply to a 
--- provided message id @m@. 
+-- | @sendCustomReplyMessage@ sends the input message @t@ as a reply to a
+-- provided message id @m@.
 --
 -- @fail'@ indicates whether the message should still send if the provided message id is invalid
 sendCustomReplyMessage ::
@@ -135,7 +141,7 @@ sendCustomReplyMessage m mid fail' t = do
     Right _ -> return ()
 
 -- | @sendEmbedMessage@ sends the input message @t@ in the same channel as message
--- @m@ with an additional full Embed. 
+-- @m@ with an additional full Embed.
 --
 -- This is *really* janky. The library exposes *no way* to create a coloured embed through its main api,
 -- so I'm having to manually reimplement the sending logic just to add this in.
@@ -281,6 +287,7 @@ toMention' u = "<@!" <> pack (show u) <> ">"
 fromMention :: Text -> Maybe UserId
 fromMention = fromMentionStr . unpack
 
+-- | Try to get the userid from a given string.
 fromMentionStr :: String -> Maybe UserId
 fromMentionStr user
   | length user < 4 || head user /= '<' || last user /= '>' || (head . tail) user /= '@' || (head stripToNum /= '!' && (not . isDigit) (head stripToNum)) = Nothing
@@ -289,8 +296,10 @@ fromMentionStr user
   where
     stripToNum = (init . tail . tail) user
 
+-- | Data types for different time formats.
 data TimeFormat = Default | ShortTime | LongTime | ShortDate | LongDate | ShortDateTime | LongDateTime | Relative deriving (Show, Enum, Eq)
 
+-- | Turn some UTCTime into the given TimeFormat.
 toTimestamp' :: TimeFormat -> UTCTime -> Text
 toTimestamp' format t = "<t:" <> pack (show $ toUtcSeconds t) <> toSuffix format <> ">"
   where
@@ -306,21 +315,32 @@ toTimestamp' format t = "<t:" <> pack (show $ toUtcSeconds t) <> toSuffix format
     toSuffix LongDateTime = ":F"
     toSuffix Relative = ":R"
 
+-- | Turn some UTCTime into the default time format.
 toTimestamp :: UTCTime -> Text
 toTimestamp = toTimestamp' Default
 
+-- | Turn some UTCTime into a relative time format
 toRelativeTime :: UTCTime -> Text
 toRelativeTime = toTimestamp' Relative
 
+-- | Create a link to a message when given the server id, channel id, and
+-- message id.
 getMessageLink :: GuildId -> ChannelId -> MessageId -> Text
 getMessageLink g c m = pack $ "https://discord.com/channels/" ++ show g ++ "/" ++ show c ++ "/" ++ show m
 
+-- | The data types of different formatting options.
+--
+-- Note that repeatedly applying certain formatting options (such as `Italics`,
+-- `Code`, and a few others) will result in other formats.
 data Format = Bold | Underline | Strikethrough | Italics | Code | CodeBlock
   deriving (Show, Eq)
 
+-- | Format some `a` (that can be turned into a string format) with the given
+-- formatting option.
 formatInput :: (IsString a, Show b, Semigroup a) => Format -> b -> a
 formatInput f b = formatText f (fromString $ show b)
 
+-- | Format the given string-like object with the given format.
 formatText :: (IsString a, Semigroup a) => Format -> a -> a
 formatText Bold s = "**" <> s <> "**"
 formatText Underline s = "__" <> s <> "__"
@@ -329,9 +349,12 @@ formatText Italics s = "*" <> s <> "*"
 formatText Code s = "`" <> s <> "`"
 formatText CodeBlock s = "```" <> s <> "```"
 
+-- | Get the `Word64` within a `Snowflake`.
 extractFromSnowflake :: Snowflake -> Word64
 extractFromSnowflake (Snowflake w) = w
 
+-- | When given an application id, server id, and a CreateApplicationCommand
+-- object, create the application command.
 createApplicationCommand :: ApplicationId -> GuildId -> CreateApplicationCommand -> DiscordHandler ApplicationCommand
 createApplicationCommand aid gid cac = do
   res <- restCall $ R.CreateGuildApplicationCommand aid gid cac
@@ -339,23 +362,61 @@ createApplicationCommand aid gid cac = do
     Left _ -> throw $ InteractionException "Failed to create application command."
     Right a -> return a
 
+-- | Remove all application commands that are active in the given server that
+-- aren't in the given list.
 removeApplicationCommandsNotInList :: ApplicationId -> GuildId -> [ApplicationCommandId] -> DiscordHandler ()
 removeApplicationCommandsNotInList aid gid aciToKeep = do
   allACs' <- restCall $ R.GetGuildApplicationCommands aid gid
   case allACs' of
-    Left _ -> throw $ InteractionException "Failed to defer get all application commands."
+    Left _ -> throw $ InteractionException "Failed to get all application commands."
     Right aacs ->
-      let allACs = applicationCommandId <$> aacs
+      let allACs = trace (show aacs) applicationCommandId <$> aacs
        in mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)
 
+-- | Defer an interaction response, extending the window of time to respond to
+-- 15 minutes (from 3 seconds).
 interactionResponseDefer :: Interaction -> EnvDatabaseDiscord s ()
 interactionResponseDefer i = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse (typ i) Nothing)
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeDeferredChannelMessageWithSource Nothing)
   case res of
     Left _ -> throw $ InteractionException "Failed to defer interaction."
     Right _ -> return ()
-  where
-    typ InteractionComponent {} = InteractionCallbackTypeDeferredUpdateMessage
-    typ _ = InteractionCallbackTypeDeferredChannelMessageWithSource
 
-interactionResponseMessage :: Interaction -> 
+-- | Defer an interaction response, extending the window of time to respond to
+-- 15 minutes (from 3 seconds).
+--
+-- Used when updating a component message.
+interactionResponseDeferUpdateMessage :: Interaction -> EnvDatabaseDiscord s ()
+interactionResponseDeferUpdateMessage i = do
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeDeferredUpdateMessage Nothing)
+  case res of
+    Left _ -> throw $ InteractionException "Failed to defer interaction."
+    Right _ -> return ()
+
+-- | Respond to the given interaction with the given text.
+interactionResponseMessage :: Interaction -> Text -> EnvDatabaseDiscord s ()
+interactionResponseMessage i t = interactionResponseCustomMessage i (InteractionCallbackMessages Nothing (Just t) Nothing Nothing Nothing Nothing Nothing)
+
+-- | Respond to the given interaction with a custom messages object.
+interactionResponseCustomMessage :: Interaction -> InteractionCallbackMessages -> EnvDatabaseDiscord s ()
+interactionResponseCustomMessage i t = do
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeChannelMessageWithSource (Just $ InteractionCallbackDataMessages t))
+  case res of
+    Left _ -> throw $ InteractionException "Failed to respond to interaction."
+    Right _ -> return ()
+
+-- | Respond to the given interaction by updating the component's message.
+interactionResponseComponentsUpdateMessage :: Interaction -> InteractionCallbackMessages -> EnvDatabaseDiscord s ()
+interactionResponseComponentsUpdateMessage i t = do
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeUpdateMessage (Just $ InteractionCallbackDataMessages t))
+  case res of
+    Left _ -> throw $ InteractionException "Failed to respond to interaction with components update."
+    Right _ -> return ()
+
+-- | Respond to the given interaction by sending a list of choices back.
+interactionResponseAutocomplete :: Interaction -> InteractionCallbackAutocomplete -> EnvDatabaseDiscord s ()
+interactionResponseAutocomplete i ac = do
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeApplicationCommandAutocompleteResult (Just $ InteractionCallbackDataAutocomplete ac))
+  case res of
+    Left _ -> throw $ InteractionException "Failed to respond to interaction with autocomplete response."
+    Right _ -> return ()

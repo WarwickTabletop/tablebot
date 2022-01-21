@@ -36,6 +36,7 @@ import Database.Persist.Sqlite
     runMigration,
     runSqlPool,
   )
+import Debug.Trace (trace)
 import Discord
 import Discord.Interactions (ApplicationCommand (applicationCommandId))
 import Discord.Internal.Rest (PartialApplication (partialApplicationID))
@@ -101,7 +102,7 @@ runTablebot dToken prefix dbpath plugins =
               serverIdStr <- liftIO $ getEnv "SERVER_ID"
               serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
               aid <- partialApplicationID . cacheApplication <$> readCache
-              applicationCommands <- mapM (\(CApplicationComand pname cac) -> createApplicationCommand aid serverId cac >>= \ac -> return (applicationCommandId ac, pname)) compiledAppComms
+              applicationCommands <- trace ("doing app comms" <> show aid) mapM (\(CApplicationComand pname cac) -> createApplicationCommand aid serverId cac >>= \ac -> return (applicationCommandId ac, pname)) compiledAppComms
               removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
               liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList applicationCommands}
               liftIO $ putStrLn "Tablebot lives!",

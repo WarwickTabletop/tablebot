@@ -11,34 +11,38 @@ module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
+import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
-import Discord.Types (Message (messageAuthor))
+import Discord.Interactions
+import Discord.Requests
+import Discord.Types (ButtonStyle (ButtonStyleSecondary), ComponentActionRow (ComponentActionRowButton), ComponentButton (ComponentButton), Message (messageAuthor))
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (sendMessage, toMention)
+import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, sendCustomMessage, toMention)
+import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), pars)
-import Text.Megaparsec (MonadParsec (try), choice, (<?>))
+import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu, quote), pars)
+import Text.Megaparsec (MonadParsec (try), choice, parse, (<?>))
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
-rollDice' e' t m = do
+rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord Text
+rollDice'' e' t u = do
   let e = fromMaybe (Right defaultRoll) e'
   (vs, ss) <- case e of
     (Left a) -> liftIO $ first Left <$> evalList a
     (Right b) -> liftIO $ first Right <$> evalInteger b
   let msg = makeMsg vs ss
   if countFormatting msg < 199
-    then sendMessage m msg
-    else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
+    then return msg
+    else return (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
-    baseMsg = toMention (messageAuthor m) <> " rolled" <> dsc
+    baseMsg = u <> " rolled" <> dsc
     makeLine (i, s) = pack (show i) <> Data.Text.replicate (max 0 (6 - length (show i))) " " <> " ⟵ " <> s
     makeMsg (Right v) s = baseMsg <> s <> ".\nOutput: " <> pack (show v)
     makeMsg (Left []) _ = baseMsg <> "No output."
@@ -48,6 +52,67 @@ rollDice' e' t m = do
     simplify (Left ls) = Left $ fmap (\(i, _) -> (i, "...")) ls
     simplify li = li
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
+
+rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
+rollDice' e t m = do
+  (msg, buttons) <- getMessagePieces e t (toMention $ messageAuthor m)
+  sendCustomMessage m (def {messageDetailedContent = msg, messageDetailedComponents = buttons})
+
+-- sendCustomMessage
+--   m
+--   ( def
+--       { messageDetailedContent = msg,
+--         messageDetailedComponents = Just [ComponentActionRowButton [
+--           ComponentButton (("roll" `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" Nothing
+--         ]]
+--       }
+--   )
+--   where
+--     appendIf t' Nothing = t'
+--     appendIf t' (Just e') = t' <> "`" <> e'
+
+getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord (Text, Maybe [ComponentActionRow])
+getMessagePieces e t u = do
+  msg <- rollDice'' e t u
+  return
+    ( msg,
+      Just
+        [ ComponentActionRowButton
+            [ ComponentButton ((("roll`" <> u) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" Nothing
+            ]
+        ]
+    )
+  where
+    appendIf t' Nothing = t' <> "`"
+    appendIf t' (Just e') = t' <> "`" <> e'
+
+rollInteraction :: Interaction -> DatabaseDiscord ()
+rollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)} =
+  case opts of
+    [_, uid, "", ""] -> do
+      (msg, button) <- getMessagePieces Nothing Nothing uid
+      interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+    [_, uid, "", qt] -> do
+      (msg, button) <- getMessagePieces Nothing (Just (Qu qt)) uid
+      interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+    [_, uid, e, ""] -> do
+      let e' = parse pars "" e
+      case e' of
+        Left _ -> throwBot $ InteractionException "could not process button click"
+        Right e'' -> do
+          (msg, button) <- getMessagePieces (Just e'') Nothing uid
+          interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+    [_, uid, e, qt] -> do
+      let e' = parse pars "" e
+      case e' of
+        Left _ -> throwBot $ InteractionException "could not process button click"
+        Right e'' -> do
+          (msg, button) <- getMessagePieces (Just e'') (Just (Qu qt)) uid
+          interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+    _ -> throwBot $ InteractionException "could not process button click"
+  where
+    opts = T.split (== '`') cid
+rollInteraction _ = return ()
 
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
 -- multiple Maybe values
@@ -136,5 +201,6 @@ rollPlugin =
   (plug "roll")
     { commands = [rollDice, commandAlias "r" rollDice, genchar],
       helpPages = [rollHelp, gencharHelp],
-      inlineCommands = [rollDiceInline]
+      inlineCommands = [rollDiceInline],
+      onInteractionRecvs = [InteractionRecv rollInteraction]
     }

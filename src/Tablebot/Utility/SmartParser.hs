@@ -65,7 +65,7 @@ instance {-# OVERLAPPING #-} CanParse String where
   pars = word
 
 -- | @Quoted a@ defines an input of type @a@ that is contained within quotes.
-newtype Quoted a = Qu a deriving (Show)
+newtype Quoted a = Qu {quote :: a} deriving (Show)
 
 instance IsString a => CanParse (Quoted a) where
   pars = Qu . fromString <$> quoted

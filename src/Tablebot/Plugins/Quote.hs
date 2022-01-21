@@ -71,8 +71,8 @@ quoteReactionAdd = ReactionAdd quoteReaction
       | otherwise = return ()
 
 -- | Our quote command, which combines various functions to create, display and update quotes.
-quote :: Command
-quote =
+quoteCommand :: Command
+quoteCommand =
   Command
     "quote"
     (parseComm quoteComm)
@@ -386,7 +386,7 @@ Calling without arguments returns a random quote. Calling with a number returns 
 quotePlugin :: Plugin
 quotePlugin =
   (plug "quote")
-    { commands = [quote, commandAlias "q" quote],
+    { commands = [quoteCommand, commandAlias "q" quoteCommand],
       onReactionAdds = [quoteReactionAdd],
       migrations = [quoteMigration],
       helpPages = [quoteHelp]
