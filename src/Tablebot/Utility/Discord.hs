@@ -56,7 +56,7 @@ import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
 import Discord.Interactions
 import Discord.Internal.Gateway.Cache
-import Discord.Requests qualified as R
+import qualified Discord.Requests as R
 import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache
