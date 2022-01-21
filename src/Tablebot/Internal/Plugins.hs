@@ -10,28 +10,30 @@
 module Tablebot.Internal.Plugins where
 
 import Control.Monad.Trans.Reader (runReaderT)
+import Data.Default (Default (def))
 import Discord.Types (Message)
 import Tablebot.Internal.Types hiding (helpPages, migrations)
-import qualified Tablebot.Internal.Types as HT
-import Tablebot.Utility.Types
+import qualified Tablebot.Internal.Types as IT
+import Tablebot.Utility.Types as UT
 
 -- | Combines a list of plugins into a single plugin with the combined
 -- functionality. The bot actually runs a single plugin, which is just the
 -- combined version of all input plugins.
 combinePlugins :: [CompiledPlugin] -> CombinedPlugin
-combinePlugins [] = CmPl [] [] []
+combinePlugins [] = def
 combinePlugins (p : ps) =
   let p' = combinePlugins ps
    in CmPl
         { combinedSetupAction = setupAction p : combinedSetupAction p',
-          combinedMigrations = HT.migrations p ++ combinedMigrations p',
-          combinedHelpPages = HT.helpPages p ++ combinedHelpPages p'
+          combinedApplicationCommands = IT.applicationCommands p ++ combinedApplicationCommands p',
+          combinedMigrations = IT.migrations p ++ combinedMigrations p',
+          combinedHelpPages = IT.helpPages p ++ combinedHelpPages p'
         }
 
 -- | Combines a list of plugins actions into a single pa with the combined
 -- functionality.
 combineActions :: [PluginActions] -> PluginActions
-combineActions [] = PA [] [] [] [] [] [] []
+combineActions [] = def
 combineActions (p : ps) =
   let p' = combineActions ps
    in PA
@@ -40,6 +42,7 @@ combineActions (p : ps) =
           compiledOnMessageChanges = compiledOnMessageChanges p +++ compiledOnMessageChanges p',
           compiledOnReactionAdds = compiledOnReactionAdds p +++ compiledOnReactionAdds p',
           compiledOnReactionDeletes = compiledOnReactionDeletes p +++ compiledOnReactionDeletes p',
+          compiledOnInteractionRecvs = compiledOnInteractionRecvs p +++ compiledOnInteractionRecvs p',
           compiledOtherEvents = compiledOtherEvents p +++ compiledOtherEvents p',
           compiledCronJobs = compiledCronJobs p +++ compiledCronJobs p'
         }
@@ -51,7 +54,7 @@ combineActions (p : ps) =
     a +++ b = a ++ b
 
 compilePlugin :: EnvPlugin b -> CompiledPlugin
-compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
+compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> UT.applicationCommands p) (helpPages p) (migrations p)
   where
     sa :: Database PluginActions
     sa = do
@@ -64,6 +67,7 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
           (map (fixOnMessageChanges state) $ onMessageChanges p)
           (map (fixOnReactionAdd state) $ onReactionAdds p)
           (map (fixOnReactionDelete state) $ onReactionDeletes p)
+          (map (fixOnInteractionRecv state) $ onInteractionRecvs p)
           (map (fixOther state) $ otherEvents p)
           (map (fixCron state) $ cronJobs p)
 
@@ -73,6 +77,7 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
     fixOnMessageChanges state' (MessageChange action') = CMessageChange (((changeAction state' .) .) . action')
     fixOnReactionAdd state' (ReactionAdd action') = CReactionAdd (changeAction state' . action')
     fixOnReactionDelete state' (ReactionDel action') = CReactionDel (changeAction state' . action')
+    fixOnInteractionRecv state' (InteractionRecv action') = CInteractionRecv (pluginName p) (changeAction state' . action')
     fixOther state' (Other action') = COther (changeAction state' . action')
     fixCron state' (CronJob time action') = CCronJob time (changeAction state' action')
 

@@ -16,14 +16,17 @@ import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.Char (toLower)
-import Data.Map (Map)
+import Data.Default (Default (def))
+import Data.Map (Map, empty)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
 import Discord (DiscordHandler)
+import Discord.Interactions (CreateApplicationCommand, Interaction)
 import Discord.Types
-  ( ChannelId,
+  ( ApplicationCommandId,
+    ChannelId,
     Emoji,
     Event (..),
     Message,
@@ -51,9 +54,13 @@ type DatabaseDiscord = EnvDatabaseDiscord ()
 -- the just the database for startup actions.
 type Database d = SqlPersistM d
 
-newtype TablebotCache = TCache
-  { cacheKnownEmoji :: Map Text Emoji
+data TablebotCache = TCache
+  { cacheKnownEmoji :: Map Text Emoji,
+    cacheApplicationCommands :: Map ApplicationCommandId Text
   }
+
+instance Default TablebotCache where
+  def = TCache empty empty
 
 -- * Parser
 
@@ -75,8 +82,8 @@ liftDiscord = lift . lift . lift
 -- Each feature is its own type, and the features are combined via records into
 -- full plugins.
 
--- | For when you get a 'MessageCreate'. Checks that the @name@ is directly
--- after the bot prefix, and then runs @commandParser@ on it.
+-- | For when the plugin is first used, to ensure that certain data is
+-- available.
 newtype StartUp d = StartUp
   { -- | An action to run at startup
     startAction :: Database d
@@ -84,20 +91,23 @@ newtype StartUp d = StartUp
 
 -- | For when you get a 'MessageCreate'. Checks that the @name@ is directly
 -- after the bot prefix, and then runs @commandParser@ on it.
--- It will first try to match against any subcommands, and if that fails it runs the commandParser
+-- It will first try to match against any subcommands, and if that fails it runs
+-- the commandParser.
 data EnvCommand d = Command
   { -- | The name of the command.
     commandName :: Text,
     -- | A parser to run on the command arguments, returning a computation to
     -- run in 'DatabaseDiscord'.
     commandParser :: Parser (Message -> EnvDatabaseDiscord d ()),
-    -- | A list of subcommands to attempt to parse before the bare command, matching their name.
+    -- | A list of subcommands to attempt to parse before the bare command,
+    -- matching their name.
     commandSubcommands :: [EnvCommand d]
   }
 
 type Command = EnvCommand ()
 
--- | Construct an aliased command that behaves the same as another command (for things like short forms)
+-- | Construct an aliased command that behaves the same as another command (for
+-- things like short forms).
 commandAlias :: Text -> EnvCommand d -> EnvCommand d
 commandAlias name' (Command _ cp sc) = Command name' cp sc
 
@@ -142,7 +152,18 @@ newtype EnvReactionDel d = ReactionDel
     onReactionDelete :: ReactionInfo -> EnvDatabaseDiscord d ()
   }
 
-type ReactionDel = EnvReactionAdd ()
+type ReactionDel = EnvReactionDel ()
+
+-- | Handles recieving of interactions, such as for application commands (slash
+-- commands, user commands, message commands), as well as components from
+-- messages.
+newtype EnvInteractionRecv d = InteractionRecv
+  { -- | A function to call on every interaction, which takes in details of that
+    -- interaction
+    onInteractionRecv :: Interaction -> EnvDatabaseDiscord d ()
+  }
+
+type InteractionRecv = EnvInteractionRecv ()
 
 -- | Handles events not covered by the other kinds of features. This is only
 -- relevant to specific admin functionality, such as the deletion of channels.
@@ -170,16 +191,18 @@ data EnvCronJob d = CronJob
 type CronJob = EnvCronJob ()
 
 -- | A feature for generating help text
--- Each help text page consists of a explanation body, as well as a list of sub-pages
--- that display the short text for its page
+-- Each help text page consists of a explanation body, as well as a list of
+-- sub-pages that display the short text for its page
 data HelpPage = HelpPage
   { -- | The [sub]command name
     helpName :: Text,
     -- | List of aliases for this command
     helpAliases :: [Text],
-    -- | The text to show when listed in a subpage list. Will be prefixed by its helpName
+    -- | The text to show when listed in a subpage list. Will be prefixed by its
+    -- helpName
     helpShortText :: Text,
-    -- | The text to show when specifically listed. Appears above the list of subpages
+    -- | The text to show when specifically listed. Appears above the list of
+    -- subpages
     helpBody :: Text,
     -- | A list of help pages that can be recursively accessed
     helpSubpages :: [HelpPage],
@@ -292,11 +315,13 @@ data RequiredPermission = None | Any | Exec | Moderator | Both | Superuser deriv
 data EnvPlugin d = Pl
   { pluginName :: Text,
     startUp :: StartUp d,
+    applicationCommands :: [CreateApplicationCommand],
     commands :: [EnvCommand d],
     inlineCommands :: [EnvInlineCommand d],
     onMessageChanges :: [EnvMessageChange d],
     onReactionAdds :: [EnvReactionAdd d],
     onReactionDeletes :: [EnvReactionDel d],
+    onInteractionRecvs :: [EnvInteractionRecv d],
     otherEvents :: [EnvOther d],
     cronJobs :: [EnvCronJob d],
     helpPages :: [HelpPage],
@@ -312,7 +337,7 @@ type Plugin = EnvPlugin ()
 -- Examples of this in use can be found in the imports of
 -- "Tablebot.Plugins".
 plug :: Text -> Plugin
-plug name' = Pl name' (StartUp (return ())) [] [] [] [] [] [] [] [] []
+plug name' = Pl name' (StartUp (return ())) [] [] [] [] [] [] [] [] [] [] []
 
 envPlug :: Text -> StartUp d -> EnvPlugin d
-envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] []
+envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] [] [] []

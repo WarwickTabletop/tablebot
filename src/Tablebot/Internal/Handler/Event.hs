@@ -12,12 +12,20 @@ module Tablebot.Internal.Handler.Event
   ( parseMessageChange,
     parseReactionAdd,
     parseReactionDel,
+    parseInteractionRecvComponent,
+    parseInteractionRecvApplicationCommand,
     parseOther,
   )
 where
 
+import Control.Concurrent (readMVar)
+import Control.Monad.RWS (MonadIO (liftIO), MonadReader (ask))
+import Data.Map (findWithDefault)
+import Data.Text (isPrefixOf)
+import Discord.Interactions (Interaction (..), InteractionDataComponent (interactionDataComponentCustomId))
 import Discord.Types (ChannelId, Event, MessageId, ReactionInfo)
 import Tablebot.Internal.Types
+import Tablebot.Utility.Types (TablebotCache (cacheApplicationCommands))
 
 -- | This runs each 'MessageChange' feature in @cs@ with the information from a
 -- Discord 'MessageUpdate' or 'MessageDelete' event - whether it is an update
@@ -46,6 +54,21 @@ parseReactionDel :: [CompiledReactionDel] -> ReactionInfo -> CompiledDatabaseDis
 parseReactionDel cs info = mapM_ doReactionAdd cs
   where
     doReactionAdd c = onReactionDelete c info
+
+parseInteractionRecvComponent :: [CompiledInteractionRecv] -> Interaction -> CompiledDatabaseDiscord ()
+parseInteractionRecvComponent cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ (`onInteractionRecv` info) cs'
+  where
+    cs' = filter (\cir -> interactionRecvPluginName cir `isPrefixOf` interactionDataComponentCustomId idc) cs
+parseInteractionRecvComponent _ _ = return ()
+
+parseInteractionRecvApplicationCommand :: [CompiledInteractionRecv] -> Interaction -> CompiledDatabaseDiscord ()
+parseInteractionRecvApplicationCommand cs info = do
+  tvar <- ask
+  cache <- liftIO $ readMVar tvar
+  let validPlugin = findWithDefault "" (interactionId info) $ cacheApplicationCommands cache
+  mapM_ (`onInteractionRecv` info) (cs' validPlugin)
+  where
+    cs' plname = filter (\cir -> interactionRecvPluginName cir == plname) cs
 
 -- | This runs each 'Other' feature in @cs@ with the Discord 'Event' provided.
 -- Note that any events covered by other feature types will /not/ be run

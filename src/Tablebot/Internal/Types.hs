@@ -13,9 +13,11 @@ module Tablebot.Internal.Types where
 
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
+import Data.Default (Default)
 import Data.Text (Text)
 import Database.Persist.Sqlite (Migration, SqlPersistT)
 import Discord
+import Discord.Interactions (CreateApplicationCommand, Interaction)
 import Discord.Types
 import Tablebot.Utility.Types
 
@@ -27,6 +29,7 @@ type CompiledDatabaseDiscord = ReaderT (MVar TablebotCache) (SqlPersistT Discord
 data CompiledPlugin = CPl
   { compiledName :: Text,
     setupAction :: Database PluginActions,
+    applicationCommands :: [CompiledApplicationCommand],
     helpPages :: [HelpPage],
     migrations :: [Migration]
   }
@@ -37,19 +40,32 @@ data PluginActions = PA
     compiledOnMessageChanges :: [CompiledMessageChange],
     compiledOnReactionAdds :: [CompiledReactionAdd],
     compiledOnReactionDeletes :: [CompiledReactionDel],
+    compiledOnInteractionRecvs :: [CompiledInteractionRecv],
     compiledOtherEvents :: [CompiledOther],
     compiledCronJobs :: [CompiledCronJob]
   }
 
+instance Default PluginActions where
+  def = PA [] [] [] [] [] [] [] []
+
 data CombinedPlugin = CmPl
   { combinedSetupAction :: [Database PluginActions],
+    combinedApplicationCommands :: [CompiledApplicationCommand],
     combinedHelpPages :: [HelpPage],
     combinedMigrations :: [Migration]
   }
 
+instance Default CombinedPlugin where
+  def = CmPl [] [] [] []
+
 -- * Compiled Items
 
 -- These are compiled forms of the actions from the public types that remove the reader.
+
+data CompiledApplicationCommand = CApplicationComand
+  { applicationCommandPluginName :: Text,
+    applicationCommand :: CreateApplicationCommand
+  }
 
 data CompiledCommand = CCommand
   { commandName :: Text,
@@ -71,6 +87,11 @@ newtype CompiledReactionAdd = CReactionAdd
 
 newtype CompiledReactionDel = CReactionDel
   { onReactionDelete :: ReactionInfo -> CompiledDatabaseDiscord ()
+  }
+
+data CompiledInteractionRecv = CInteractionRecv
+  { interactionRecvPluginName :: Text,
+    onInteractionRecv :: Interaction -> CompiledDatabaseDiscord ()
   }
 
 newtype CompiledOther = COther

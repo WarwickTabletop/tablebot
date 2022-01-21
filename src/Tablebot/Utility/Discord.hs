@@ -37,21 +37,25 @@ module Tablebot.Utility.Discord
     formatInput,
     TimeFormat,
     extractFromSnowflake,
+    createApplicationCommand,
+    removeApplicationCommandsNotInList,
   )
 where
 
 import Control.Monad.Exception (MonadException (throw))
 import Data.Char (isDigit)
 import Data.Foldable (msum)
+import Data.List
 import Data.Map.Strict (keys)
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack, unpack)
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
-import Discord (RestCallErrorCode, readCache, restCall)
+import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
+import Discord.Interactions (ApplicationCommand (applicationCommandId), CreateApplicationCommand)
 import Discord.Internal.Gateway.Cache
-import qualified Discord.Requests as R
+import Discord.Requests qualified as R
 import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache
@@ -313,3 +317,14 @@ formatText CodeBlock s = "```" <> s <> "```"
 
 extractFromSnowflake :: Snowflake -> Word64
 extractFromSnowflake (Snowflake w) = w
+
+createApplicationCommand :: ApplicationId -> GuildId -> CreateApplicationCommand -> DiscordHandler ApplicationCommand
+createApplicationCommand aid gid cac = do
+  a <- restCall $ R.CreateGuildApplicationCommand aid gid cac
+  either (const (fail "could not create guild application command")) return a
+
+removeApplicationCommandsNotInList :: ApplicationId -> GuildId -> [ApplicationCommandId] -> DiscordHandler ()
+removeApplicationCommandsNotInList aid gid aciToKeep = do
+  allACs' <- restCall $ R.GetGuildApplicationCommands aid gid
+  allACs <- (applicationCommandId <$>) <$> either (const (fail "could not get all applicationCommands")) return allACs'
+  mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)

@@ -25,12 +25,14 @@ import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.Persist.Sqlite (SqlBackend, runSqlPool)
 import Discord (DiscordHandler)
+import Discord.Interactions (Interaction (..))
 import Discord.Types
 import Tablebot.Internal.Handler.Command
   ( parseNewMessage,
   )
 import Tablebot.Internal.Handler.Event
-  ( parseMessageChange,
+  ( parseInteractionRecvComponent,
+    parseMessageChange,
     parseOther,
     parseReactionAdd,
     parseReactionDel,
@@ -69,6 +71,9 @@ eventHandler pl prefix = \case
   -- Similar with MessageReactionRemoveEmoji (removes all of one type).
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
+  InteractionCreate i@InteractionComponent {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
+  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
+  InteractionCreate i@InteractionApplicationCommandAutocomplete {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))

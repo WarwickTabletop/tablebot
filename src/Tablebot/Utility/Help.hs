@@ -9,6 +9,7 @@
 -- This module creates functions and data structures to help generate help text for commands
 module Tablebot.Utility.Help where
 
+import Data.Default (Default (def))
 import Data.Functor (($>))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -33,7 +34,7 @@ helpHelpPage = HelpPage "help" [] "show information about commands" "**Help**\nS
 generateHelp :: CombinedPlugin -> CombinedPlugin
 generateHelp p =
   p
-    { combinedSetupAction = return (PA [CCommand "help" (handleHelp (helpHelpPage : combinedHelpPages p)) []] [] [] [] [] [] []) : combinedSetupAction p
+    { combinedSetupAction = return (def {compiledCommands = [CCommand "help" (handleHelp (helpHelpPage : combinedHelpPages p)) []]}) : combinedSetupAction p
     }
 
 handleHelp :: [HelpPage] -> Parser (Message -> CompiledDatabaseDiscord ())

@@ -37,13 +37,18 @@ import Database.Persist.Sqlite
     runSqlPool,
   )
 import Discord
+import Discord.Interactions (ApplicationCommand (applicationCommandId))
+import Discord.Internal.Rest (PartialApplication (partialApplicationID))
+import System.Environment (getEnv)
 import Tablebot.Handler (eventHandler, killCron, runCron)
 import Tablebot.Internal.Administration (adminMigration, currentBlacklist, removeBlacklisted)
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
+import Tablebot.Utility.Discord (createApplicationCommand, removeApplicationCommandsNotInList)
 import Tablebot.Utility.Help
 import Tablebot.Utility.Types (TablebotCache (..))
 import Tablebot.Utility.Utils (debugPrint)
+import Text.Read (readMaybe)
 
 -- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ runs the bot using the
 -- given Discord API token @dToken@ and SQLite connection string @dbpath@. Only
@@ -68,6 +73,7 @@ runTablebot dToken prefix dbpath plugins =
     let filteredPlugins = removeBlacklisted blacklist plugins
     -- Combine the list of plugins into both a combined plugin
     let !plugin = generateHelp $ combinePlugins filteredPlugins
+        compiledAppComms = combinedApplicationCommands plugin
     -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
     allActions <- mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
     let !actions = combineActions allActions
@@ -77,7 +83,7 @@ runTablebot dToken prefix dbpath plugins =
     mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
     -- Create a var to kill any ongoing tasks.
     mvar <- newEmptyMVar :: IO (MVar [ThreadId])
-    cacheMVar <- newMVar (TCache M.empty) :: IO (MVar TablebotCache)
+    cacheMVar <- newMVar def :: IO (MVar TablebotCache)
     userFacingError <-
       runDiscord $
         def
@@ -91,6 +97,13 @@ runTablebot dToken prefix dbpath plugins =
               -- (which can just happen due to databases being unavailable
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
+
+              serverIdStr <- liftIO $ getEnv "SERVER_ID"
+              serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
+              aid <- partialApplicationID . cacheApplication <$> readCache
+              applicationCommands <- mapM (\(CApplicationComand pname cac) -> createApplicationCommand aid serverId cac >>= \ac -> return (applicationCommandId ac, pname)) compiledAppComms
+              removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
+              liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList applicationCommands}
               liftIO $ putStrLn "Tablebot lives!",
             -- Kill every cron job in the mvar.
             discordOnEnd = takeMVar mvar >>= killCron
