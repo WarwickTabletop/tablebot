@@ -11,14 +11,10 @@ module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
-import Data.Default (Default (def))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord.Interactions
-import Discord.Requests
-  ( MessageDetailedOpts (messageDetailedComponents, messageDetailedContent),
-  )
 import Discord.Types
   ( ButtonStyle (ButtonStyleSecondary),
     ComponentActionRow (ComponentActionRowButton),
@@ -64,10 +60,10 @@ rollDice'' e' t u = do
     simplify li = li
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
 
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
+rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord MessageDetails
 rollDice' e t m = do
   (msg, buttons) <- getMessagePieces e t (toMention $ messageAuthor m)
-  sendCustomMessage m (def {messageDetailedContent = msg, messageDetailedComponents = buttons})
+  return ((messageJustText msg) {messageDetailsComponents = buttons})
 
 getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord (Text, Maybe [ComponentActionRow])
 getMessagePieces e t u = do
@@ -87,28 +83,28 @@ getMessagePieces e t u = do
 rerollInteraction :: Interaction -> DatabaseDiscord ()
 rerollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
   | length opts /= 4 = throwBot $ InteractionException "could not process button click"
-  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((interactionCallbackMessagesBasic "Hey, that isn't your button to press!") {interactionCallbackMessagesFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
+  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageJustText "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
   | otherwise = case opts of
     [_, uid, "", ""] -> do
       (msg, button) <- getMessagePieces Nothing Nothing uid
-      interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+      interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
     [_, uid, "", qt] -> do
       (msg, button) <- getMessagePieces Nothing (Just (Qu qt)) uid
-      interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+      interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
     [_, uid, e, ""] -> do
       let e' = parse pars "" e
       case e' of
         Left _ -> throwBot $ InteractionException "could not process button click"
         Right e'' -> do
           (msg, button) <- getMessagePieces (Just e'') Nothing uid
-          interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+          interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
     [_, uid, e, qt] -> do
       let e' = parse pars "" e
       case e' of
         Left _ -> throwBot $ InteractionException "could not process button click"
         Right e'' -> do
           (msg, button) <- getMessagePieces (Just e'') (Just (Qu qt)) uid
-          interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
+          interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
     _ -> throwBot $ InteractionException "could not process button click"
   where
     opts = T.split (== '`') cid
@@ -119,7 +115,7 @@ rollSlashCommandInteraction :: Interaction -> DatabaseDiscord ()
 rollSlashCommandInteraction i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandName = "roll", interactionDataApplicationCommandOptions = opts}} = do
   e <- mapM parseExpr expr
   (msg, buttons) <- getMessagePieces e (Qu <$> qt) (toMention' getUser)
-  interactionResponseCustomMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = buttons})
+  interactionResponseCustomMessage i ((messageJustText msg) {messageDetailsComponents = buttons})
   where
     findWhere s = opts >>= \(InteractionDataApplicationCommandOptionsValues values) -> lookup s $ (\v -> (interactionDataApplicationCommandOptionValueName v, interactionDataApplicationCommandOptionValueValue v)) <$> values
     expr = findWhere "expression" >>= getText
@@ -168,7 +164,7 @@ rollDice = Command "roll" rollDiceParser []
 
 -- | Rolling dice inline.
 rollDiceInline :: InlineCommand
-rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> rollDice' (Just e) Nothing m)
+rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> rollDice' (Just e) Nothing m >>= sendCustomMessage m)
 
 -- | Help page for rolling dice, with a link to the help page.
 rollHelp :: HelpPage

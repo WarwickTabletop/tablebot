@@ -67,7 +67,7 @@ import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache
 import Tablebot.Internal.Embed
-import Tablebot.Utility (EnvDatabaseDiscord, liftDiscord)
+import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageJustText)
 import Tablebot.Utility.Exception (BotException (..))
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
@@ -90,10 +90,10 @@ sendMessage m t = do
 -- other specific message data, you shouldn't use this function.
 sendCustomMessage ::
   Message ->
-  R.MessageDetailedOpts ->
+  MessageDetails ->
   EnvDatabaseDiscord s ()
 sendCustomMessage m t = do
-  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannelId m) t
+  res <- liftDiscord . restCall $ R.CreateMessageDetailed (messageChannelId m) (convertMessageFormatBasic t)
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
@@ -395,20 +395,20 @@ interactionResponseDeferUpdateMessage i = do
 
 -- | Respond to the given interaction with the given text.
 interactionResponseMessage :: Interaction -> Text -> EnvDatabaseDiscord s ()
-interactionResponseMessage i t = interactionResponseCustomMessage i (InteractionCallbackMessages Nothing (Just t) Nothing Nothing Nothing Nothing Nothing)
+interactionResponseMessage i t = interactionResponseCustomMessage i (messageJustText t)
 
 -- | Respond to the given interaction with a custom messages object.
-interactionResponseCustomMessage :: Interaction -> InteractionCallbackMessages -> EnvDatabaseDiscord s ()
+interactionResponseCustomMessage :: Interaction -> MessageDetails -> EnvDatabaseDiscord s ()
 interactionResponseCustomMessage i t = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeChannelMessageWithSource (Just $ InteractionCallbackDataMessages t))
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeChannelMessageWithSource (Just $ InteractionCallbackDataMessages $ convertMessageFormatInteraction t))
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction."
     Right _ -> return ()
 
 -- | Respond to the given interaction by updating the component's message.
-interactionResponseComponentsUpdateMessage :: Interaction -> InteractionCallbackMessages -> EnvDatabaseDiscord s ()
+interactionResponseComponentsUpdateMessage :: Interaction -> MessageDetails -> EnvDatabaseDiscord s ()
 interactionResponseComponentsUpdateMessage i t = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeUpdateMessage (Just $ InteractionCallbackDataMessages t))
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeUpdateMessage (Just $ InteractionCallbackDataMessages $ convertMessageFormatInteraction t))
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction with components update."
     Right _ -> return ()

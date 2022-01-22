@@ -15,6 +15,7 @@ module Tablebot.Utility.Types where
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT)
+import Data.ByteString (ByteString)
 import Data.Char (toLower)
 import Data.Default (Default (def))
 import Data.Map (Map, empty)
@@ -23,15 +24,22 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
 import Discord (DiscordHandler)
-import Discord.Interactions (CreateApplicationCommand, Interaction)
+import Discord.Interactions (CreateApplicationCommand, Interaction, InteractionCallbackDataFlags, InteractionCallbackMessages (InteractionCallbackMessages))
+import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
 import Discord.Types
-  ( ApplicationCommandId,
+  ( AllowedMentions,
+    ApplicationCommandId,
+    Attachment,
     ChannelId,
+    ComponentActionRow,
+    Embed,
     Emoji,
     Event (..),
     Message,
     MessageId,
+    MessageReference,
     ReactionInfo,
+    StickerId,
   )
 import Safe.Exact (dropExactMay, takeExactMay)
 import Text.Megaparsec (Parsec)
@@ -341,3 +349,42 @@ plug name' = Pl name' (StartUp (return ())) [] [] [] [] [] [] [] [] [] [] []
 
 envPlug :: Text -> StartUp d -> EnvPlugin d
 envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] [] [] []
+
+messageJustText :: Text -> MessageDetails
+messageJustText t = MessageDetails Nothing (Just t) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+data MessageDetails = MessageDetails
+  { messageDetailsTTS :: Maybe Bool,
+    messageDetailsContent :: Maybe Text,
+    messageDetailsEmbeds :: Maybe [Embed],
+    messageDetailsFile :: Maybe (Text, ByteString),
+    messageDetailsAllowedMentions :: Maybe AllowedMentions,
+    messageDetailsFlags :: Maybe InteractionCallbackDataFlags,
+    messageDetailsReference :: Maybe MessageReference,
+    messageDetailsComponents :: Maybe [ComponentActionRow],
+    messageDetailsAttachments :: Maybe [Attachment],
+    messageDetailsStickerIds :: Maybe [StickerId]
+  }
+
+convertMessageFormatInteraction :: MessageDetails -> InteractionCallbackMessages
+convertMessageFormatInteraction MessageDetails {..} =
+  InteractionCallbackMessages
+    messageDetailsTTS
+    messageDetailsContent
+    messageDetailsEmbeds
+    messageDetailsAllowedMentions
+    messageDetailsFlags
+    messageDetailsComponents
+    messageDetailsAttachments
+
+convertMessageFormatBasic :: MessageDetails -> MessageDetailedOpts
+convertMessageFormatBasic MessageDetails {..} =
+  MessageDetailedOpts
+    (fromMaybe "" messageDetailsContent)
+    (fromMaybe False messageDetailsTTS)
+    Nothing
+    messageDetailsFile
+    messageDetailsAllowedMentions
+    messageDetailsReference
+    messageDetailsComponents
+    messageDetailsStickerIds

@@ -14,13 +14,17 @@
 -- build a parser that reads in that Int and then runs the command.
 module Tablebot.Utility.SmartParser where
 
-import Data.Proxy
+import Data.Proxy (Proxy (..))
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack)
+import Discord.Interactions
 import Discord.Types (Message)
+import GHC.OldList (find)
 import GHC.TypeLits
+import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMessage)
+import Tablebot.Utility.Exception (BotException (InteractionException), catchBot, throwBot)
 import Tablebot.Utility.Parser
-import Tablebot.Utility.Types (EnvDatabaseDiscord, Parser)
+import Tablebot.Utility.Types (EnvDatabaseDiscord, MessageDetails, Parser)
 import Text.Megaparsec
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
@@ -36,12 +40,19 @@ class PComm commandty s where
 instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s ()) s where
   parseComm comm = skipSpace >> eof >> return comm
 
--- Second base case is the single argument - no trailing space is wanted so we
--- have to specify this case.
-instance {-# OVERLAPPING #-} CanParse a => PComm (a -> Message -> EnvDatabaseDiscord s ()) s where
-  parseComm comm = do
-    this <- pars @a
-    parseComm (comm this)
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s where
+  parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
+
+instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s where
+  parseComm comm = skipSpace >> eof >> return (\m -> comm m >>= sendCustomMessage m)
+
+-- TODO: verify that this second base case is no longer needed
+-- -- Second base case is the single argument - no trailing space is wanted so we
+-- -- have to specify this case.
+-- instance {-# OVERLAPPING #-} CanParse a => PComm (a -> Message -> EnvDatabaseDiscord s ()) s where
+--   parseComm comm = do
+--     this <- pars @a
+--     parseComm (comm this)
 
 -- Recursive case is to parse the domain of the function type, then the rest.
 instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s) => PComm (a -> as) s where
@@ -172,3 +183,71 @@ instance IsString a => CanParse (RestOfInput1 a) where
 -- have no arguments (thus making it extremely clear).
 noArguments :: (Message -> EnvDatabaseDiscord d ()) -> Parser (Message -> EnvDatabaseDiscord d ())
 noArguments = parseComm
+
+-- | Labelled value for use with smart commands.
+newtype Labelled (name :: Symbol) (desc :: Symbol) a = Labelled a
+
+-- | Easily make a labelled value.
+labelValue :: forall n d a. a -> Labelled n d a
+labelValue = Labelled @n @d
+
+getLabelValues :: forall n d a. (KnownSymbol n, KnownSymbol d) => Proxy (Labelled n d a) -> (Text, Text)
+getLabelValues _ = (pack (symbolVal (Proxy :: Proxy n)), pack (symbolVal (Proxy :: Proxy d)))
+
+class MakeAppComm commandty where
+  makeAppComm :: Proxy commandty -> [ApplicationCommandOptionValue]
+
+-- As a base case, no more arguments
+instance {-# OVERLAPPING #-} MakeAppComm (EnvDatabaseDiscord s MessageDetails) where
+  makeAppComm _ = []
+
+instance {-# OVERLAPPABLE #-} (MakeAppComm mac, MakeAppCommArg ty) => MakeAppComm (ty -> mac) where
+  makeAppComm _ = makeAppCommArg (Proxy :: Proxy ty) : makeAppComm (Proxy :: Proxy mac)
+
+class MakeAppCommArg commandty where
+  makeAppCommArg :: Proxy commandty -> ApplicationCommandOptionValue
+
+instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Text) where
+  makeAppCommArg l = ApplicationCommandOptionValueString n d (Just True) Nothing Nothing
+    where
+      (n, d) = getLabelValues l
+
+instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Maybe t)) where
+  makeAppCommArg _ =
+    (makeAppCommArg (Proxy :: Proxy (Labelled name desc t)))
+      { applicationCommandOptionValueRequired = Just False
+      }
+
+-- As a base case, send the message produced
+
+class ProcessAppComm commandty s where
+  processAppComm :: commandty -> Interaction -> EnvDatabaseDiscord s ()
+
+instance {-# OVERLAPPING #-} ProcessAppComm (EnvDatabaseDiscord s MessageDetails) s where
+  processAppComm comm i = comm >>= interactionResponseCustomMessage i
+
+instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s, ProcessAppCommArg ty s) => ProcessAppComm (ty -> pac) s where
+  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = (Just (InteractionDataApplicationCommandOptionsValues values))}} = do
+    t <- processAppCommArg values
+    processAppComm (comm t) i
+  processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
+
+class ProcessAppCommArg t s where
+  processAppCommArg :: [InteractionDataApplicationCommandOptionValue] -> EnvDatabaseDiscord s t
+
+getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe ApplicationCommandInteractionDataValue
+getValue t is = interactionDataApplicationCommandOptionValueValue <$> find ((== pack t) . interactionDataApplicationCommandOptionValueName) is
+
+instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
+  processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
+    Just (ApplicationCommandInteractionDataValueString t) -> return $ labelValue t
+    _ -> throwBot $ InteractionException "could not find required parameter"
+
+instance (KnownSymbol name, ProcessAppCommArg (Labelled name description t) s) => ProcessAppCommArg (Labelled name description (Maybe t)) s where
+  processAppCommArg is = do
+    let result = processAppCommArg is :: EnvDatabaseDiscord s (Labelled name description t)
+    ( do
+        (Labelled l) <- result
+        return (labelValue (Just l))
+      )
+      `catchBot` const (return $ labelValue Nothing)
