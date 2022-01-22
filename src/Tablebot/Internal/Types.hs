@@ -29,42 +29,41 @@ type CompiledDatabaseDiscord = ReaderT (MVar TablebotCache) (SqlPersistT Discord
 data CompiledPlugin = CPl
   { compiledName :: Text,
     setupAction :: Database PluginActions,
-    applicationCommands :: [CompiledApplicationCommand],
     helpPages :: [HelpPage],
     migrations :: [Migration]
   }
 
 data PluginActions = PA
-  { compiledCommands :: [CompiledCommand],
+  { compiledApplicationCommands :: [CompiledApplicationCommand],
+    compiledCommands :: [CompiledCommand],
     compiledInlineCommands :: [CompiledInlineCommand],
     compiledOnMessageChanges :: [CompiledMessageChange],
     compiledOnReactionAdds :: [CompiledReactionAdd],
     compiledOnReactionDeletes :: [CompiledReactionDel],
-    compiledOnInteractionRecvs :: [CompiledInteractionRecv],
+    compiledOnComponentInteractionRecvs :: [CompiledInteractionRecv],
     compiledOtherEvents :: [CompiledOther],
     compiledCronJobs :: [CompiledCronJob]
   }
 
 instance Default PluginActions where
-  def = PA [] [] [] [] [] [] [] []
+  def = PA [] [] [] [] [] [] [] [] []
 
 data CombinedPlugin = CmPl
   { combinedSetupAction :: [Database PluginActions],
-    combinedApplicationCommands :: [CompiledApplicationCommand],
     combinedHelpPages :: [HelpPage],
     combinedMigrations :: [Migration]
   }
 
 instance Default CombinedPlugin where
-  def = CmPl [] [] [] []
+  def = CmPl [] [] []
 
 -- * Compiled Items
 
 -- These are compiled forms of the actions from the public types that remove the reader.
 
 data CompiledApplicationCommand = CApplicationComand
-  { applicationCommandPluginName :: Text,
-    applicationCommand :: CreateApplicationCommand
+  { applicationCommand :: CreateApplicationCommand,
+    applicationCommandAction :: EnvInteractionRecv ()
   }
 
 data CompiledCommand = CCommand

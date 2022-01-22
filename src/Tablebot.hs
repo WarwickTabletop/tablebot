@@ -73,10 +73,10 @@ runTablebot dToken prefix dbpath plugins =
     let filteredPlugins = removeBlacklisted blacklist plugins
     -- Combine the list of plugins into both a combined plugin
     let !plugin = generateHelp $ combinePlugins filteredPlugins
-        compiledAppComms = combinedApplicationCommands plugin
     -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
     allActions <- mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
     let !actions = combineActions allActions
+        compiledAppComms = compiledApplicationCommands actions
 
     -- TODO: this might have issues with duplicates?
     -- TODO: in production, this should probably run once and then never again.
@@ -98,12 +98,20 @@ runTablebot dToken prefix dbpath plugins =
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
 
+              -- generate the application commands, cleaning up any application commands we don't like
               serverIdStr <- liftIO $ getEnv "SERVER_ID"
               serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
               aid <- partialApplicationID . cacheApplication <$> readCache
-              applicationCommands <- mapM (\(CApplicationComand pname cac) -> createApplicationCommand aid serverId cac >>= \ac -> return (applicationCommandId ac, pname)) compiledAppComms
+              applicationCommands <-
+                mapM
+                  ( \(CApplicationComand cac action) -> do
+                      ac <- createApplicationCommand aid serverId cac
+                      return (applicationCommandId ac, action)
+                  )
+                  compiledAppComms
               removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
               liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList applicationCommands}
+
               liftIO $ putStrLn "Tablebot lives!",
             -- Kill every cron job in the mvar.
             discordOnEnd = takeMVar mvar >>= killCron

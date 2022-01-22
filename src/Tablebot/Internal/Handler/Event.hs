@@ -20,12 +20,13 @@ where
 
 import Control.Concurrent (readMVar)
 import Control.Monad.RWS (MonadIO (liftIO), MonadReader (ask))
-import Data.Map (findWithDefault)
+import qualified Data.Map as M
 import Data.Text (isPrefixOf)
 import Discord.Interactions (Interaction (..), InteractionDataApplicationCommand (interactionDataApplicationCommandId), InteractionDataComponent (interactionDataComponentCustomId))
 import Discord.Types (ChannelId, Event, MessageId, ReactionInfo)
-import Tablebot.Internal.Types
-import Tablebot.Utility.Types (TablebotCache (cacheApplicationCommands))
+import Tablebot.Internal.Plugins (changeAction)
+import Tablebot.Internal.Types as IT
+import qualified Tablebot.Utility.Types as UT
 
 -- | This runs each 'MessageChange' feature in @cs@ with the information from a
 -- Discord 'MessageUpdate' or 'MessageDelete' event - whether it is an update
@@ -61,15 +62,15 @@ parseInteractionRecvComponent cs info@InteractionComponent {interactionDataCompo
     cs' = filter (\cir -> interactionRecvPluginName cir `isPrefixOf` interactionDataComponentCustomId idc) cs
 parseInteractionRecvComponent _ _ = return ()
 
-parseInteractionRecvApplicationCommand :: [CompiledInteractionRecv] -> Interaction -> CompiledDatabaseDiscord ()
-parseInteractionRecvApplicationCommand cs info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
+parseInteractionRecvApplicationCommand :: Interaction -> CompiledDatabaseDiscord ()
+parseInteractionRecvApplicationCommand info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
   tvar <- ask
   cache <- liftIO $ readMVar tvar
-  let validPlugin = findWithDefault "" (interactionDataApplicationCommandId idac) $ cacheApplicationCommands cache
-  mapM_ (`onInteractionRecv` info) (cs' validPlugin)
-  where
-    cs' plname = filter (\cir -> interactionRecvPluginName cir == plname) cs
-parseInteractionRecvApplicationCommand _ _ = return ()
+  let action = UT.cacheApplicationCommands cache M.!? interactionDataApplicationCommandId idac
+  case action of
+    Nothing -> return ()
+    Just act -> changeAction () $ UT.onInteractionRecv act info
+parseInteractionRecvApplicationCommand _ = return ()
 
 -- | This runs each 'Other' feature in @cs@ with the Discord 'Event' provided.
 -- Note that any events covered by other feature types will /not/ be run

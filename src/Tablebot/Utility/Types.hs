@@ -56,9 +56,8 @@ type Database d = SqlPersistM d
 
 data TablebotCache = TCache
   { cacheKnownEmoji :: Map Text Emoji,
-    cacheApplicationCommands :: Map ApplicationCommandId Text
+    cacheApplicationCommands :: Map ApplicationCommandId (EnvInteractionRecv ())
   }
-  deriving (Show)
 
 instance Default TablebotCache where
   def = TCache empty empty
@@ -316,13 +315,13 @@ data RequiredPermission = None | Any | Exec | Moderator | Both | Superuser deriv
 data EnvPlugin d = Pl
   { pluginName :: Text,
     startUp :: StartUp d,
-    applicationCommands :: [Maybe CreateApplicationCommand],
+    applicationCommands :: [(Maybe CreateApplicationCommand, EnvInteractionRecv d)],
     commands :: [EnvCommand d],
     inlineCommands :: [EnvInlineCommand d],
     onMessageChanges :: [EnvMessageChange d],
     onReactionAdds :: [EnvReactionAdd d],
     onReactionDeletes :: [EnvReactionDel d],
-    onInteractionRecvs :: [EnvInteractionRecv d],
+    onComponentInteractionRecvs :: [EnvInteractionRecv d],
     otherEvents :: [EnvOther d],
     cronJobs :: [EnvCronJob d],
     helpPages :: [HelpPage],

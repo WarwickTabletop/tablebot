@@ -238,10 +238,8 @@ rollPlugin =
     { commands = [rollDice, commandAlias "r" rollDice, genchar],
       helpPages = [rollHelp, gencharHelp],
       inlineCommands = [rollDiceInline],
-      onInteractionRecvs =
-        InteractionRecv
-          <$> [ rerollInteraction,
-                rollSlashCommandInteraction
-              ],
-      applicationCommands = [rollSlashCommand]
+      onComponentInteractionRecvs =
+        [ InteractionRecv rerollInteraction
+        ],
+      applicationCommands = [(rollSlashCommand, InteractionRecv rollSlashCommandInteraction)]
     }

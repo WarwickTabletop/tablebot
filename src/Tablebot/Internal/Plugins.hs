@@ -9,9 +9,8 @@
 -- This contains some functions to combine and compile plugins
 module Tablebot.Internal.Plugins where
 
-import Control.Monad.Trans.Reader (runReaderT)
+import Control.Monad.Reader (MonadTrans (lift), ReaderT (runReaderT))
 import Data.Default (Default (def))
-import Data.Maybe (catMaybes)
 import Discord.Types (Message)
 import Tablebot.Internal.Types hiding (helpPages, migrations)
 import qualified Tablebot.Internal.Types as IT
@@ -26,7 +25,6 @@ combinePlugins (p : ps) =
   let p' = combinePlugins ps
    in CmPl
         { combinedSetupAction = setupAction p : combinedSetupAction p',
-          combinedApplicationCommands = IT.applicationCommands p ++ combinedApplicationCommands p',
           combinedMigrations = IT.migrations p ++ combinedMigrations p',
           combinedHelpPages = IT.helpPages p ++ combinedHelpPages p'
         }
@@ -38,12 +36,13 @@ combineActions [] = def
 combineActions (p : ps) =
   let p' = combineActions ps
    in PA
-        { compiledCommands = compiledCommands p +++ compiledCommands p',
+        { compiledApplicationCommands = compiledApplicationCommands p +++ compiledApplicationCommands p',
+          compiledCommands = compiledCommands p +++ compiledCommands p',
           compiledInlineCommands = compiledInlineCommands p +++ compiledInlineCommands p',
           compiledOnMessageChanges = compiledOnMessageChanges p +++ compiledOnMessageChanges p',
           compiledOnReactionAdds = compiledOnReactionAdds p +++ compiledOnReactionAdds p',
           compiledOnReactionDeletes = compiledOnReactionDeletes p +++ compiledOnReactionDeletes p',
-          compiledOnInteractionRecvs = compiledOnInteractionRecvs p +++ compiledOnInteractionRecvs p',
+          compiledOnComponentInteractionRecvs = compiledOnComponentInteractionRecvs p +++ compiledOnComponentInteractionRecvs p',
           compiledOtherEvents = compiledOtherEvents p +++ compiledOtherEvents p',
           compiledCronJobs = compiledCronJobs p +++ compiledCronJobs p'
         }
@@ -55,7 +54,7 @@ combineActions (p : ps) =
     a +++ b = a ++ b
 
 compilePlugin :: EnvPlugin b -> CompiledPlugin
-compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> catMaybes (UT.applicationCommands p)) (helpPages p) (migrations p)
+compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
   where
     sa :: Database PluginActions
     sa = do
@@ -63,12 +62,13 @@ compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> c
 
       return $
         PA
+          (fixApplicationCommands state (UT.applicationCommands p))
           (map (fixCommand state) $ commands p)
           (map (fixInlineCommand state) $ inlineCommands p)
           (map (fixOnMessageChanges state) $ onMessageChanges p)
           (map (fixOnReactionAdd state) $ onReactionAdds p)
           (map (fixOnReactionDelete state) $ onReactionDeletes p)
-          (map (fixOnInteractionRecv state) $ onInteractionRecvs p)
+          (map (fixOnInteractionRecv state) $ onComponentInteractionRecvs p)
           (map (fixOther state) $ otherEvents p)
           (map (fixCron state) $ cronJobs p)
 
@@ -81,6 +81,14 @@ compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> c
     fixOnInteractionRecv state' (InteractionRecv action') = CInteractionRecv (pluginName p) (changeAction state' . action')
     fixOther state' (Other action') = COther (changeAction state' . action')
     fixCron state' (CronJob time action') = CCronJob time (changeAction state' action')
+    fixApplicationCommands state' =
+      concat
+        . ( ( \case
+                (Just ac, action) -> [CApplicationComand ac (InteractionRecv $ \i -> lift (changeAction state' (UT.onInteractionRecv action i)))]
+                (Nothing, _) -> []
+            )
+              <$>
+          )
 
 -- * Helper converters
 
