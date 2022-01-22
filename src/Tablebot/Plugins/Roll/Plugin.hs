@@ -17,11 +17,20 @@ import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord.Interactions
 import Discord.Requests
-import Discord.Types (ButtonStyle (ButtonStyleSecondary), ComponentActionRow (ComponentActionRowButton), ComponentButton (ComponentButton), Message (messageAuthor))
+  ( MessageDetailedOpts (messageDetailedComponents, messageDetailedContent),
+  )
+import Discord.Types
+  ( ButtonStyle (ButtonStyleSecondary),
+    ComponentActionRow (ComponentActionRowButton),
+    ComponentButton (ComponentButton),
+    Emoji (Emoji),
+    GuildMember (memberUser),
+    Message (messageAuthor),
+  )
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, sendCustomMessage, toMention)
+import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention)
 import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu, quote), pars)
@@ -58,19 +67,6 @@ rollDice' e t m = do
   (msg, buttons) <- getMessagePieces e t (toMention $ messageAuthor m)
   sendCustomMessage m (def {messageDetailedContent = msg, messageDetailedComponents = buttons})
 
--- sendCustomMessage
---   m
---   ( def
---       { messageDetailedContent = msg,
---         messageDetailedComponents = Just [ComponentActionRowButton [
---           ComponentButton (("roll" `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" Nothing
---         ]]
---       }
---   )
---   where
---     appendIf t' Nothing = t'
---     appendIf t' (Just e') = t' <> "`" <> e'
-
 getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord (Text, Maybe [ComponentActionRow])
 getMessagePieces e t u = do
   msg <- rollDice'' e t u
@@ -78,7 +74,7 @@ getMessagePieces e t u = do
     ( msg,
       Just
         [ ComponentActionRowButton
-            [ ComponentButton ((("roll`" <> u) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" Nothing
+            [ ComponentButton ((("roll`" <> u) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
             ]
         ]
     )
@@ -87,8 +83,10 @@ getMessagePieces e t u = do
     appendIf t' (Just e') = t' <> "`" <> e'
 
 rollInteraction :: Interaction -> DatabaseDiscord ()
-rollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)} =
-  case opts of
+rollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
+  | length opts /= 4 = throwBot $ InteractionException "could not process button click"
+  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((interactionCallbackMessagesBasic "Hey, that isn't your button to press!") {interactionCallbackMessagesFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
+  | otherwise = case opts of
     [_, uid, "", ""] -> do
       (msg, button) <- getMessagePieces Nothing Nothing uid
       interactionResponseComponentsUpdateMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = button})
@@ -112,6 +110,7 @@ rollInteraction i@InteractionComponent {interactionDataComponent = Just (Interac
     _ -> throwBot $ InteractionException "could not process button click"
   where
     opts = T.split (== '`') cid
+    getUser = maybe (interactionUser i) memberUser (interactionMember i)
 rollInteraction _ = return ()
 
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
