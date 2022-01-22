@@ -24,6 +24,7 @@ import Control.Monad.Exception (MonadException)
 import Data.List (genericDrop, genericLength, genericTake, sort)
 import Data.Map as M (Map, fromList, keys)
 import Data.Maybe (fromJust)
+import Data.Proxy (Proxy (..))
 import Data.Text (Text, unpack)
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
 
@@ -105,7 +106,7 @@ constructFuncInfo s f = constructFuncInfo' s f (Nothing, Nothing, const False)
 constructFuncInfo' :: forall j f m. (MonadException m, ApplyFunc m f, Returns f ~ j) => Text -> f -> (Maybe Integer, Maybe Integer, Integer -> Bool) -> FuncInfoBase m j
 constructFuncInfo' s f bs = FuncInfo s params (last types) (applyFunc f (fromIntegral (length params)) bs)
   where
-    types = getTypes f
+    types = getTypes (Proxy :: Proxy f)
     params = init types
 
 -- | Some evaluated values, either an integer or a list of values with their
@@ -121,11 +122,11 @@ data ArgType = ATInteger | ATIntegerList
 -- types. Only supports integers and integer lists currently.
 class ArgCount f where
   -- | Get the number of arguments to a function.
-  getArgs :: f -> Integer
+  getArgs :: Proxy f -> Integer
   getArgs = (+ (-1)) . fromIntegral . length . getTypes
 
   -- | Get the types of arguments to a function.
-  getTypes :: f -> [ArgType]
+  getTypes :: Proxy f -> [ArgType]
 
 instance ArgCount Integer where
   getTypes _ = [ATInteger]
@@ -134,10 +135,10 @@ instance ArgCount [Integer] where
   getTypes _ = [ATIntegerList]
 
 instance ArgCount f => ArgCount (Integer -> f) where
-  getTypes f = ATInteger : getTypes (f 1)
+  getTypes _ = ATInteger : getTypes (Proxy :: Proxy f)
 
 instance ArgCount f => ArgCount ([Integer] -> f) where
-  getTypes f = ATIntegerList : getTypes (f [1])
+  getTypes _ = ATIntegerList : getTypes (Proxy :: Proxy f)
 
 -- | Type class which represents applying a function f to some inputs when given
 -- the bounds for the function and some number of inputs.
@@ -168,18 +169,18 @@ instance {-# OVERLAPPING #-} ApplyFunc m [Integer] where
   applyFunc _ args _ _ = throwBot $ EvaluationException ("incorrect number of arguments to function. expected " <> show args <> ", got more than that") []
 
 instance {-# OVERLAPPABLE #-} (ApplyFunc m f) => ApplyFunc m (Integer -> f) where
-  applyFunc f args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
-    where
-      dif = args - getArgs f
   applyFunc f args bs ((LIInteger x) : xs) = checkBounds x bs >>= \x' -> applyFunc (f x') args bs xs
-  applyFunc _ _ _ (_ : _) = throwBot $ EvaluationException "incorrect type given to function. expected an integer, got a list" []
+  applyFunc _ args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
+    where
+      dif = args - getArgs (Proxy :: Proxy f)
+  applyFunc _ _ _ _ = throwBot $ EvaluationException "incorrect type given to function. expected an integer, got a list" []
 
 instance {-# OVERLAPPABLE #-} (ApplyFunc m f) => ApplyFunc m ([Integer] -> f) where
-  applyFunc f args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
-    where
-      dif = args - getArgs f
   applyFunc f args bs ((LIList x) : xs) = applyFunc (f x) args bs xs
-  applyFunc _ _ _ (_ : _) = throwBot $ EvaluationException "incorrect type given to function. expected a list, got an integer" []
+  applyFunc _ args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
+    where
+      dif = args - getArgs (Proxy :: Proxy f)
+  applyFunc _ _ _ _ = throwBot $ EvaluationException "incorrect type given to function. expected a list, got an integer" []
 
 -- | Simple type family that gets the return type of whatever function or value
 -- is given
