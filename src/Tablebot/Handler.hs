@@ -31,7 +31,8 @@ import Tablebot.Internal.Handler.Command
   ( parseNewMessage,
   )
 import Tablebot.Internal.Handler.Event
-  ( parseInteractionRecvComponent,
+  ( parseInteractionRecvApplicationCommand,
+    parseInteractionRecvComponent,
     parseMessageChange,
     parseOther,
     parseReactionAdd,
@@ -72,8 +73,8 @@ eventHandler pl prefix = \case
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
   InteractionCreate i@InteractionComponent {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
-  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
-  InteractionCreate i@InteractionApplicationCommandAutocomplete {} -> parseInteractionRecvComponent (compiledOnInteractionRecvs pl) i
+  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvApplicationCommand (compiledOnInteractionRecvs pl) i
+  -- TODO: add application command autocomplete as an option
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))

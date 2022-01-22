@@ -58,6 +58,7 @@ data TablebotCache = TCache
   { cacheKnownEmoji :: Map Text Emoji,
     cacheApplicationCommands :: Map ApplicationCommandId Text
   }
+  deriving (Show)
 
 instance Default TablebotCache where
   def = TCache empty empty
@@ -315,7 +316,7 @@ data RequiredPermission = None | Any | Exec | Moderator | Both | Superuser deriv
 data EnvPlugin d = Pl
   { pluginName :: Text,
     startUp :: StartUp d,
-    applicationCommands :: [CreateApplicationCommand],
+    applicationCommands :: [Maybe CreateApplicationCommand],
     commands :: [EnvCommand d],
     inlineCommands :: [EnvInlineCommand d],
     onMessageChanges :: [EnvMessageChange d],

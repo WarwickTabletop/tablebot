@@ -11,6 +11,7 @@ module Tablebot.Internal.Plugins where
 
 import Control.Monad.Trans.Reader (runReaderT)
 import Data.Default (Default (def))
+import Data.Maybe (catMaybes)
 import Discord.Types (Message)
 import Tablebot.Internal.Types hiding (helpPages, migrations)
 import qualified Tablebot.Internal.Types as IT
@@ -54,7 +55,7 @@ combineActions (p : ps) =
     a +++ b = a ++ b
 
 compilePlugin :: EnvPlugin b -> CompiledPlugin
-compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> UT.applicationCommands p) (helpPages p) (migrations p)
+compilePlugin p = CPl (pluginName p) sa (CApplicationComand (pluginName p) <$> catMaybes (UT.applicationCommands p)) (helpPages p) (migrations p)
   where
     sa :: Database PluginActions
     sa = do

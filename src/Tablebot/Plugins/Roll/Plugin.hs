@@ -26,15 +26,17 @@ import Discord.Types
     Emoji (Emoji),
     GuildMember (memberUser),
     Message (messageAuthor),
+    User (userId),
   )
+import Tablebot.Internal.Handler.Command (makeBundleReadable)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention)
-import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
+import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention, toMention')
+import Tablebot.Utility.Exception (BotException (InteractionException, ParserException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu, quote), pars)
-import Text.Megaparsec (MonadParsec (try), choice, parse, (<?>))
+import Text.Megaparsec (MonadParsec (try), choice, errorBundlePretty, parse, (<?>))
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
@@ -82,8 +84,8 @@ getMessagePieces e t u = do
     appendIf t' Nothing = t' <> "`"
     appendIf t' (Just e') = t' <> "`" <> e'
 
-rollInteraction :: Interaction -> DatabaseDiscord ()
-rollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
+rerollInteraction :: Interaction -> DatabaseDiscord ()
+rerollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
   | length opts /= 4 = throwBot $ InteractionException "could not process button click"
   | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((interactionCallbackMessagesBasic "Hey, that isn't your button to press!") {interactionCallbackMessagesFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
   | otherwise = case opts of
@@ -111,7 +113,42 @@ rollInteraction i@InteractionComponent {interactionDataComponent = Just (Interac
   where
     opts = T.split (== '`') cid
     getUser = maybe (interactionUser i) memberUser (interactionMember i)
-rollInteraction _ = return ()
+rerollInteraction _ = return ()
+
+rollSlashCommandInteraction :: Interaction -> DatabaseDiscord ()
+rollSlashCommandInteraction i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandName = "roll", interactionDataApplicationCommandOptions = opts}} = do
+  e <- mapM parseExpr expr
+  (msg, buttons) <- getMessagePieces e (Qu <$> qt) (toMention' getUser)
+  interactionResponseCustomMessage i ((interactionCallbackMessagesBasic msg) {interactionCallbackMessagesComponents = buttons})
+  where
+    findWhere s = opts >>= \(InteractionDataApplicationCommandOptionsValues values) -> lookup s $ (\v -> (interactionDataApplicationCommandOptionValueName v, interactionDataApplicationCommandOptionValueValue v)) <$> values
+    expr = findWhere "expression" >>= getText
+    qt = findWhere "quote" >>= getText
+    getText (ApplicationCommandInteractionDataValueString t) = Just t
+    getText _ = Nothing
+    -- TODO: work out why this exception handling isn't working
+    parseExpr expr' = case parse pars "" expr' of
+      Right p -> return p
+      Left e ->
+        let (errs, title) = makeBundleReadable e
+         in throwBot $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"
+    getUser = maybe 0 userId $ maybe (interactionUser i) memberUser (interactionMember i)
+rollSlashCommandInteraction _ = return ()
+
+-- TODO: tie together creating the application command and the handler for it so that they cannot be separated
+-- TODO: comment
+rollSlashCommand :: Maybe CreateApplicationCommand
+rollSlashCommand =
+  createApplicationCommandChatInput "roll" "roll some dice with a description" >>= \cac ->
+    return $
+      cac
+        { createApplicationCommandOptions =
+            Just $
+              ApplicationCommandOptionsValues
+                [ ApplicationCommandOptionValueString "expression" "What expression is being evaluated (list or integer)" Nothing Nothing Nothing,
+                  ApplicationCommandOptionValueString "quote" "What message is associated with this roll" Nothing Nothing Nothing
+                ]
+        }
 
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
 -- multiple Maybe values
@@ -201,5 +238,10 @@ rollPlugin =
     { commands = [rollDice, commandAlias "r" rollDice, genchar],
       helpPages = [rollHelp, gencharHelp],
       inlineCommands = [rollDiceInline],
-      onInteractionRecvs = [InteractionRecv rollInteraction]
+      onInteractionRecvs =
+        InteractionRecv
+          <$> [ rerollInteraction,
+                rollSlashCommandInteraction
+              ],
+      applicationCommands = [rollSlashCommand]
     }

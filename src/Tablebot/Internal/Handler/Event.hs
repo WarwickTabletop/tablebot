@@ -22,7 +22,7 @@ import Control.Concurrent (readMVar)
 import Control.Monad.RWS (MonadIO (liftIO), MonadReader (ask))
 import Data.Map (findWithDefault)
 import Data.Text (isPrefixOf)
-import Discord.Interactions (Interaction (..), InteractionDataComponent (interactionDataComponentCustomId))
+import Discord.Interactions (Interaction (..), InteractionDataApplicationCommand (interactionDataApplicationCommandId), InteractionDataComponent (interactionDataComponentCustomId))
 import Discord.Types (ChannelId, Event, MessageId, ReactionInfo)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Types (TablebotCache (cacheApplicationCommands))
@@ -62,13 +62,14 @@ parseInteractionRecvComponent cs info@InteractionComponent {interactionDataCompo
 parseInteractionRecvComponent _ _ = return ()
 
 parseInteractionRecvApplicationCommand :: [CompiledInteractionRecv] -> Interaction -> CompiledDatabaseDiscord ()
-parseInteractionRecvApplicationCommand cs info = do
+parseInteractionRecvApplicationCommand cs info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
   tvar <- ask
   cache <- liftIO $ readMVar tvar
-  let validPlugin = findWithDefault "" (interactionId info) $ cacheApplicationCommands cache
+  let validPlugin = findWithDefault "" (interactionDataApplicationCommandId idac) $ cacheApplicationCommands cache
   mapM_ (`onInteractionRecv` info) (cs' validPlugin)
   where
     cs' plname = filter (\cir -> interactionRecvPluginName cir == plname) cs
+parseInteractionRecvApplicationCommand _ _ = return ()
 
 -- | This runs each 'Other' feature in @cs@ with the Discord 'Event' provided.
 -- Note that any events covered by other feature types will /not/ be run

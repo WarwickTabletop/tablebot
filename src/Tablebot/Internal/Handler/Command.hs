@@ -13,6 +13,7 @@ module Tablebot.Internal.Handler.Command
   ( parseNewMessage,
     parseCommands,
     parseInlineCommands,
+    makeBundleReadable,
   )
 where
 
