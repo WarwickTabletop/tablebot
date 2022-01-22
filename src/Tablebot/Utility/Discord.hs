@@ -43,6 +43,7 @@ module Tablebot.Utility.Discord
     interactionResponseDefer,
     interactionResponseDeferUpdateMessage,
     interactionResponseMessage,
+    interactionResponseCustomMessage,
     interactionResponseComponentsUpdateMessage,
     interactionResponseAutocomplete,
   )
@@ -58,7 +59,6 @@ import Data.String (IsString (fromString))
 import Data.Text (Text, pack, unpack)
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
-import Debug.Trace (trace)
 import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
 import Discord.Interactions
 import Discord.Internal.Gateway.Cache
@@ -370,7 +370,7 @@ removeApplicationCommandsNotInList aid gid aciToKeep = do
   case allACs' of
     Left _ -> throw $ InteractionException "Failed to get all application commands."
     Right aacs ->
-      let allACs = trace (show aacs) applicationCommandId <$> aacs
+      let allACs = applicationCommandId <$> aacs
        in mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)
 
 -- | Defer an interaction response, extending the window of time to respond to
