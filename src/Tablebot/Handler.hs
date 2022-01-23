@@ -45,7 +45,7 @@ import Tablebot.Utility.Exception (BotException, embedError)
 import Tablebot.Utility.Types
   ( MessageDetails (messageDetailsEmbeds),
     TablebotCache,
-    messageJustText,
+    messageDetailsBasic,
   )
 import UnliftIO.Concurrent
   ( ThreadId,
@@ -82,7 +82,7 @@ eventHandler pl prefix = \case
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
-    interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageJustText "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
+    interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
 
 -- | @runCron@ takes an individual @CronJob@ and runs it in a separate thread.
 -- The @ThreadId@ is returned so it can be killed later.

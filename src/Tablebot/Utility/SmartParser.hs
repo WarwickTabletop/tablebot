@@ -271,6 +271,9 @@ class ProcessAppComm commandty s where
 instance {-# OVERLAPPING #-} ProcessAppComm (EnvDatabaseDiscord s MessageDetails) s where
   processAppComm comm i = comm >>= interactionResponseCustomMessage i
 
+instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (Interaction -> pac) s where
+  processAppComm comm i = processAppComm (comm i) i
+
 instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s, ProcessAppCommArg ty s) => ProcessAppComm (ty -> pac) s where
   processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = (Just (InteractionDataApplicationCommandOptionsValues values))}} = do
     t <- processAppCommArg values

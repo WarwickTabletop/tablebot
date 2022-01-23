@@ -192,3 +192,14 @@ parseCommaSeparated p = do
 parseCommaSeparated1 :: Parser a -> Parser [a]
 parseCommaSeparated1 p = do
   p >>= (\first' -> (first' :) <$> many (try (skipSpace *> char ',' *> skipSpace) *> p))
+
+-- | Type class to display a value in a way that can be parsed.
+--
+-- `Right a === parse (pars :: Parser a) "" (parseShow a)`
+class ParseShow a where
+  -- | Represent the value
+  parseShow :: a -> Text
+
+instance (ParseShow a, ParseShow b) => ParseShow (Either a b) where
+  parseShow (Left a) = parseShow a
+  parseShow (Right b) = parseShow b

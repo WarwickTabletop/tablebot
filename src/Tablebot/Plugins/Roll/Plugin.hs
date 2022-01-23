@@ -52,7 +52,7 @@ rollDice'' e' t u = do
   let msg = makeMsg vs ss
   if countFormatting msg < 199
     then return msg
-    else return (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
+    else return (makeMsg (simplify vs) (parseShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
     baseMsg = toMention' u <> " rolled" <> dsc
@@ -78,11 +78,11 @@ getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Use
 getMessagePieces e t u = do
   msg <- rollDice'' e t u
   return
-    ( (messageJustText msg)
+    ( (messageDetailsBasic msg)
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ ComponentButton ((("roll`" <> pack (show u)) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  [ ComponentButton ((("roll`" <> pack (show u)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
                   ]
               ]
         }
@@ -94,7 +94,7 @@ getMessagePieces e t u = do
 rerollInteraction :: Interaction -> DatabaseDiscord ()
 rerollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
   | length opts /= 4 = throwBot $ InteractionException "could not process button click"
-  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageJustText "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
+  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
   | otherwise = case opts of
     [_, uid, "", ""] -> do
       msgdetails <- getMessagePieces Nothing Nothing (read $ unpack uid)

@@ -67,7 +67,7 @@ import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
 import Tablebot.Internal.Embed (Embeddable (..), TablebotEmbedRequest (TablebotEmbedRequest))
-import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageJustText)
+import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
 import Tablebot.Utility.Exception (BotException (..))
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
@@ -403,7 +403,7 @@ interactionResponseDeferUpdateMessage i = do
 
 -- | Respond to the given interaction with the given text.
 interactionResponseMessage :: Interaction -> Text -> EnvDatabaseDiscord s ()
-interactionResponseMessage i t = interactionResponseCustomMessage i (messageJustText t)
+interactionResponseMessage i t = interactionResponseCustomMessage i (messageDetailsBasic t)
 
 -- | Respond to the given interaction with a custom messages object.
 interactionResponseCustomMessage :: Interaction -> MessageDetails -> EnvDatabaseDiscord s ()

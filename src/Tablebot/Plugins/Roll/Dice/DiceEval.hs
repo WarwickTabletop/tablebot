@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 -- |
 -- Module      : Tablebot.Plugins.Roll.Dice.DiceEval
 -- Description : How to evaluate dice and expressions
@@ -8,7 +10,7 @@
 --
 -- Functions, type classes, and other utilities to evaluate dice values and
 -- expressions.
-module Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalList, evalInteger) where
+module Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalList, evalInteger) where
 
 import Control.Monad (when)
 import Control.Monad.Exception (MonadException)
@@ -24,6 +26,7 @@ import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
 import Tablebot.Utility.Discord (Format (..), formatInput, formatText)
 import Tablebot.Utility.Exception (BotException (EvaluationException), catchBot, throwBot)
+import Tablebot.Utility.Parser (ParseShow (parseShow))
 import Tablebot.Utility.Random (chooseOne)
 
 -- | A wrapper type to differentiate between the RNGCount and other Integers.
@@ -54,14 +57,14 @@ evaluationException nm locs = throwBot $ EvaluationException (unpack nm) (unpack
 
 -- | Given a list expression, evaluate it, getting the pretty printed string and
 -- the value of the result.
-evalList :: (IOEvalList a, PrettyShow a) => a -> IO ([(Integer, Text)], Text)
+evalList :: (IOEvalList a, ParseShow a) => a -> IO ([(Integer, Text)], Text)
 evalList a = do
   (is, ss, _) <- evalShowL (RNGCount 0) a
-  return (is, fromMaybe (prettyShow a) ss)
+  return (is, fromMaybe (parseShow a) ss)
 
 -- | Given an integer expression, evaluate it, getting the pretty printed string
 -- and the value of the result.
-evalInteger :: (IOEval a, PrettyShow a) => a -> IO (Integer, Text)
+evalInteger :: (IOEval a, ParseShow a) => a -> IO (Integer, Text)
 evalInteger a = do
   (is, ss, _) <- evalShow (RNGCount 0) a
   return (is, ss)
@@ -69,7 +72,7 @@ evalInteger a = do
 -- | Utility function to display dice.
 --
 -- The tuple of integers denotes what the critvalues of this dice value are. The
--- `a` denotes the value that is being printed, and needs to have `PrettyShow`
+-- `a` denotes the value that is being printed, and needs to have `ParseShow`
 -- defined for it.
 --
 -- Finally, the list of tuples denotes all the values that the `a` value has
@@ -77,9 +80,9 @@ evalInteger a = do
 -- as normal. If the value is `Just False`, the value has been rerolled over,
 -- and is displayed crossed out. If the value is `Just True`, the value has been
 -- dropped, and the number is crossed out and underlined.
-dieShow :: (PrettyShow a, MonadException m) => Maybe (Integer, Integer) -> a -> [(Integer, Maybe Bool)] -> m Text
-dieShow _ a [] = evaluationException "tried to show empty set of results" [prettyShow a]
-dieShow lchc d ls = return $ prettyShow d <> " [" <> intercalate ", " adjustList <> "]"
+dieShow :: (ParseShow a, MonadException m) => Maybe (Integer, Integer) -> a -> [(Integer, Maybe Bool)] -> m Text
+dieShow _ a [] = evaluationException "tried to show empty set of results" [parseShow a]
+dieShow lchc d ls = return $ parseShow d <> " [" <> intercalate ", " adjustList <> "]"
   where
     toCrit =
       pack
@@ -97,14 +100,14 @@ dieShow lchc d ls = return $ prettyShow d <> " [" <> intercalate ", " adjustList
 
 -- | Evaluate a series of values, combining the text output into a comma
 -- separated list.
-evalShowList :: (IOEval a, PrettyShow a) => RNGCount -> [a] -> IO ([Integer], Text, RNGCount)
+evalShowList :: (IOEval a, ParseShow a) => RNGCount -> [a] -> IO ([Integer], Text, RNGCount)
 evalShowList rngCount as = do
   (vs, rngCount') <- evalShowList' rngCount as
   let (is, ts) = unzip vs
   return (is, intercalate ", " ts, rngCount')
 
 -- | Evaluate a series of values, combining the text output a list.
-evalShowList' :: (IOEval a, PrettyShow a) => RNGCount -> [a] -> IO ([(Integer, Text)], RNGCount)
+evalShowList' :: (IOEval a, ParseShow a) => RNGCount -> [a] -> IO ([(Integer, Text)], RNGCount)
 evalShowList' = evalShowList'' evalShow
 
 -- | Evaluate (using a custom evaluator function) a series of values, getting
@@ -135,10 +138,10 @@ class IOEvalList a where
   -- it took. If the `a` value is a dice value, the values of the dice should be
   -- displayed. This function adds the current location to the exception
   -- callstack.
-  evalShowL :: PrettyShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
-  evalShowL rngCount a = propagateException (prettyShow a) (evalShowL' rngCount a)
+  evalShowL :: ParseShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
+  evalShowL rngCount a = propagateException (parseShow a) (evalShowL' rngCount a)
 
-  evalShowL' :: PrettyShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
+  evalShowL' :: ParseShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
 
 evalArgValue :: RNGCount -> ArgValue -> IO (ListInteger, RNGCount)
 evalArgValue rngCount (AVExpr e) = do
@@ -169,10 +172,10 @@ class IOEval a where
   -- value, and the number of RNG calls it took. If the `a` value is a dice
   -- value, the values of the dice should be displayed. This function adds
   -- the current location to the exception callstack.
-  evalShow :: PrettyShow a => RNGCount -> a -> IO (Integer, Text, RNGCount)
-  evalShow rngCount a = propagateException (prettyShow a) (evalShow' rngCount a)
+  evalShow :: ParseShow a => RNGCount -> a -> IO (Integer, Text, RNGCount)
+  evalShow rngCount a = propagateException (parseShow a) (evalShow' rngCount a)
 
-  evalShow' :: PrettyShow a => RNGCount -> a -> IO (Integer, Text, RNGCount)
+  evalShow' :: ParseShow a => RNGCount -> a -> IO (Integer, Text, RNGCount)
 
 instance IOEval Base where
   evalShow' rngCount (NBase nb) = evalShow rngCount nb
@@ -198,7 +201,7 @@ instance IOEval Die where
   evalShow' rngCount d@(Die b) = do
     (bound, _, rngCount') <- evalShow rngCount b
     if bound < 1
-      then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (prettyShow b) <> ")") []
+      then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (parseShow b) <> ")") []
       else do
         i <- randomRIO (1, bound)
         ds <- dieShow Nothing d [(i, Nothing)]
@@ -230,10 +233,10 @@ evalDieOp :: RNGCount -> Dice -> IO ([(NonEmpty Integer, Bool)], Maybe (Integer,
 evalDieOp rngCount (Dice b ds dopo) = do
   (nbDice, _, rngCountB) <- evalShow rngCount b
   if RNGCount nbDice > maximumRNG
-    then evaluationException ("tried to roll more than " <> formatInput Code (getRNGCount maximumRNG) <> " dice: " <> formatInput Code nbDice) [prettyShow b]
+    then evaluationException ("tried to roll more than " <> formatInput Code (getRNGCount maximumRNG) <> " dice: " <> formatInput Code nbDice) [parseShow b]
     else do
       if nbDice < 0
-        then evaluationException ("tried to give a negative value to the number of dice: " <> formatInput Code nbDice) [prettyShow b]
+        then evaluationException ("tried to give a negative value to the number of dice: " <> formatInput Code nbDice) [parseShow b]
         else do
           (ds', rngCountCondense, crits) <- condenseDie rngCountB ds
           (rolls, _, rngCountRolls) <- evalShowList rngCountCondense (genericReplicate nbDice ds')
@@ -333,7 +336,7 @@ evalDieOpHelpKD rngCount kd lh is = do
 -- Was previously its own type class that wouldn't work for evaluating Base values.
 
 -- | Utility function to evaluate a binary operator.
-binOpHelp :: (IOEval a, IOEval b, PrettyShow a, PrettyShow b) => RNGCount -> a -> b -> Text -> (Integer -> Integer -> Integer) -> IO (Integer, Text, RNGCount)
+binOpHelp :: (IOEval a, IOEval b, ParseShow a, ParseShow b) => RNGCount -> a -> b -> Text -> (Integer -> Integer -> Integer) -> IO (Integer, Text, RNGCount)
 binOpHelp rngCount a b opS op = do
   (a', a's, rngCount') <- evalShow rngCount a
   (b', b's, rngCount'') <- evalShow rngCount' b
@@ -351,7 +354,7 @@ instance IOEval Term where
     (f', f's, rngCount') <- evalShow rngCount f
     (t', t's, rngCount'') <- evalShow rngCount' t
     if t' == 0
-      then evaluationException "division by zero" [prettyShow t]
+      then evaluationException "division by zero" [parseShow t]
       else return (div f' t', f's <> " / " <> t's, rngCount'')
 
 instance IOEval Func where
@@ -363,7 +366,7 @@ evaluateFunction :: RNGCount -> FuncInfoBase IO j -> [ArgValue] -> IO (j, Text, 
 evaluateFunction rngCount fi exprs = do
   (exprs', rngCount') <- evalShowList'' (\r a -> evalArgValue r a >>= \(i, r') -> return (i, "", r')) rngCount exprs
   f <- funcInfoFunc fi (fst <$> exprs')
-  return (f, funcInfoName fi <> "(" <> intercalate ", " (prettyShow <$> exprs) <> ")", rngCount')
+  return (f, funcInfoName fi <> "(" <> intercalate ", " (parseShow <$> exprs) <> ")", rngCount')
 
 instance IOEval Negation where
   evalShow' rngCount (NoNeg expo) = evalShow rngCount expo
@@ -376,7 +379,7 @@ instance IOEval Expo where
   evalShow' rngCount (Expo b expo) = do
     (expo', expo's, rngCount') <- evalShow rngCount expo
     if expo' < 0
-      then evaluationException ("the exponent is negative: " <> formatInput Code expo') [prettyShow expo]
+      then evaluationException ("the exponent is negative: " <> formatInput Code expo') [parseShow expo]
       else do
         (b', b's, rngCount'') <- evalShow rngCount' b
         return (b' ^ expo', b's <> " ^ " <> expo's, rngCount'')
@@ -388,80 +391,70 @@ instance IOEval NumBase where
   evalShow' rngCount (Value i) = return (i, pack (show i), rngCount)
 
 --- Pretty printing the AST
--- The output from this should be parseable
 
--- | Type class to display an expression prettily (not neccessarily accurately).
-class PrettyShow a where
-  -- | Print the given value prettily.
-  prettyShow :: a -> Text
+instance ParseShow ArgValue where
+  parseShow (AVExpr e) = parseShow e
+  parseShow (AVListValues lv) = parseShow lv
 
-instance PrettyShow ArgValue where
-  prettyShow (AVExpr e) = prettyShow e
-  prettyShow (AVListValues lv) = prettyShow lv
+instance ParseShow ListValues where
+  parseShow (LVBase e) = parseShow e
+  parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
+  parseShow (LVFunc s n) = funcInfoName s <> "(" <> intercalate "," (parseShow <$> n) <> ")"
 
-instance PrettyShow ListValues where
-  prettyShow (LVBase e) = prettyShow e
-  prettyShow (MultipleValues nb b) = prettyShow nb <> "#" <> prettyShow b
-  prettyShow (LVFunc s n) = funcInfoName s <> "(" <> intercalate "," (prettyShow <$> n) <> ")"
+instance ParseShow ListValuesBase where
+  parseShow (LVBList es) = "{" <> intercalate ", " (parseShow <$> es) <> "}"
+  parseShow (LVBParen p) = parseShow p
 
-instance PrettyShow ListValuesBase where
-  prettyShow (LVBList es) = "{" <> intercalate ", " (prettyShow <$> es) <> "}"
-  prettyShow (LVBParen p) = prettyShow p
+instance ParseShow Expr where
+  parseShow (Add t e) = parseShow t <> " + " <> parseShow e
+  parseShow (Sub t e) = parseShow t <> " - " <> parseShow e
+  parseShow (NoExpr t) = parseShow t
 
-instance PrettyShow Expr where
-  prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
-  prettyShow (Sub t e) = prettyShow t <> " - " <> prettyShow e
-  prettyShow (NoExpr t) = prettyShow t
+instance ParseShow Term where
+  parseShow (Multi f t) = parseShow f <> " * " <> parseShow t
+  parseShow (Div f t) = parseShow f <> " / " <> parseShow t
+  parseShow (NoTerm f) = parseShow f
 
-instance PrettyShow Term where
-  prettyShow (Multi f t) = prettyShow f <> " * " <> prettyShow t
-  prettyShow (Div f t) = prettyShow f <> " / " <> prettyShow t
-  prettyShow (NoTerm f) = prettyShow f
+instance ParseShow Func where
+  parseShow (Func s n) = funcInfoName s <> "(" <> intercalate "," (parseShow <$> n) <> ")"
+  parseShow (NoFunc b) = parseShow b
 
-instance PrettyShow Func where
-  prettyShow (Func s n) = funcInfoName s <> "(" <> intercalate "," (prettyShow <$> n) <> ")"
-  prettyShow (NoFunc b) = prettyShow b
+instance ParseShow Negation where
+  parseShow (Neg expo) = "-" <> parseShow expo
+  parseShow (NoNeg expo) = parseShow expo
 
-instance PrettyShow Negation where
-  prettyShow (Neg expo) = "-" <> prettyShow expo
-  prettyShow (NoNeg expo) = prettyShow expo
+instance ParseShow Expo where
+  parseShow (NoExpo b) = parseShow b
+  parseShow (Expo b expo) = parseShow b <> " ^ " <> parseShow expo
 
-instance PrettyShow Expo where
-  prettyShow (NoExpo b) = prettyShow b
-  prettyShow (Expo b expo) = prettyShow b <> " ^ " <> prettyShow expo
+instance ParseShow NumBase where
+  parseShow (NBParen p) = parseShow p
+  parseShow (Value i) = fromString $ show i
 
-instance PrettyShow NumBase where
-  prettyShow (NBParen p) = prettyShow p
-  prettyShow (Value i) = fromString $ show i
+instance (ParseShow a) => ParseShow (Paren a) where
+  parseShow (Paren a) = "(" <> parseShow a <> ")"
 
-instance (PrettyShow a) => PrettyShow (Paren a) where
-  prettyShow (Paren a) = "(" <> prettyShow a <> ")"
+instance ParseShow Base where
+  parseShow (NBase nb) = parseShow nb
+  parseShow (DiceBase dop) = parseShow dop
 
-instance PrettyShow Base where
-  prettyShow (NBase nb) = prettyShow nb
-  prettyShow (DiceBase dop) = prettyShow dop
+instance ParseShow Die where
+  parseShow (Die b) = "d" <> parseShow b
+  parseShow (CustomDie lv) = "d" <> parseShow lv
+  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
+  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
 
-instance PrettyShow Die where
-  prettyShow (Die b) = "d" <> prettyShow b
-  prettyShow (CustomDie lv) = "d" <> prettyShow lv
-  -- prettyShow (CustomDie is) = "d{" <> intercalate ", " (prettyShow <$> is) <> "}"
-  prettyShow (LazyDie d) = "d!" <> T.tail (prettyShow d)
-
-instance PrettyShow Dice where
-  prettyShow (Dice b d dor) = prettyShow b <> prettyShow d <> helper' dor
+instance ParseShow Dice where
+  parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
     where
       fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
-      fromLHW (Where o i) = "w" <> fromOrdering o <> prettyShow i
-      fromLHW (Low i) = "l" <> prettyShow i
-      fromLHW (High i) = "h" <> prettyShow i
+      fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
+      fromLHW (Low i) = "l" <> parseShow i
+      fromLHW (High i) = "h" <> parseShow i
       helper' Nothing = ""
       helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
       helper (DieOpOptionLazy doo) = "!" <> helper doo
-      helper (Reroll True o i) = "ro" <> fromOrdering o <> prettyShow i
-      helper (Reroll False o i) = "rr" <> fromOrdering o <> prettyShow i
+      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
+      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
       helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
       helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw
-
-instance (PrettyShow a, PrettyShow b) => PrettyShow (Either a b) where
-  prettyShow (Left a) = prettyShow a
-  prettyShow (Right b) = prettyShow b

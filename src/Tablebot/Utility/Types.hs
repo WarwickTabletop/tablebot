@@ -350,8 +350,8 @@ plug name' = Pl name' (StartUp (return ())) [] [] [] [] [] [] [] [] [] [] []
 envPlug :: Text -> StartUp d -> EnvPlugin d
 envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] [] [] []
 
-messageJustText :: Text -> MessageDetails
-messageJustText t = MessageDetails Nothing (Just t) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+messageDetailsBasic :: Text -> MessageDetails
+messageDetailsBasic t = MessageDetails Nothing (Just t) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 data MessageDetails = MessageDetails
   { messageDetailsTTS :: Maybe Bool,
