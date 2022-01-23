@@ -15,6 +15,11 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord.Interactions
+  ( Interaction (..),
+    InteractionCallbackDataFlag (..),
+    InteractionCallbackDataFlags (..),
+    InteractionDataComponent (..),
+  )
 import Discord.Types
   ( ButtonStyle (ButtonStyleSecondary),
     ComponentActionRow (ComponentActionRowButton),
@@ -23,21 +28,22 @@ import Discord.Types
     GuildMember (memberUser),
     Message (messageAuthor),
     User (userId),
+    UserId,
   )
-import Tablebot.Internal.Handler.Command (makeBundleReadable)
+import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
 import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention, toMention')
-import Tablebot.Utility.Exception (BotException (InteractionException, ParserException), throwBot)
+import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu, quote), pars)
-import Text.Megaparsec (MonadParsec (try), choice, errorBundlePretty, parse, (<?>))
+import Tablebot.Utility.SmartParser
+import Text.Megaparsec (MonadParsec (eof, try), choice, parse, (<?>))
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord Text
+rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord Text
 rollDice'' e' t u = do
   let e = fromMaybe (Right defaultRoll) e'
   (vs, ss) <- case e of
@@ -49,7 +55,7 @@ rollDice'' e' t u = do
     else return (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
-    baseMsg = u <> " rolled" <> dsc
+    baseMsg = toMention' u <> " rolled" <> dsc
     makeLine (i, s) = pack (show i) <> Data.Text.replicate (max 0 (6 - length (show i))) " " <> " ⟵ " <> s
     makeMsg (Right v) s = baseMsg <> s <> ".\nOutput: " <> pack (show v)
     makeMsg (Left []) _ = baseMsg <> "No output."
@@ -61,20 +67,25 @@ rollDice'' e' t u = do
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
 
 rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord MessageDetails
-rollDice' e t m = do
-  (msg, buttons) <- getMessagePieces e t (toMention $ messageAuthor m)
-  return ((messageJustText msg) {messageDetailsComponents = buttons})
+rollDice' e t m = getMessagePieces e t (userId $ messageAuthor m)
 
-getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Text -> DatabaseDiscord (Text, Maybe [ComponentActionRow])
+rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> ParseUserId -> DatabaseDiscord MessageDetails
+rollSlashCommandFunction (Labelled mt) (Labelled qt) (ParseUserId uid) = do
+  lve <- mapM (parseValue (pars <* eof)) mt
+  getMessagePieces lve qt uid
+
+getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord MessageDetails
 getMessagePieces e t u = do
   msg <- rollDice'' e t u
   return
-    ( msg,
-      Just
-        [ ComponentActionRowButton
-            [ ComponentButton ((("roll`" <> u) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
-            ]
-        ]
+    ( (messageJustText msg)
+        { messageDetailsComponents =
+            Just
+              [ ComponentActionRowButton
+                  [ ComponentButton ((("roll`" <> pack (show u)) `appendIf` (prettyShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  ]
+              ]
+        }
     )
   where
     appendIf t' Nothing = t' <> "`"
@@ -86,65 +97,30 @@ rerollInteraction i@InteractionComponent {interactionDataComponent = Just (Inter
   | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageJustText "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
   | otherwise = case opts of
     [_, uid, "", ""] -> do
-      (msg, button) <- getMessagePieces Nothing Nothing uid
-      interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
+      msgdetails <- getMessagePieces Nothing Nothing (read $ unpack uid)
+      interactionResponseComponentsUpdateMessage i msgdetails
     [_, uid, "", qt] -> do
-      (msg, button) <- getMessagePieces Nothing (Just (Qu qt)) uid
-      interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
+      msgdetails <- getMessagePieces Nothing (Just (Qu qt)) (read $ unpack uid)
+      interactionResponseComponentsUpdateMessage i msgdetails
     [_, uid, e, ""] -> do
       let e' = parse pars "" e
       case e' of
         Left _ -> throwBot $ InteractionException "could not process button click"
         Right e'' -> do
-          (msg, button) <- getMessagePieces (Just e'') Nothing uid
-          interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
+          msgdetails <- getMessagePieces (Just e'') Nothing (read $ unpack uid)
+          interactionResponseComponentsUpdateMessage i msgdetails
     [_, uid, e, qt] -> do
       let e' = parse pars "" e
       case e' of
         Left _ -> throwBot $ InteractionException "could not process button click"
         Right e'' -> do
-          (msg, button) <- getMessagePieces (Just e'') (Just (Qu qt)) uid
-          interactionResponseComponentsUpdateMessage i ((messageJustText msg) {messageDetailsComponents = button})
+          msgdetails <- getMessagePieces (Just e'') (Just (Qu qt)) (read $ unpack uid)
+          interactionResponseComponentsUpdateMessage i msgdetails
     _ -> throwBot $ InteractionException "could not process button click"
   where
     opts = T.split (== '`') cid
     getUser = maybe (interactionUser i) memberUser (interactionMember i)
 rerollInteraction _ = return ()
-
-rollSlashCommandInteraction :: Interaction -> DatabaseDiscord ()
-rollSlashCommandInteraction i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandName = "roll", interactionDataApplicationCommandOptions = opts}} = do
-  e <- mapM parseExpr expr
-  (msg, buttons) <- getMessagePieces e (Qu <$> qt) (toMention' getUser)
-  interactionResponseCustomMessage i ((messageJustText msg) {messageDetailsComponents = buttons})
-  where
-    findWhere s = opts >>= \(InteractionDataApplicationCommandOptionsValues values) -> lookup s $ (\v -> (interactionDataApplicationCommandOptionValueName v, interactionDataApplicationCommandOptionValueValue v)) <$> values
-    expr = findWhere "expression" >>= getText
-    qt = findWhere "quote" >>= getText
-    getText (ApplicationCommandInteractionDataValueString t) = Just t
-    getText _ = Nothing
-    -- TODO: work out why this exception handling isn't working
-    parseExpr expr' = case parse pars "" expr' of
-      Right p -> return p
-      Left e ->
-        let (errs, title) = makeBundleReadable e
-         in throwBot $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"
-    getUser = maybe 0 userId $ maybe (interactionUser i) memberUser (interactionMember i)
-rollSlashCommandInteraction _ = return ()
-
--- TODO: tie together creating the application command and the handler for it so that they cannot be separated
--- TODO: comment
-rollSlashCommand :: Maybe CreateApplicationCommand
-rollSlashCommand =
-  createApplicationCommandChatInput "roll" "roll some dice with a description" >>= \cac ->
-    return $
-      cac
-        { createApplicationCommandOptions =
-            Just $
-              ApplicationCommandOptionsValues
-                [ ApplicationCommandOptionValueString "expression" "What expression is being evaluated (list or integer)" Nothing Nothing Nothing,
-                  ApplicationCommandOptionValueString "quote" "What message is associated with this roll" Nothing Nothing Nothing
-                ]
-        }
 
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
 -- multiple Maybe values
@@ -237,5 +213,5 @@ rollPlugin =
       onComponentInteractionRecvs =
         [ InteractionRecv rerollInteraction
         ],
-      applicationCommands = [(rollSlashCommand, InteractionRecv rollSlashCommandInteraction)]
+      applicationCommands = [makeApplicationCommandPair "roll" "roll some dice with a description" rollSlashCommandFunction]
     }

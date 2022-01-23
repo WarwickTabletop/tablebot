@@ -15,6 +15,7 @@ module Tablebot.Utility.Discord
     sendReplyMessage,
     sendCustomReplyMessage,
     sendEmbedMessage,
+    sendChannelEmbedMessage,
     reactToMessage,
     findGuild,
     findEmoji,
@@ -52,21 +53,20 @@ where
 import Control.Monad.Exception (MonadException (throw))
 import Data.Char (isDigit)
 import Data.Foldable (msum)
-import Data.List
+import Data.List ((\\))
 import Data.Map.Strict (keys)
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack, unpack)
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
-import Discord (DiscordHandler, RestCallErrorCode, readCache, restCall)
+import Discord (Cache (cacheGuilds), DiscordHandler, RestCallErrorCode, readCache, restCall)
 import Discord.Interactions
-import Discord.Internal.Gateway.Cache
 import qualified Discord.Requests as R
 import Discord.Types
 import GHC.Word (Word64)
-import Tablebot.Internal.Cache
-import Tablebot.Internal.Embed
+import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
+import Tablebot.Internal.Embed (Embeddable (..), TablebotEmbedRequest (TablebotEmbedRequest))
 import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageJustText)
 import Tablebot.Utility.Exception (BotException (..))
 
@@ -153,8 +153,16 @@ sendEmbedMessage ::
   Text ->
   e ->
   EnvDatabaseDiscord s ()
-sendEmbedMessage m t e = do
-  res <- liftDiscord . restCall $ TablebotEmbedRequest (messageChannelId m) t (asEmbed e)
+sendEmbedMessage m = sendChannelEmbedMessage (messageChannelId m)
+
+sendChannelEmbedMessage ::
+  Embeddable e =>
+  ChannelId ->
+  Text ->
+  e ->
+  EnvDatabaseDiscord s ()
+sendChannelEmbedMessage cid t e = do
+  res <- liftDiscord . restCall $ TablebotEmbedRequest cid t (asEmbed e)
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()

@@ -13,7 +13,7 @@ module Tablebot.Internal.Handler.Command
   ( parseNewMessage,
     parseCommands,
     parseInlineCommands,
-    makeBundleReadable,
+    parseValue,
   )
 where
 
@@ -26,9 +26,9 @@ import Discord.Types (Message (messageContent))
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (sendEmbedMessage)
-import Tablebot.Utility.Exception (BotException (ParserException), embedError)
+import Tablebot.Utility.Exception (BotException (ParserException), embedError, throwBot)
 import Tablebot.Utility.Parser (skipSpace1, space, word)
-import Tablebot.Utility.Types (Parser)
+import Tablebot.Utility.Types (EnvDatabaseDiscord, Parser)
 import Text.Megaparsec
 import qualified UnliftIO.Exception as UIOE (tryAny)
 
@@ -128,3 +128,10 @@ parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandPars
   where
     fromResult (Right p) = UIOE.tryAny (p m)
     fromResult _ = return $ return ()
+
+parseValue :: Parser a -> Text -> EnvDatabaseDiscord s a
+parseValue par t = case parse par "" t of
+  Right p -> return p
+  Left e ->
+    let (errs, title) = makeBundleReadable e
+     in throwBot $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"

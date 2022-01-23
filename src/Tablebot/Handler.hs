@@ -18,7 +18,7 @@ where
 
 import Control.Concurrent (MVar)
 import Control.Monad (unless)
-import Control.Monad.Exception
+import Control.Monad.Exception (MonadException (catch))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
 import Data.Pool (Pool)
@@ -40,9 +40,13 @@ import Tablebot.Internal.Handler.Event
   )
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Discord (sendEmbedMessage)
-import Tablebot.Utility.Exception
-import Tablebot.Utility.Types (TablebotCache)
+import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendEmbedMessage)
+import Tablebot.Utility.Exception (BotException, embedError)
+import Tablebot.Utility.Types
+  ( MessageDetails (messageDetailsEmbeds),
+    TablebotCache,
+    messageJustText,
+  )
 import UnliftIO.Concurrent
   ( ThreadId,
     forkIO,
@@ -72,12 +76,13 @@ eventHandler pl prefix = \case
   -- Similar with MessageReactionRemoveEmoji (removes all of one type).
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
-  InteractionCreate i@InteractionComponent {} -> parseInteractionRecvComponent (compiledOnComponentInteractionRecvs pl) i
-  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvApplicationCommand i
+  InteractionCreate i@InteractionComponent {} -> parseInteractionRecvComponent (compiledOnComponentInteractionRecvs pl) i `interactionErrorCatch` i
+  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvApplicationCommand i `interactionErrorCatch` i
   -- TODO: add application command autocomplete as an option
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
+    interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageJustText "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
 
 -- | @runCron@ takes an individual @CronJob@ and runs it in a separate thread.
 -- The @ThreadId@ is returned so it can be killed later.
