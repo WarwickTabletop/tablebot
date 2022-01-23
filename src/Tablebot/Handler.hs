@@ -31,8 +31,8 @@ import Tablebot.Internal.Handler.Command
   ( parseNewMessage,
   )
 import Tablebot.Internal.Handler.Event
-  ( parseInteractionRecvApplicationCommand,
-    parseInteractionRecvComponent,
+  ( parseApplicationCommandRecv,
+    parseComponentRecv,
     parseMessageChange,
     parseOther,
     parseReactionAdd,
@@ -62,7 +62,7 @@ import UnliftIO.Exception (catchAny)
 eventHandler :: PluginActions -> Text -> Event -> CompiledDatabaseDiscord ()
 eventHandler pl prefix = \case
   MessageCreate m ->
-    ifNotBot m $ parseNewMessage pl prefix m `catch` \e -> changeAction () . sendEmbedMessage m "" $ embedError (e :: BotException)
+    ifNotBot m $ catchErrors m $ parseNewMessage pl prefix m
   MessageUpdate cid mid ->
     parseMessageChange (compiledOnMessageChanges pl) True cid mid
   MessageDelete cid mid ->
@@ -76,13 +76,14 @@ eventHandler pl prefix = \case
   -- Similar with MessageReactionRemoveEmoji (removes all of one type).
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
-  InteractionCreate i@InteractionComponent {} -> parseInteractionRecvComponent (compiledOnComponentInteractionRecvs pl) i `interactionErrorCatch` i
-  InteractionCreate i@InteractionApplicationCommand {} -> parseInteractionRecvApplicationCommand i `interactionErrorCatch` i
+  InteractionCreate i@InteractionComponent {} -> parseComponentRecv (compiledOnComponentInteractionRecvs pl) i `interactionErrorCatch` i
+  InteractionCreate i@InteractionApplicationCommand {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
   -- TODO: add application command autocomplete as an option
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
     interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
+    catchErrors m = (`catch` (\e -> changeAction () . sendEmbedMessage m "" $ embedError (e :: BotException)))
 
 -- | @runCron@ takes an individual @CronJob@ and runs it in a separate thread.
 -- The @ThreadId@ is returned so it can be killed later.

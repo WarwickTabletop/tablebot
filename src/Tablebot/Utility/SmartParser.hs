@@ -14,6 +14,7 @@
 -- build a parser that reads in that Int and then runs the command.
 module Tablebot.Utility.SmartParser where
 
+import Control.Monad.Exception
 import Data.Proxy (Proxy (..))
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack)
@@ -25,12 +26,20 @@ import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMes
 import Tablebot.Utility.Exception (BotException (InteractionException), catchBot, throwBot)
 import Tablebot.Utility.Parser
 import Tablebot.Utility.Types
-  ( EnvDatabaseDiscord,
-    EnvInteractionRecv (InteractionRecv),
-    MessageDetails,
-    Parser,
-  )
 import Text.Megaparsec (MonadParsec (eof, try), chunk, many, optional, (<?>), (<|>))
+
+class Context a where
+  contextContent :: MonadException m => a -> m Text
+  contextUserId :: a -> UserId
+
+instance Context Message where
+  contextContent = return . messageContent
+  contextUserId = userId . messageAuthor
+
+instance Context Interaction where
+  contextUserId i = maybe 0 userId (maybe (interactionUser i) memberUser (interactionMember i))
+  contextContent InteractionComponent {interactionDataComponent = Just dc} = return $ interactionDataComponentCustomId dc
+  contextContent _ = throwBot $ InteractionException "could not get content of interactions other than components"
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
 -- by composing a parser per input of the function provided.
@@ -38,17 +47,17 @@ import Text.Megaparsec (MonadParsec (eof, try), chunk, many, optional, (<?>), (<
 -- parser that reads in an @Int@, then some optional @Text@, and then uses
 -- those to run the provided function with the arguments parsed and the message
 -- itself.
-class PComm commandty s where
-  parseComm :: commandty -> Parser (Message -> EnvDatabaseDiscord s ())
+class PComm commandty s t where
+  parseComm :: (Context t) => commandty -> Parser (t -> EnvDatabaseDiscord s ())
 
 -- As a base case, remove the spacing and check for eof.
-instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s ()) s where
+instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s ()) s t where
   parseComm comm = skipSpace >> eof >> return comm
 
-instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s where
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message where
   parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
 
-instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s where
+instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s Message where
   parseComm comm = skipSpace >> eof >> return (\m -> comm m >>= sendCustomMessage m)
 
 -- TODO: verify that this second base case is no longer needed
@@ -59,24 +68,22 @@ instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetai
 --     this <- pars @a
 --     parseComm (comm this)
 
-instance (PComm (Message -> as) s) => PComm (Message -> Message -> as) s where
-  parseComm comm = parseComm (\m -> comm m m)
-
-instance (CanParse a, PComm (Message -> as) s) => PComm (Message -> a -> as) s where
-  parseComm comm = do
-    this <- parsThenMoveToNext @a
-    parseComm (`comm` this)
-
 -- Recursive case is to parse the domain of the function type, then the rest.
-instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s) => PComm (a -> as) s where
+instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t) => PComm (a -> as) s t where
   parseComm comm = do
     this <- parsThenMoveToNext @a
     parseComm (comm this)
 
--- Recursive case is to parse the domain of the function type, then the rest.
-instance {-# OVERLAPPABLE #-} (PComm (Message -> as) s) => PComm (ParseUserId -> as) s where
+instance {-# OVERLAPPING #-} (PComm (t -> as) s t) => PComm (t -> t -> as) s t where
+  parseComm comm = parseComm (\m -> comm m m)
+
+instance {-# OVERLAPPING #-} (CanParse a, PComm (t -> as) s t) => PComm (t -> a -> as) s t where
   parseComm comm = do
-    parseComm $ \m -> comm (ParseUserId (userId $ messageAuthor m))
+    this <- parsThenMoveToNext @a
+    parseComm (`comm` this)
+
+instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t) => PComm (ParseUserId -> as) s t where
+  parseComm comm = parseComm $ \(m :: t) -> comm (ParseUserId (contextUserId m))
 
 -- | @CanParse@ defines types from which we can generate parsers.
 class CanParse a where
@@ -221,8 +228,10 @@ noArguments = parseComm
 -- Interactions stuff
 ----
 
-makeApplicationCommandPair :: forall t s. (MakeAppComm t, ProcessAppComm t s) => Text -> Text -> t -> (Maybe CreateApplicationCommand, EnvInteractionRecv s)
-makeApplicationCommandPair name desc f = (makeSlashCommand name desc (Proxy :: Proxy t), InteractionRecv (processAppComm f))
+makeApplicationCommandPair :: forall t s. (MakeAppComm t, ProcessAppComm t s) => Text -> Text -> t -> Maybe (EnvApplicationCommandRecv s)
+makeApplicationCommandPair name desc f = do
+  cac <- makeSlashCommand name desc (Proxy :: Proxy t)
+  return $ ApplicationCommandRecv cac (processAppComm f)
 
 makeSlashCommand :: (MakeAppComm t) => Text -> Text -> Proxy t -> Maybe CreateApplicationCommand
 makeSlashCommand name desc p =

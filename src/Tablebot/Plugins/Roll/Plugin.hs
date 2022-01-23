@@ -11,7 +11,7 @@ module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord.Interactions
@@ -34,7 +34,7 @@ import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention, toMention')
+import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention')
 import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper)
 import Tablebot.Utility.SmartParser
@@ -82,7 +82,7 @@ getMessagePieces e t u = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ ComponentButton ((("roll`" <> pack (show u)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  [ ComponentButton ((("rollreroll`" <> pack (show u)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
                   ]
               ]
         }
@@ -94,7 +94,7 @@ getMessagePieces e t u = do
 rerollInteraction :: Interaction -> DatabaseDiscord ()
 rerollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
   | length opts /= 4 = throwBot $ InteractionException "could not process button click"
-  | maybe True (\u -> toMention u /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
+  | maybe True (\u -> pack (show (userId u)) /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
   | otherwise = case opts of
     [_, uid, "", ""] -> do
       msgdetails <- getMessagePieces Nothing Nothing (read $ unpack uid)
@@ -211,7 +211,7 @@ rollPlugin =
       helpPages = [rollHelp, gencharHelp],
       inlineCommands = [rollDiceInline],
       onComponentInteractionRecvs =
-        [ InteractionRecv rerollInteraction
+        [ ComponentRecv "reroll" rerollInteraction
         ],
-      applicationCommands = [makeApplicationCommandPair "roll" "roll some dice with a description" rollSlashCommandFunction]
+      applicationCommands = catMaybes [makeApplicationCommandPair "roll" "roll some dice with a description" rollSlashCommandFunction]
     }

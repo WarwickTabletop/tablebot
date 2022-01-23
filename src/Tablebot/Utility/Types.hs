@@ -64,7 +64,7 @@ type Database d = SqlPersistM d
 
 data TablebotCache = TCache
   { cacheKnownEmoji :: Map Text Emoji,
-    cacheApplicationCommands :: Map ApplicationCommandId (EnvInteractionRecv ())
+    cacheApplicationCommands :: Map ApplicationCommandId (Interaction -> EnvDatabaseDiscord () ())
   }
 
 instance Default TablebotCache where
@@ -165,13 +165,34 @@ type ReactionDel = EnvReactionDel ()
 -- | Handles recieving of interactions, such as for application commands (slash
 -- commands, user commands, message commands), as well as components from
 -- messages.
-newtype EnvInteractionRecv d = InteractionRecv
-  { -- | A function to call on every interaction, which takes in details of that
-    -- interaction
-    onInteractionRecv :: Interaction -> EnvDatabaseDiscord d ()
+--
+-- Rarely used by itself.
+-- newtype EnvInteractionRecv d = InteractionRecv
+--   { -- | A function to call on an interaction, which takes in details of that
+--     -- interaction
+--     onInteractionRecv :: Interaction -> EnvDatabaseDiscord d ()
+--   }
+
+-- | Handles the creation of an application command and of the action to be
+-- performed once that application command is received.
+data EnvApplicationCommandRecv d = ApplicationCommandRecv
+  { -- | The application command to be created.
+    applicationCommand :: CreateApplicationCommand,
+    -- | The action to run when the application command is received.
+    applicationCommandRecv :: Interaction -> EnvDatabaseDiscord d ()
   }
 
-type InteractionRecv = EnvInteractionRecv ()
+type ApplicationCommandRecv = EnvApplicationCommandRecv ()
+
+-- | Handles recieving of interactions, such as for application commands (slash
+-- commands, user commands, message commands), as well as components from
+-- messages.
+data EnvComponentRecv d = ComponentRecv
+  { componentName :: Text,
+    onComponentRecv :: Interaction -> EnvDatabaseDiscord d ()
+  }
+
+type ComponentRecv = EnvComponentRecv ()
 
 -- | Handles events not covered by the other kinds of features. This is only
 -- relevant to specific admin functionality, such as the deletion of channels.
@@ -323,13 +344,13 @@ data RequiredPermission = None | Any | Exec | Moderator | Both | Superuser deriv
 data EnvPlugin d = Pl
   { pluginName :: Text,
     startUp :: StartUp d,
-    applicationCommands :: [(Maybe CreateApplicationCommand, EnvInteractionRecv d)],
+    applicationCommands :: [EnvApplicationCommandRecv d],
     commands :: [EnvCommand d],
     inlineCommands :: [EnvInlineCommand d],
     onMessageChanges :: [EnvMessageChange d],
     onReactionAdds :: [EnvReactionAdd d],
     onReactionDeletes :: [EnvReactionDel d],
-    onComponentInteractionRecvs :: [EnvInteractionRecv d],
+    onComponentInteractionRecvs :: [EnvComponentRecv d],
     otherEvents :: [EnvOther d],
     cronJobs :: [EnvCronJob d],
     helpPages :: [HelpPage],

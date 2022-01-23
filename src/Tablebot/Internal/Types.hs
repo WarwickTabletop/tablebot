@@ -40,7 +40,7 @@ data PluginActions = PA
     compiledOnMessageChanges :: [CompiledMessageChange],
     compiledOnReactionAdds :: [CompiledReactionAdd],
     compiledOnReactionDeletes :: [CompiledReactionDel],
-    compiledOnComponentInteractionRecvs :: [CompiledInteractionRecv],
+    compiledOnComponentInteractionRecvs :: [CompiledComponentRecv],
     compiledOtherEvents :: [CompiledOther],
     compiledCronJobs :: [CompiledCronJob]
   }
@@ -61,9 +61,9 @@ instance Default CombinedPlugin where
 
 -- These are compiled forms of the actions from the public types that remove the reader.
 
-data CompiledApplicationCommand = CApplicationComand
+data CompiledApplicationCommand = CApplicationCommand
   { applicationCommand :: CreateApplicationCommand,
-    applicationCommandAction :: EnvInteractionRecv ()
+    applicationCommandAction :: Interaction -> CompiledDatabaseDiscord ()
   }
 
 data CompiledCommand = CCommand
@@ -88,9 +88,10 @@ newtype CompiledReactionDel = CReactionDel
   { onReactionDelete :: ReactionInfo -> CompiledDatabaseDiscord ()
   }
 
-data CompiledInteractionRecv = CInteractionRecv
-  { interactionRecvPluginName :: Text,
-    onInteractionRecv :: Interaction -> CompiledDatabaseDiscord ()
+data CompiledComponentRecv = CComponentRecv
+  { componentPluginName :: Text,
+    componentName :: Text,
+    onComponentRecv :: Interaction -> CompiledDatabaseDiscord ()
   }
 
 newtype CompiledOther = COther

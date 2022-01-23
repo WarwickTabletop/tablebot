@@ -26,8 +26,9 @@ import Control.Concurrent
   )
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
-import Control.Monad.Reader (runReaderT)
+import Control.Monad.Reader (MonadTrans (lift), runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
+import Data.Bifunctor (Bifunctor (second))
 import qualified Data.Map as M
 import Data.Text (Text, pack)
 import qualified Data.Text.IO as TIO (putStrLn)
@@ -104,13 +105,13 @@ runTablebot dToken prefix dbpath plugins =
               aid <- partialApplicationID . cacheApplication <$> readCache
               applicationCommands <-
                 mapM
-                  ( \(CApplicationComand cac action) -> do
+                  ( \(CApplicationCommand cac action) -> do
                       ac <- createApplicationCommand aid serverId cac
                       return (applicationCommandId ac, action)
                   )
                   compiledAppComms
               removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
-              liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList applicationCommands}
+              liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
 
               liftIO $ putStrLn "Tablebot lives!",
             -- Kill every cron job in the mvar.

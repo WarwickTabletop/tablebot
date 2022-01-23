@@ -9,7 +9,7 @@
 -- This contains some functions to combine and compile plugins
 module Tablebot.Internal.Plugins where
 
-import Control.Monad.Reader (MonadTrans (lift), ReaderT (runReaderT))
+import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Default (Default (def))
 import Discord.Types (Message)
 import Tablebot.Internal.Types hiding (helpPages, migrations)
@@ -62,13 +62,13 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
 
       return $
         PA
-          (fixApplicationCommands state (UT.applicationCommands p))
+          (map (fixApplicationCommand state) $ applicationCommands p)
           (map (fixCommand state) $ commands p)
           (map (fixInlineCommand state) $ inlineCommands p)
           (map (fixOnMessageChanges state) $ onMessageChanges p)
           (map (fixOnReactionAdd state) $ onReactionAdds p)
           (map (fixOnReactionDelete state) $ onReactionDeletes p)
-          (map (fixOnInteractionRecv state) $ onComponentInteractionRecvs p)
+          (map (fixOnComponentRecv state) $ onComponentInteractionRecvs p)
           (map (fixOther state) $ otherEvents p)
           (map (fixCron state) $ cronJobs p)
 
@@ -78,17 +78,18 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
     fixOnMessageChanges state' (MessageChange action') = CMessageChange (((changeAction state' .) .) . action')
     fixOnReactionAdd state' (ReactionAdd action') = CReactionAdd (changeAction state' . action')
     fixOnReactionDelete state' (ReactionDel action') = CReactionDel (changeAction state' . action')
-    fixOnInteractionRecv state' (InteractionRecv action') = CInteractionRecv (pluginName p) (changeAction state' . action')
+    fixOnComponentRecv state' (ComponentRecv name' action') = CComponentRecv (pluginName p) name' (changeAction state' . action')
     fixOther state' (Other action') = COther (changeAction state' . action')
     fixCron state' (CronJob time action') = CCronJob time (changeAction state' action')
-    fixApplicationCommands state' =
-      concat
-        . ( ( \case
-                (Just ac, action) -> [CApplicationComand ac (InteractionRecv $ \i -> lift (changeAction state' (UT.onInteractionRecv action i)))]
-                (Nothing, _) -> []
-            )
-              <$>
-          )
+    fixApplicationCommand state' (ApplicationCommandRecv cac action') = CApplicationCommand cac (changeAction state' . action')
+
+-- concat
+--   . ( ( \case
+--           (Just ac, action) -> [CApplicationComand ac (InteractionRecv $ \i -> lift (changeAction state' (UT.onComponentRecv action i)))]
+--           (Nothing, _) -> []
+--       )
+--         <$>
+--     )
 
 -- * Helper converters
 
@@ -96,7 +97,10 @@ compileParser :: s -> Parser (Message -> EnvDatabaseDiscord s a) -> Parser (Mess
 compileParser s = fmap (changeMessageAction s)
 
 changeMessageAction :: s -> (Message -> EnvDatabaseDiscord s a) -> Message -> CompiledDatabaseDiscord a
-changeMessageAction s action message = runReaderT (action message) s
+changeMessageAction = changeAnyAction
+
+changeAnyAction :: s -> (m -> EnvDatabaseDiscord s a) -> m -> CompiledDatabaseDiscord a
+changeAnyAction s action m = runReaderT (action m) s
 
 changeAction :: s -> EnvDatabaseDiscord s a -> CompiledDatabaseDiscord a
 changeAction s action = runReaderT action s

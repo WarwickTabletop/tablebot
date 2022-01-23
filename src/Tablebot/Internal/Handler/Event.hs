@@ -12,8 +12,8 @@ module Tablebot.Internal.Handler.Event
   ( parseMessageChange,
     parseReactionAdd,
     parseReactionDel,
-    parseInteractionRecvComponent,
-    parseInteractionRecvApplicationCommand,
+    parseComponentRecv,
+    parseApplicationCommandRecv,
     parseOther,
   )
 where
@@ -56,21 +56,21 @@ parseReactionDel cs info = mapM_ doReactionAdd cs
   where
     doReactionAdd c = onReactionDelete c info
 
-parseInteractionRecvComponent :: [CompiledInteractionRecv] -> Interaction -> CompiledDatabaseDiscord ()
-parseInteractionRecvComponent cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ (`onInteractionRecv` info) cs'
+parseComponentRecv :: [CompiledComponentRecv] -> Interaction -> CompiledDatabaseDiscord ()
+parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ (`onComponentRecv` info) cs'
   where
-    cs' = filter (\cir -> interactionRecvPluginName cir `isPrefixOf` interactionDataComponentCustomId idc) cs
-parseInteractionRecvComponent _ _ = return ()
+    cs' = filter (\cir -> (componentPluginName cir <> componentName cir) `isPrefixOf` interactionDataComponentCustomId idc) cs
+parseComponentRecv _ _ = return ()
 
-parseInteractionRecvApplicationCommand :: Interaction -> CompiledDatabaseDiscord ()
-parseInteractionRecvApplicationCommand info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
+parseApplicationCommandRecv :: Interaction -> CompiledDatabaseDiscord ()
+parseApplicationCommandRecv info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
   tvar <- ask
   cache <- liftIO $ readMVar tvar
   let action = UT.cacheApplicationCommands cache M.!? interactionDataApplicationCommandId idac
   case action of
     Nothing -> return ()
-    Just act -> changeAction () $ UT.onInteractionRecv act info
-parseInteractionRecvApplicationCommand _ = return ()
+    Just act -> changeAction () $ act info
+parseApplicationCommandRecv _ = return ()
 
 -- | This runs each 'Other' feature in @cs@ with the Discord 'Event' provided.
 -- Note that any events covered by other feature types will /not/ be run
