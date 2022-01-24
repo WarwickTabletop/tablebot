@@ -16,14 +16,12 @@ import Control.Monad (when)
 import Control.Monad.Exception (MonadException)
 import Data.List (genericDrop, genericReplicate, genericTake, sortBy)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), head, tail, (<|))
-import Data.Map as M (findWithDefault)
 import Data.Maybe (fromMaybe, isNothing)
-import Data.String (IsString (fromString))
 import Data.Text (Text, intercalate, pack, unpack)
-import qualified Data.Text as T
 import System.Random (randomRIO)
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
+import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 import Tablebot.Utility.Discord (Format (..), formatInput, formatText)
 import Tablebot.Utility.Exception (BotException (EvaluationException), catchBot, throwBot)
 import Tablebot.Utility.Parser (ParseShow (parseShow))
@@ -389,72 +387,3 @@ instance IOEval NumBase where
     (r, s, rngCount') <- evalShow rngCount e
     return (r, "(" <> s <> ")", rngCount')
   evalShow' rngCount (Value i) = return (i, pack (show i), rngCount)
-
---- Pretty printing the AST
-
-instance ParseShow ArgValue where
-  parseShow (AVExpr e) = parseShow e
-  parseShow (AVListValues lv) = parseShow lv
-
-instance ParseShow ListValues where
-  parseShow (LVBase e) = parseShow e
-  parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
-  parseShow (LVFunc s n) = funcInfoName s <> "(" <> intercalate "," (parseShow <$> n) <> ")"
-
-instance ParseShow ListValuesBase where
-  parseShow (LVBList es) = "{" <> intercalate ", " (parseShow <$> es) <> "}"
-  parseShow (LVBParen p) = parseShow p
-
-instance ParseShow Expr where
-  parseShow (Add t e) = parseShow t <> " + " <> parseShow e
-  parseShow (Sub t e) = parseShow t <> " - " <> parseShow e
-  parseShow (NoExpr t) = parseShow t
-
-instance ParseShow Term where
-  parseShow (Multi f t) = parseShow f <> " * " <> parseShow t
-  parseShow (Div f t) = parseShow f <> " / " <> parseShow t
-  parseShow (NoTerm f) = parseShow f
-
-instance ParseShow Func where
-  parseShow (Func s n) = funcInfoName s <> "(" <> intercalate "," (parseShow <$> n) <> ")"
-  parseShow (NoFunc b) = parseShow b
-
-instance ParseShow Negation where
-  parseShow (Neg expo) = "-" <> parseShow expo
-  parseShow (NoNeg expo) = parseShow expo
-
-instance ParseShow Expo where
-  parseShow (NoExpo b) = parseShow b
-  parseShow (Expo b expo) = parseShow b <> " ^ " <> parseShow expo
-
-instance ParseShow NumBase where
-  parseShow (NBParen p) = parseShow p
-  parseShow (Value i) = fromString $ show i
-
-instance (ParseShow a) => ParseShow (Paren a) where
-  parseShow (Paren a) = "(" <> parseShow a <> ")"
-
-instance ParseShow Base where
-  parseShow (NBase nb) = parseShow nb
-  parseShow (DiceBase dop) = parseShow dop
-
-instance ParseShow Die where
-  parseShow (Die b) = "d" <> parseShow b
-  parseShow (CustomDie lv) = "d" <> parseShow lv
-  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
-  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
-
-instance ParseShow Dice where
-  parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
-    where
-      fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
-      fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
-      fromLHW (Low i) = "l" <> parseShow i
-      fromLHW (High i) = "h" <> parseShow i
-      helper' Nothing = ""
-      helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
-      helper (DieOpOptionLazy doo) = "!" <> helper doo
-      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
-      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
-      helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
-      helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw

@@ -48,7 +48,6 @@ combineActions (p : ps) =
         }
   where
     -- copy across Finnbar's +++ optimisation for empty lists from the old system, as it applies here.
-    [] +++ [] = []
     a +++ [] = a
     [] +++ a = a
     a +++ b = a ++ b
@@ -83,14 +82,6 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
     fixCron state' (CronJob time action') = CCronJob time (changeAction state' action')
     fixApplicationCommand state' (ApplicationCommandRecv cac action') = CApplicationCommand cac (changeAction state' . action')
 
--- concat
---   . ( ( \case
---           (Just ac, action) -> [CApplicationComand ac (InteractionRecv $ \i -> lift (changeAction state' (UT.onComponentRecv action i)))]
---           (Nothing, _) -> []
---       )
---         <$>
---     )
-
 -- * Helper converters
 
 compileParser :: s -> Parser (Message -> EnvDatabaseDiscord s a) -> Parser (Message -> CompiledDatabaseDiscord a)
@@ -100,7 +91,7 @@ changeMessageAction :: s -> (Message -> EnvDatabaseDiscord s a) -> Message -> Co
 changeMessageAction = changeAnyAction
 
 changeAnyAction :: s -> (m -> EnvDatabaseDiscord s a) -> m -> CompiledDatabaseDiscord a
-changeAnyAction s action m = runReaderT (action m) s
+changeAnyAction s action m = changeAction s (action m)
 
 changeAction :: s -> EnvDatabaseDiscord s a -> CompiledDatabaseDiscord a
 changeAction s action = runReaderT action s

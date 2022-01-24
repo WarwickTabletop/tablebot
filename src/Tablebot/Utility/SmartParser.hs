@@ -333,6 +333,8 @@ instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => Proce
 processComponentInteraction :: (PComm f s Interaction MessageDetails) => f -> Bool -> Interaction -> EnvDatabaseDiscord s ()
 processComponentInteraction f = processComponentInteraction' (parseComm f)
 
+-- TODO: comment what is given to the parser
+
 -- | Given a parser that, when run, returns a function taking an interaction
 -- and returns a database action on some MessageDetails, run the action.
 --

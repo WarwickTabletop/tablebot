@@ -26,10 +26,8 @@ import Control.Concurrent
   )
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
-import Control.Monad.Reader (MonadTrans (lift), runReaderT)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
-import Data.Bifunctor (Bifunctor (second))
-import qualified Data.Map as M
 import Data.Text (Text, pack)
 import qualified Data.Text.IO as TIO (putStrLn)
 import Database.Persist.Sqlite
@@ -38,18 +36,13 @@ import Database.Persist.Sqlite
     runSqlPool,
   )
 import Discord
-import Discord.Interactions (ApplicationCommand (applicationCommandId))
-import Discord.Internal.Rest (PartialApplication (partialApplicationID))
-import System.Environment (getEnv)
-import Tablebot.Handler (eventHandler, killCron, runCron)
+import Tablebot.Handler (eventHandler, killCron, runCron, submitApplicationCommands)
 import Tablebot.Internal.Administration (adminMigration, currentBlacklist, removeBlacklisted)
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
-import Tablebot.Utility.Discord (createApplicationCommand, removeApplicationCommandsNotInList)
 import Tablebot.Utility.Help
 import Tablebot.Utility.Types (TablebotCache (..))
 import Tablebot.Utility.Utils (debugPrint)
-import Text.Read (readMaybe)
 
 -- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ runs the bot using the
 -- given Discord API token @dToken@ and SQLite connection string @dbpath@. Only
@@ -77,7 +70,6 @@ runTablebot dToken prefix dbpath plugins =
     -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
     allActions <- mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
     let !actions = combineActions allActions
-        compiledAppComms = compiledApplicationCommands actions
 
     -- TODO: this might have issues with duplicates?
     -- TODO: in production, this should probably run once and then never again.
@@ -99,19 +91,7 @@ runTablebot dToken prefix dbpath plugins =
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
 
-              -- generate the application commands, cleaning up any application commands we don't like
-              serverIdStr <- liftIO $ getEnv "SERVER_ID"
-              serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
-              aid <- partialApplicationID . cacheApplication <$> readCache
-              applicationCommands <-
-                mapM
-                  ( \(CApplicationCommand cac action) -> do
-                      ac <- createApplicationCommand aid serverId cac
-                      return (applicationCommandId ac, action)
-                  )
-                  compiledAppComms
-              removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
-              liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
+              submitApplicationCommands (compiledApplicationCommands actions) cacheMVar
 
               liftIO $ putStrLn "Tablebot lives!",
             -- Kill every cron job in the mvar.

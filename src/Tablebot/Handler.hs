@@ -13,23 +13,25 @@ module Tablebot.Handler
   ( eventHandler,
     runCron,
     killCron,
+    submitApplicationCommands,
   )
 where
 
-import Control.Concurrent (MVar)
+import Control.Concurrent (MVar, putMVar, takeMVar)
 import Control.Monad (unless)
 import Control.Monad.Exception (MonadException (catch))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
+import Data.Bifunctor (Bifunctor (second))
+import Data.Map as M (fromList)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.Persist.Sqlite (SqlBackend, runSqlPool)
-import Discord (DiscordHandler)
-import Discord.Interactions (Interaction (..))
+import Discord (Cache (cacheApplication), DiscordHandler, readCache)
+import Discord.Interactions (ApplicationCommand (..), Interaction (..))
 import Discord.Types
-import Tablebot.Internal.Handler.Command
-  ( parseNewMessage,
-  )
+import System.Environment (getEnv)
+import Tablebot.Internal.Handler.Command (parseNewMessage)
 import Tablebot.Internal.Handler.Event
   ( parseApplicationCommandRecv,
     parseComponentRecv,
@@ -40,13 +42,10 @@ import Tablebot.Internal.Handler.Event
   )
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendEmbedMessage)
+import Tablebot.Utility.Discord (createApplicationCommand, interactionResponseCustomMessage, removeApplicationCommandsNotInList, sendChannelEmbedMessage, sendEmbedMessage)
 import Tablebot.Utility.Exception (BotException, embedError)
-import Tablebot.Utility.Types
-  ( MessageDetails (messageDetailsEmbeds),
-    TablebotCache,
-    messageDetailsBasic,
-  )
+import Tablebot.Utility.Types (MessageDetails (messageDetailsEmbeds), TablebotCache (cacheApplicationCommands), messageDetailsBasic)
+import Text.Read (readMaybe)
 import UnliftIO.Concurrent
   ( ThreadId,
     forkIO,
@@ -62,7 +61,7 @@ import UnliftIO.Exception (catchAny)
 eventHandler :: PluginActions -> Text -> Event -> CompiledDatabaseDiscord ()
 eventHandler pl prefix = \case
   MessageCreate m ->
-    ifNotBot m $ catchErrors m $ parseNewMessage pl prefix m
+    ifNotBot m $ catchErrors (messageChannelId m) $ parseNewMessage pl prefix m
   MessageUpdate cid mid ->
     parseMessageChange (compiledOnMessageChanges pl) True cid mid
   MessageDelete cid mid ->
@@ -83,7 +82,7 @@ eventHandler pl prefix = \case
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
     interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
-    catchErrors m = (`catch` (\e -> changeAction () . sendEmbedMessage m "" $ embedError (e :: BotException)))
+    catchErrors m = (`catch` (\e -> changeAction () . sendChannelEmbedMessage m "" $ embedError (e :: BotException)))
 
 -- | @runCron@ takes an individual @CronJob@ and runs it in a separate thread.
 -- The @ThreadId@ is returned so it can be killed later.
@@ -111,3 +110,22 @@ runCron pool (CCronJob delay fn) = do
 -- | @killCron@ takes a list of @ThreadId@ and kills each thread.
 killCron :: [ThreadId] -> IO ()
 killCron = mapM_ killThread
+
+submitApplicationCommands :: [CompiledApplicationCommand] -> MVar TablebotCache -> DiscordHandler ()
+submitApplicationCommands compiledAppComms cacheMVar =
+  ( do
+      -- generate the application commands, cleaning up any application commands we don't like
+      serverIdStr <- liftIO $ getEnv "SERVER_ID"
+      serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
+      aid <- partialApplicationID . cacheApplication <$> readCache
+      applicationCommands <-
+        mapM
+          ( \(CApplicationCommand cac action) -> do
+              ac <- createApplicationCommand aid serverId cac
+              return (applicationCommandId ac, action)
+          )
+          compiledAppComms
+      removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
+      liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
+  )
+    `catch` \(_ :: IOError) -> liftIO $ putStrLn "There was an error of some sort when submitting the application commands - verify that `SERVER_ID` is set."
