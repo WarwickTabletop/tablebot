@@ -72,6 +72,7 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
           (map (fixCron state) $ cronJobs p)
 
     -- Command converters
+    fixApplicationCommand state' (ApplicationCommandRecv cac action') = CApplicationCommand cac (changeAction state' . action')
     fixCommand state' (Command name' action' subcommands') = CCommand name' (compileParser state' action') (map (fixCommand state') subcommands')
     fixInlineCommand state' (InlineCommand action') = CInlineCommand (compileParser state' action')
     fixOnMessageChanges state' (MessageChange action') = CMessageChange (((changeAction state' .) .) . action')
@@ -80,7 +81,6 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
     fixOnComponentRecv state' (ComponentRecv name' action') = CComponentRecv (pluginName p) name' (changeAction state' . action')
     fixOther state' (Other action') = COther (changeAction state' . action')
     fixCron state' (CronJob time action') = CCronJob time (changeAction state' action')
-    fixApplicationCommand state' (ApplicationCommandRecv cac action') = CApplicationCommand cac (changeAction state' . action')
 
 -- * Helper converters
 

@@ -129,6 +129,7 @@ parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandPars
     fromResult (Right p) = UIOE.tryAny (p m)
     fromResult _ = return $ return ()
 
+-- | Turn the parsing of a value into an exception when given text to parse.
 parseValue :: Parser a -> Text -> EnvDatabaseDiscord s a
 parseValue par t = case parse par "" t of
   Right p -> return p

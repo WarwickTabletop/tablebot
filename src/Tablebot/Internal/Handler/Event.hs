@@ -26,6 +26,7 @@ import Discord.Interactions (Interaction (..), InteractionDataApplicationCommand
 import Discord.Types (ChannelId, Event, MessageId, ReactionInfo)
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types as IT
+import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
 import qualified Tablebot.Utility.Types as UT
 
 -- | This runs each 'MessageChange' feature in @cs@ with the information from a
@@ -56,6 +57,8 @@ parseReactionDel cs info = mapM_ doReactionAdd cs
   where
     doReactionAdd c = onReactionDelete c info
 
+-- | When given the compiled component recv actions and a component interaction,
+-- find and run the correct action.
 parseComponentRecv :: [CompiledComponentRecv] -> Interaction -> CompiledDatabaseDiscord ()
 parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ removePrefix cs'
   where
@@ -64,13 +67,15 @@ parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just
     removePrefix ccr = ccr `onComponentRecv` (info {interactionDataComponent = Just (idc {interactionDataComponentCustomId = T.drop (T.length (getPrefix ccr)) (interactionDataComponentCustomId idc)})})
 parseComponentRecv _ _ = return ()
 
+-- | When given an application command interaction, find and run the correct
+-- action.
 parseApplicationCommandRecv :: Interaction -> CompiledDatabaseDiscord ()
 parseApplicationCommandRecv info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
   tvar <- ask
   cache <- liftIO $ readMVar tvar
   let action = UT.cacheApplicationCommands cache M.!? interactionDataApplicationCommandId idac
   case action of
-    Nothing -> return ()
+    Nothing -> throwBot $ InteractionException "could not find the given application command"
     Just act -> changeAction () $ act info
 parseApplicationCommandRecv _ = return ()
 

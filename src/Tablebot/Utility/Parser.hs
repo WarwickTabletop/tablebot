@@ -203,3 +203,6 @@ class ParseShow a where
 instance (ParseShow a, ParseShow b) => ParseShow (Either a b) where
   parseShow (Left a) = parseShow a
   parseShow (Right b) = parseShow b
+
+instance ParseShow Text where
+  parseShow t = t

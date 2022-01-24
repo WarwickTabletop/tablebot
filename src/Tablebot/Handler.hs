@@ -42,7 +42,7 @@ import Tablebot.Internal.Handler.Event
   )
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Discord (createApplicationCommand, interactionResponseCustomMessage, removeApplicationCommandsNotInList, sendChannelEmbedMessage, sendEmbedMessage)
+import Tablebot.Utility.Discord (createApplicationCommand, interactionResponseCustomMessage, removeApplicationCommandsNotInList, sendChannelEmbedMessage)
 import Tablebot.Utility.Exception (BotException, embedError)
 import Tablebot.Utility.Types (MessageDetails (messageDetailsEmbeds), TablebotCache (cacheApplicationCommands), messageDetailsBasic)
 import Text.Read (readMaybe)
@@ -111,6 +111,10 @@ runCron pool (CCronJob delay fn) = do
 killCron :: [ThreadId] -> IO ()
 killCron = mapM_ killThread
 
+-- | Given a list of compiled application commands and a pointer to the
+-- tablebot cache, create the given application commands, purge ones that
+-- weren't created by us, and place the  application command id's and their
+-- actions in the cache.
 submitApplicationCommands :: [CompiledApplicationCommand] -> MVar TablebotCache -> DiscordHandler ()
 submitApplicationCommands compiledAppComms cacheMVar =
   ( do

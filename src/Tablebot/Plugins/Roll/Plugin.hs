@@ -32,7 +32,7 @@ import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
 import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMessage, toMention')
-import Tablebot.Utility.Parser (inlineCommandHelper)
+import Tablebot.Utility.Parser (ParseShow (parseShow), inlineCommandHelper)
 import Tablebot.Utility.SmartParser
 import Text.Megaparsec (MonadParsec (eof, try), choice)
 import Text.RawString.QQ (r)
@@ -71,14 +71,14 @@ rollDice' e t u@(ParseUserId uid) = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ ComponentButton ((("rollreroll " <> pack (show uid)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  [ ComponentButton ((("rollreroll " <> pack (show uid)) `appendIf` e) `appendIf` t) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
                   ]
               ]
         }
     )
   where
     appendIf t' Nothing = t'
-    appendIf t' (Just e') = t' <> " " <> e'
+    appendIf t' (Just e') = t' <> " " <> parseShow e'
 
 rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> ParseUserId -> DatabaseDiscord MessageDetails
 rollSlashCommandFunction (Labelled mt) (Labelled qt) uid = do
@@ -100,8 +100,9 @@ rollDiceParser = choice (try <$> options)
         try (parseComm (rollDice' Nothing . Just))
       ]
 
--- | Manually creating parser for this command, since SmartCommand doesn't work fully for
--- multiple Maybe values
+-- | Creating a parser for the component interactions stuff. Needs to be
+-- manually made since I think the maybe parser stuff doesn't work properly
+-- still?
 rollDiceParserI :: Parser (Interaction -> DatabaseDiscord MessageDetails)
 rollDiceParserI = choice (try <$> options)
   where

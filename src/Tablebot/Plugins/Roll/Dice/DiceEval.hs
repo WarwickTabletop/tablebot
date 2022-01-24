@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 -- |
 -- Module      : Tablebot.Plugins.Roll.Dice.DiceEval
 -- Description : How to evaluate dice and expressions

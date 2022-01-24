@@ -107,6 +107,9 @@ newtype Quoted a = Qu {quote :: a} deriving (Show)
 instance IsString a => CanParse (Quoted a) where
   pars = Qu . fromString <$> quoted
 
+instance (ParseShow a) => ParseShow (Quoted a) where
+  parseShow (Qu a) = "\"" <> parseShow a <> "\""
+
 -- A parser for @Maybe a@ attempts to parse @a@, returning @Just x@ if
 -- correctly parsed, else @Nothing@.
 instance CanParse a => CanParse (Maybe a) where
