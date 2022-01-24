@@ -14,7 +14,7 @@
 -- build a parser that reads in that Int and then runs the command.
 module Tablebot.Utility.SmartParser where
 
-import Control.Monad.Exception
+import Control.Monad.Exception (MonadException (catch))
 import Data.Proxy (Proxy (..))
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack)
@@ -22,24 +22,21 @@ import Discord.Interactions
 import Discord.Types
 import GHC.OldList (find)
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
-import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMessage)
-import Tablebot.Utility.Exception (BotException (InteractionException), catchBot, throwBot)
+import Tablebot.Internal.Handler.Command (parseValue)
+import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage)
+import Tablebot.Utility.Exception (BotException (InteractionException, ParserException), catchBot, embedError, throwBot)
 import Tablebot.Utility.Parser
 import Tablebot.Utility.Types
 import Text.Megaparsec (MonadParsec (eof, try), chunk, many, optional, (<?>), (<|>))
 
 class Context a where
-  contextContent :: MonadException m => a -> m Text
-  contextUserId :: a -> UserId
+  contextUserId :: a -> ParseUserId
 
 instance Context Message where
-  contextContent = return . messageContent
-  contextUserId = userId . messageAuthor
+  contextUserId = ParseUserId . userId . messageAuthor
 
 instance Context Interaction where
-  contextUserId i = maybe 0 userId (maybe (interactionUser i) memberUser (interactionMember i))
-  contextContent InteractionComponent {interactionDataComponent = Just dc} = return $ interactionDataComponentCustomId dc
-  contextContent _ = throwBot $ InteractionException "could not get content of interactions other than components"
+  contextUserId i = ParseUserId $ maybe 0 userId (maybe (interactionUser i) memberUser (interactionMember i))
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
 -- by composing a parser per input of the function provided.
@@ -47,17 +44,21 @@ instance Context Interaction where
 -- parser that reads in an @Int@, then some optional @Text@, and then uses
 -- those to run the provided function with the arguments parsed and the message
 -- itself.
-class PComm commandty s t where
-  parseComm :: (Context t) => commandty -> Parser (t -> EnvDatabaseDiscord s ())
+class PComm commandty s context returns where
+  parseComm :: (Context context) => commandty -> Parser (context -> EnvDatabaseDiscord s returns)
 
+-- TODO: verify that all the parsers for PComm actually work
 -- As a base case, remove the spacing and check for eof.
-instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s ()) s t where
+instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s r) s t r where
   parseComm comm = skipSpace >> eof >> return comm
 
-instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message where
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message () where
   parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
 
-instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s Message where
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s r) s t r where
+  parseComm comm = skipSpace >> eof >> return (const comm)
+
+instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s Message () where
   parseComm comm = skipSpace >> eof >> return (\m -> comm m >>= sendCustomMessage m)
 
 -- TODO: verify that this second base case is no longer needed
@@ -69,21 +70,21 @@ instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetai
 --     parseComm (comm this)
 
 -- Recursive case is to parse the domain of the function type, then the rest.
-instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t) => PComm (a -> as) s t where
+instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t r) => PComm (a -> as) s t r where
   parseComm comm = do
     this <- parsThenMoveToNext @a
     parseComm (comm this)
 
-instance {-# OVERLAPPING #-} (PComm (t -> as) s t) => PComm (t -> t -> as) s t where
+instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (t -> t -> as) s t r where
   parseComm comm = parseComm (\m -> comm m m)
 
-instance {-# OVERLAPPING #-} (CanParse a, PComm (t -> as) s t) => PComm (t -> a -> as) s t where
+instance {-# OVERLAPPABLE #-} (Context t, CanParse a, PComm (t -> as) s t r) => PComm (t -> a -> as) s t r where
   parseComm comm = do
     this <- parsThenMoveToNext @a
     parseComm (`comm` this)
 
-instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t) => PComm (ParseUserId -> as) s t where
-  parseComm comm = parseComm $ \(m :: t) -> comm (ParseUserId (contextUserId m))
+instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (ParseUserId -> as) s t r where
+  parseComm comm = parseComm $ \(m :: t) -> comm (contextUserId m)
 
 -- | @CanParse@ defines types from which we can generate parsers.
 class CanParse a where
@@ -191,6 +192,9 @@ instance CanParse Double where
 
 instance CanParse () where
   pars = eof
+
+instance CanParse Snowflake where
+  pars = Snowflake . fromInteger <$> pars
 
 -- | @RestOfInput a@ parses the rest of the input, giving a value of type @a@.
 newtype RestOfInput a = ROI a
@@ -320,3 +324,29 @@ instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => Proce
         return (labelValue (Just l))
       )
       `catchBot` const (return $ labelValue Nothing)
+
+-- | Given a function that can be processed to create a parser, create an action
+-- for it using the helper.
+--
+-- If the boolean is true, the message the component is from is updated. Else,
+-- a message is sent as the interaction response.
+processComponentInteraction :: (PComm f s Interaction MessageDetails) => f -> Bool -> Interaction -> EnvDatabaseDiscord s ()
+processComponentInteraction f = processComponentInteraction' (parseComm f)
+
+-- | Given a parser that, when run, returns a function taking an interaction
+-- and returns a database action on some MessageDetails, run the action.
+--
+-- If the boolean is true, the message the component is from is updated. Else,
+-- a message is sent as the interaction response.
+processComponentInteraction' :: Parser (Interaction -> EnvDatabaseDiscord s MessageDetails) -> Bool -> Interaction -> EnvDatabaseDiscord s ()
+processComponentInteraction' compParser updateOriginal i@InteractionComponent {interactionDataComponent = Just idc} = errorCatch $ do
+  let componentSend
+        | updateOriginal = interactionResponseComponentsUpdateMessage i
+        | otherwise = interactionResponseCustomMessage i
+  action <- parseValue (skipSpace *> compParser) (interactionDataComponentCustomId idc) >>= ($ i)
+  componentSend action
+  where
+    catchParserException e@(ParserException _ _) = interactionResponseCustomMessage i $ (messageDetailsBasic "something (likely) went wrong when processing a component interaction") {messageDetailsEmbeds = Just [embedError (e :: BotException)]}
+    catchParserException e = interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]}
+    errorCatch = (`catch` catchParserException)
+processComponentInteraction' _ _ _ = throwBot $ InteractionException "could not process component interaction"

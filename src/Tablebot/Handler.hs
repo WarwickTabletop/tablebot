@@ -76,7 +76,7 @@ eventHandler pl prefix = \case
   -- Similar with MessageReactionRemoveEmoji (removes all of one type).
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
-  InteractionCreate i@InteractionComponent {} -> parseComponentRecv (compiledOnComponentInteractionRecvs pl) i `interactionErrorCatch` i
+  InteractionCreate i@InteractionComponent {} -> parseComponentRecv (compiledOnComponentRecvs pl) i `interactionErrorCatch` i
   InteractionCreate i@InteractionApplicationCommand {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
   -- TODO: add application command autocomplete as an option
   e -> parseOther (compiledOtherEvents pl) e

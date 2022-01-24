@@ -21,7 +21,7 @@ where
 import Control.Concurrent (readMVar)
 import Control.Monad.RWS (MonadIO (liftIO), MonadReader (ask))
 import qualified Data.Map as M
-import Data.Text (isPrefixOf)
+import Data.Text as T (drop, isPrefixOf, length)
 import Discord.Interactions (Interaction (..), InteractionDataApplicationCommand (interactionDataApplicationCommandId), InteractionDataComponent (interactionDataComponentCustomId))
 import Discord.Types (ChannelId, Event, MessageId, ReactionInfo)
 import Tablebot.Internal.Plugins (changeAction)
@@ -57,9 +57,11 @@ parseReactionDel cs info = mapM_ doReactionAdd cs
     doReactionAdd c = onReactionDelete c info
 
 parseComponentRecv :: [CompiledComponentRecv] -> Interaction -> CompiledDatabaseDiscord ()
-parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ (`onComponentRecv` info) cs'
+parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ removePrefix cs'
   where
-    cs' = filter (\cir -> (componentPluginName cir <> componentName cir) `isPrefixOf` interactionDataComponentCustomId idc) cs
+    getPrefix ccr = componentPluginName ccr <> componentName ccr
+    cs' = filter (\ccr -> getPrefix ccr `isPrefixOf` interactionDataComponentCustomId idc) cs
+    removePrefix ccr = ccr `onComponentRecv` (info {interactionDataComponent = Just (idc {interactionDataComponentCustomId = T.drop (T.length (getPrefix ccr)) (interactionDataComponentCustomId idc)})})
 parseComponentRecv _ _ = return ()
 
 parseApplicationCommandRecv :: Interaction -> CompiledDatabaseDiscord ()

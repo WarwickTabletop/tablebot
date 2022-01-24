@@ -18,33 +18,30 @@ import Discord.Interactions
   ( Interaction (..),
     InteractionCallbackDataFlag (..),
     InteractionCallbackDataFlags (..),
-    InteractionDataComponent (..),
   )
 import Discord.Types
   ( ButtonStyle (ButtonStyleSecondary),
     ComponentActionRow (ComponentActionRowButton),
     ComponentButton (ComponentButton),
     Emoji (Emoji),
-    GuildMember (memberUser),
     Message (messageAuthor),
     User (userId),
-    UserId,
   )
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage, toMention')
-import Tablebot.Utility.Exception (BotException (InteractionException), throwBot)
+import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMessage, toMention')
 import Tablebot.Utility.Parser (inlineCommandHelper)
 import Tablebot.Utility.SmartParser
-import Text.Megaparsec (MonadParsec (eof, try), choice, parse, (<?>))
+import Text.Megaparsec (MonadParsec (eof, try), choice)
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord Text
-rollDice'' e' t u = do
+-- The userid of the user that called this command is also given.
+rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> ParseUserId -> DatabaseDiscord Text
+rollDice'' e' t (ParseUserId u) = do
   let e = fromMaybe (Right defaultRoll) e'
   (vs, ss) <- case e of
     (Left a) -> liftIO $ first Left <$> evalList a
@@ -66,61 +63,30 @@ rollDice'' e' t u = do
     simplify li = li
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
 
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord MessageDetails
-rollDice' e t m = getMessagePieces e t (userId $ messageAuthor m)
-
-rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> ParseUserId -> DatabaseDiscord MessageDetails
-rollSlashCommandFunction (Labelled mt) (Labelled qt) (ParseUserId uid) = do
-  lve <- mapM (parseValue (pars <* eof)) mt
-  getMessagePieces lve qt uid
-
-getMessagePieces :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord MessageDetails
-getMessagePieces e t u = do
+rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> ParseUserId -> DatabaseDiscord MessageDetails
+rollDice' e t u@(ParseUserId uid) = do
   msg <- rollDice'' e t u
   return
     ( (messageDetailsBasic msg)
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ ComponentButton ((("rollreroll`" <> pack (show u)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  [ ComponentButton ((("rollreroll " <> pack (show uid)) `appendIf` (parseShow <$> e)) `appendIf` (quote <$> t)) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
                   ]
               ]
         }
     )
   where
-    appendIf t' Nothing = t' <> "`"
-    appendIf t' (Just e') = t' <> "`" <> e'
+    appendIf t' Nothing = t'
+    appendIf t' (Just e') = t' <> " " <> e'
 
-rerollInteraction :: Interaction -> DatabaseDiscord ()
-rerollInteraction i@InteractionComponent {interactionDataComponent = Just (InteractionDataComponentButton cid)}
-  | length opts /= 4 = throwBot $ InteractionException "could not process button click"
-  | maybe True (\u -> pack (show (userId u)) /= opts !! 1) getUser = interactionResponseCustomMessage i ((messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]})
-  | otherwise = case opts of
-    [_, uid, "", ""] -> do
-      msgdetails <- getMessagePieces Nothing Nothing (read $ unpack uid)
-      interactionResponseComponentsUpdateMessage i msgdetails
-    [_, uid, "", qt] -> do
-      msgdetails <- getMessagePieces Nothing (Just (Qu qt)) (read $ unpack uid)
-      interactionResponseComponentsUpdateMessage i msgdetails
-    [_, uid, e, ""] -> do
-      let e' = parse pars "" e
-      case e' of
-        Left _ -> throwBot $ InteractionException "could not process button click"
-        Right e'' -> do
-          msgdetails <- getMessagePieces (Just e'') Nothing (read $ unpack uid)
-          interactionResponseComponentsUpdateMessage i msgdetails
-    [_, uid, e, qt] -> do
-      let e' = parse pars "" e
-      case e' of
-        Left _ -> throwBot $ InteractionException "could not process button click"
-        Right e'' -> do
-          msgdetails <- getMessagePieces (Just e'') (Just (Qu qt)) (read $ unpack uid)
-          interactionResponseComponentsUpdateMessage i msgdetails
-    _ -> throwBot $ InteractionException "could not process button click"
-  where
-    opts = T.split (== '`') cid
-    getUser = maybe (interactionUser i) memberUser (interactionMember i)
-rerollInteraction _ = return ()
+rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> ParseUserId -> DatabaseDiscord MessageDetails
+rollSlashCommandFunction (Labelled mt) (Labelled qt) uid = do
+  lve <- mapM (parseValue (pars <* eof)) mt
+  rollDice' lve qt uid
+
+rerollComponentRecv :: ComponentRecv
+rerollComponentRecv = ComponentRecv "reroll" (processComponentInteraction' rollDiceParserI True)
 
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
 -- multiple Maybe values
@@ -130,8 +96,28 @@ rollDiceParser = choice (try <$> options)
     options =
       [ parseComm (\lv -> rollDice' (Just lv) Nothing),
         parseComm (rollDice' Nothing Nothing),
-        try (parseComm (\lv qt -> rollDice' (Just lv) (Just qt))) <?> "",
-        try (parseComm (rollDice' Nothing . Just)) <?> ""
+        try (parseComm (\lv qt -> rollDice' (Just lv) (Just qt))),
+        try (parseComm (rollDice' Nothing . Just))
+      ]
+
+-- | Manually creating parser for this command, since SmartCommand doesn't work fully for
+-- multiple Maybe values
+rollDiceParserI :: Parser (Interaction -> DatabaseDiscord MessageDetails)
+rollDiceParserI = choice (try <$> options)
+  where
+    localRollDice uid lv qt u@(ParseUserId uid') i
+      | uid == uid' = rollDice' lv qt u
+      | otherwise =
+        interactionResponseCustomMessage
+          i
+          ( (messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]}
+          )
+          >> return ((messageDetailsBasic "") {messageDetailsContent = Nothing})
+    options =
+      [ parseComm (\uid lv -> localRollDice uid (Just lv) Nothing),
+        parseComm (\uid -> localRollDice uid Nothing Nothing),
+        try (parseComm (\uid lv qt -> localRollDice uid (Just lv) (Just qt))),
+        try (parseComm (\uid qt -> localRollDice uid Nothing (Just qt)))
       ]
 
 -- | Basic command for rolling dice.
@@ -140,7 +126,9 @@ rollDice = Command "roll" rollDiceParser []
 
 -- | Rolling dice inline.
 rollDiceInline :: InlineCommand
-rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> rollDice' (Just e) Nothing m >>= sendCustomMessage m)
+rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> runFunc e m >>= sendCustomMessage m)
+  where
+    runFunc e m = rollDice' (Just e) Nothing (ParseUserId $ userId $ messageAuthor m)
 
 -- | Help page for rolling dice, with a link to the help page.
 rollHelp :: HelpPage
@@ -210,8 +198,6 @@ rollPlugin =
     { commands = [rollDice, commandAlias "r" rollDice, genchar],
       helpPages = [rollHelp, gencharHelp],
       inlineCommands = [rollDiceInline],
-      onComponentInteractionRecvs =
-        [ ComponentRecv "reroll" rerollInteraction
-        ],
+      onComponentRecvs = [rerollComponentRecv],
       applicationCommands = catMaybes [makeApplicationCommandPair "roll" "roll some dice with a description" rollSlashCommandFunction]
     }

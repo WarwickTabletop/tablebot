@@ -350,7 +350,7 @@ data EnvPlugin d = Pl
     onMessageChanges :: [EnvMessageChange d],
     onReactionAdds :: [EnvReactionAdd d],
     onReactionDeletes :: [EnvReactionDel d],
-    onComponentInteractionRecvs :: [EnvComponentRecv d],
+    onComponentRecvs :: [EnvComponentRecv d],
     otherEvents :: [EnvOther d],
     cronJobs :: [EnvCronJob d],
     helpPages :: [HelpPage],

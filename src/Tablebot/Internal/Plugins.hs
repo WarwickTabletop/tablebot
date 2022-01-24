@@ -42,7 +42,7 @@ combineActions (p : ps) =
           compiledOnMessageChanges = compiledOnMessageChanges p +++ compiledOnMessageChanges p',
           compiledOnReactionAdds = compiledOnReactionAdds p +++ compiledOnReactionAdds p',
           compiledOnReactionDeletes = compiledOnReactionDeletes p +++ compiledOnReactionDeletes p',
-          compiledOnComponentInteractionRecvs = compiledOnComponentInteractionRecvs p +++ compiledOnComponentInteractionRecvs p',
+          compiledOnComponentRecvs = compiledOnComponentRecvs p +++ compiledOnComponentRecvs p',
           compiledOtherEvents = compiledOtherEvents p +++ compiledOtherEvents p',
           compiledCronJobs = compiledCronJobs p +++ compiledCronJobs p'
         }
@@ -68,7 +68,7 @@ compilePlugin p = CPl (pluginName p) sa (helpPages p) (migrations p)
           (map (fixOnMessageChanges state) $ onMessageChanges p)
           (map (fixOnReactionAdd state) $ onReactionAdds p)
           (map (fixOnReactionDelete state) $ onReactionDeletes p)
-          (map (fixOnComponentRecv state) $ onComponentInteractionRecvs p)
+          (map (fixOnComponentRecv state) $ onComponentRecvs p)
           (map (fixOther state) $ otherEvents p)
           (map (fixCron state) $ cronJobs p)
 

@@ -40,7 +40,7 @@ data PluginActions = PA
     compiledOnMessageChanges :: [CompiledMessageChange],
     compiledOnReactionAdds :: [CompiledReactionAdd],
     compiledOnReactionDeletes :: [CompiledReactionDel],
-    compiledOnComponentInteractionRecvs :: [CompiledComponentRecv],
+    compiledOnComponentRecvs :: [CompiledComponentRecv],
     compiledOtherEvents :: [CompiledOther],
     compiledCronJobs :: [CompiledCronJob]
   }
