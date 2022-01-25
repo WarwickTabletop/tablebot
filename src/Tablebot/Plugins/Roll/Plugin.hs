@@ -16,22 +16,20 @@ import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord.Interactions
   ( Interaction (..),
-    InteractionCallbackDataFlag (..),
-    InteractionCallbackDataFlags (..),
   )
 import Discord.Types
-  ( ButtonStyle (ButtonStyleSecondary),
-    ComponentActionRow (ComponentActionRowButton),
-    ComponentButton (ComponentButton),
+  ( ComponentActionRow (ComponentActionRowButton),
+    ComponentButton (componentButtonEmoji),
     Emoji (Emoji),
     Message (messageAuthor),
     User (userId),
+    mkButton,
   )
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Utility
-import Tablebot.Utility.Discord (interactionResponseCustomMessage, sendCustomMessage, toMention')
+import Tablebot.Utility.Discord (sendCustomMessage, toMention')
 import Tablebot.Utility.Parser (ParseShow (parseShow), inlineCommandHelper)
 import Tablebot.Utility.SmartParser
 import Text.Megaparsec (MonadParsec (eof, try), choice)
@@ -71,7 +69,7 @@ rollDice' e t u@(ParseUserId uid) = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ ComponentButton ((("rollreroll " <> pack (show uid)) `appendIf` e) `appendIf` t) False ButtonStyleSecondary "Reroll" (Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)))
+                  [ (mkButton "Reroll" ((("rollreroll " <> pack (show uid)) `appendIf` e) `appendIf` t)) {componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False))}
                   ]
               ]
         }
@@ -106,19 +104,11 @@ rollDiceParser = choice (try <$> options)
 rollDiceParserI :: Parser (Interaction -> DatabaseDiscord MessageDetails)
 rollDiceParserI = choice (try <$> options)
   where
-    localRollDice uid lv qt u@(ParseUserId uid') i
-      | uid == uid' = rollDice' lv qt u
-      | otherwise =
-        interactionResponseCustomMessage
-          i
-          ( (messageDetailsBasic "Hey, that isn't your button to press!") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]}
-          )
-          >> return ((messageDetailsBasic "") {messageDetailsContent = Nothing})
     options =
-      [ parseComm (\uid lv -> localRollDice uid (Just lv) Nothing),
-        parseComm (\uid -> localRollDice uid Nothing Nothing),
-        try (parseComm (\uid lv qt -> localRollDice uid (Just lv) (Just qt))),
-        try (parseComm (\uid qt -> localRollDice uid Nothing (Just qt)))
+      [ onlyAllowRequestor (\lv -> rollDice' (Just lv) Nothing),
+        onlyAllowRequestor (rollDice' Nothing Nothing),
+        try (onlyAllowRequestor (\lv qt -> rollDice' (Just lv) (Just qt))),
+        try (onlyAllowRequestor (rollDice' Nothing . Just))
       ]
 
 -- | Basic command for rolling dice.

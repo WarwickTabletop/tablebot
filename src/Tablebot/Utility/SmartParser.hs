@@ -15,6 +15,7 @@
 module Tablebot.Utility.SmartParser where
 
 import Control.Monad.Exception (MonadException (catch))
+import Data.Default (Default (def))
 import Data.Proxy (Proxy (..))
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack)
@@ -35,6 +36,7 @@ class Context a where
 instance Context Message where
   contextUserId = ParseUserId . userId . messageAuthor
 
+-- this is safe to do because we are guaranteed to get either a user or a member
 instance Context Interaction where
   contextUserId i = ParseUserId $ maybe 0 userId (maybe (interactionUser i) memberUser (interactionMember i))
 
@@ -48,26 +50,37 @@ class PComm commandty s context returns where
   parseComm :: (Context context) => commandty -> Parser (context -> EnvDatabaseDiscord s returns)
 
 -- TODO: verify that all the parsers for PComm actually work
--- As a base case, remove the spacing and check for eof.
+
+-- If there is the general case where we have just what we want to parse, then
+-- return it
 instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s r) s t r where
+  parseComm comm = skipSpace >> return comm
+
+-- If we have the specific case where we are returning `()`, parse eof as well.
+-- This should cover the base case for the rest of the program that doesn't use
+-- more complex stuff.
+instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s ()) s t () where
   parseComm comm = skipSpace >> eof >> return comm
 
-instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message () where
-  parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
-
-instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s r) s t r where
-  parseComm comm = skipSpace >> eof >> return (const comm)
-
+-- If an action takes a message and returns a message details and we want it to
+-- return unit, assume that it wants to be sent, and send it. eof this as well
 instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s Message () where
   parseComm comm = skipSpace >> eof >> return (\m -> comm m >>= sendCustomMessage m)
 
--- TODO: verify that this second base case is no longer needed
--- -- Second base case is the single argument - no trailing space is wanted so we
--- -- have to specify this case.
--- instance {-# OVERLAPPING #-} CanParse a => PComm (a -> Message -> EnvDatabaseDiscord s ()) s where
---   parseComm comm = do
---     this <- pars @a
---     parseComm (comm this)
+-- Just the action. effectively the function hasn't interacted with the `t`.
+-- don't parse eof cause we may wanna return
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s r) s t r where
+  parseComm comm = skipSpace >> return (const comm)
+
+-- Just the action. effectively the function hasn't interacted with the `t`.
+-- parse eof because we have unit here
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s ()) s t () where
+  parseComm comm = skipSpace >> eof >> return (const comm)
+
+-- if we're in a message context and have a message details but want to return
+-- unit, assume that we want to send it, and send it.
+instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message () where
+  parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
 
 -- Recursive case is to parse the domain of the function type, then the rest.
 instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t r) => PComm (a -> as) s t r where
@@ -75,14 +88,20 @@ instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t r) => PComm (a -> as) s 
     this <- parsThenMoveToNext @a
     parseComm (comm this)
 
+-- if we have two contexts for some reason, collapse them if the resultant can
+-- be parsed
 instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (t -> t -> as) s t r where
   parseComm comm = parseComm (\m -> comm m m)
 
+-- if we have a context and then some parseable value, effectively juggle the
+-- context so that parsing continues (and the context is passed on)
 instance {-# OVERLAPPABLE #-} (Context t, CanParse a, PComm (t -> as) s t r) => PComm (t -> a -> as) s t r where
   parseComm comm = do
     this <- parsThenMoveToNext @a
     parseComm (`comm` this)
 
+-- special value case - if we get ParseUserId, we need to get the value from
+-- the context. so, get the value from the context, and then continue parsing.
 instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (ParseUserId -> as) s t r where
   parseComm comm = parseComm $ \(m :: t) -> comm (contextUserId m)
 
@@ -197,7 +216,7 @@ instance CanParse () where
   pars = eof
 
 instance CanParse Snowflake where
-  pars = Snowflake . fromInteger <$> pars
+  pars = Snowflake . fromInteger <$> posInteger
 
 -- | @RestOfInput a@ parses the rest of the input, giving a value of type @a@.
 newtype RestOfInput a = ROI a
@@ -329,20 +348,20 @@ instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => Proce
       `catchBot` const (return $ labelValue Nothing)
 
 -- | Given a function that can be processed to create a parser, create an action
--- for it using the helper.
+-- for it using the helper. Uses `parseComm` to generate the required parser.
 --
--- If the boolean is true, the message the component is from is updated. Else,
--- a message is sent as the interaction response.
+-- For more information, check the helper `processComponentInteraction'`.
 processComponentInteraction :: (PComm f s Interaction MessageDetails) => f -> Bool -> Interaction -> EnvDatabaseDiscord s ()
 processComponentInteraction f = processComponentInteraction' (parseComm f)
-
--- TODO: comment what is given to the parser
 
 -- | Given a parser that, when run, returns a function taking an interaction
 -- and returns a database action on some MessageDetails, run the action.
 --
 -- If the boolean is true, the message the component is from is updated. Else,
 -- a message is sent as the interaction response.
+--
+-- The format of the Text being given should be of space separated values,
+-- similar to the command structure.
 processComponentInteraction' :: Parser (Interaction -> EnvDatabaseDiscord s MessageDetails) -> Bool -> Interaction -> EnvDatabaseDiscord s ()
 processComponentInteraction' compParser updateOriginal i@InteractionComponent {interactionDataComponent = Just idc} = errorCatch $ do
   let componentSend
@@ -355,3 +374,45 @@ processComponentInteraction' compParser updateOriginal i@InteractionComponent {i
     catchParserException e = interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]}
     errorCatch = (`catch` catchParserException)
 processComponentInteraction' _ _ _ = throwBot $ InteractionException "could not process component interaction"
+
+-- | Function to only allow use of an interaction if the requestor matches
+-- a Snowflake at the beginning of the input. This uses a helper, and by default
+-- sends an ephermeral message with the text "You don't have permission to use
+-- this component."
+--
+-- Helper is `onlyAllowRequestor'`.
+onlyAllowRequestor :: forall f. (PComm f () Interaction MessageDetails) => f -> Parser (Interaction -> DatabaseDiscord MessageDetails)
+onlyAllowRequestor =
+  onlyAllowRequestor'
+    ( (messageDetailsBasic "You don't have permission to use this component.") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]}
+    )
+
+-- | Take a message to send when a user that is not the one that created a
+-- component, and then parse out a user id, and then get the interaction
+-- requestor's userid, check if they match, and if they don't then send a
+-- message. Regardless, parse out the given function. If it _does_ match, run
+-- the parsed function.
+--
+-- Adds eof to the end to ensure all the data is parsed.
+onlyAllowRequestor' :: forall f. (PComm f () Interaction MessageDetails) => MessageDetails -> f -> Parser (Interaction -> DatabaseDiscord MessageDetails)
+onlyAllowRequestor' msg f = do
+  pre <- parseComm prefunc
+  f' <- parseComm @f @() @Interaction @MessageDetails f
+  parseComm
+    ( \i -> do
+        isEqual <- pre i
+        case isEqual of
+          Nothing -> f' i
+          Just d -> return d
+    )
+    <* eof
+  where
+    prefunc :: UserId -> ParseUserId -> Interaction -> DatabaseDiscord (Maybe MessageDetails)
+    prefunc uid (ParseUserId u) i =
+      if uid == u
+        then return Nothing
+        else
+          interactionResponseCustomMessage
+            i
+            msg
+            >> return (Just def)
