@@ -374,6 +374,9 @@ envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] [] [] []
 messageDetailsBasic :: Text -> MessageDetails
 messageDetailsBasic t = MessageDetails Nothing (Just t) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
+instance Default MessageDetails where
+  def = MessageDetails Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
 data MessageDetails = MessageDetails
   { messageDetailsTTS :: Maybe Bool,
     messageDetailsContent :: Maybe Text,
