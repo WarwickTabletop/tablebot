@@ -162,17 +162,6 @@ newtype EnvReactionDel d = ReactionDel
 
 type ReactionDel = EnvReactionDel ()
 
--- | Handles recieving of interactions, such as for application commands (slash
--- commands, user commands, message commands), as well as components from
--- messages.
---
--- Rarely used by itself.
--- newtype EnvInteractionRecv d = InteractionRecv
---   { -- | A function to call on an interaction, which takes in details of that
---     -- interaction
---     onInteractionRecv :: Interaction -> EnvDatabaseDiscord d ()
---   }
-
 -- | Handles the creation of an application command and of the action to be
 -- performed once that application command is received.
 data EnvApplicationCommandRecv d = ApplicationCommandRecv

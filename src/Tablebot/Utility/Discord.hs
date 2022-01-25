@@ -85,7 +85,7 @@ sendMessage m t = do
 -- | @sendCustomMessage@ sends the input message @mdo@ in the same channel as
 -- message @m@.
 --
--- As opposed to @sendMessage@, this function takes in a MessageDetailedOpts, to
+-- As opposed to @sendMessage@, this function takes in a MessageDetails, to
 -- allow full functionality. Unless you are dealing with components or some
 -- other specific message data, you shouldn't use this function.
 sendCustomMessage ::
@@ -197,7 +197,7 @@ reactToMessage m e =
 getReplyMessage :: Message -> EnvDatabaseDiscord s (Maybe Message)
 getReplyMessage m = do
   let m' = messageReferencedMessage m
-  let mRef = messageReference m
+      mRef = messageReference m
   case m' of
     Just msg -> return $ Just msg
     Nothing -> case mRef of
@@ -393,7 +393,8 @@ interactionResponseDefer i = do
 -- | Defer an interaction response, extending the window of time to respond to
 -- 15 minutes (from 3 seconds).
 --
--- Used when updating a component message.
+-- Used when updating a component message. Does not show that the bot is
+-- thinking about the interaction.
 interactionResponseDeferUpdateMessage :: Interaction -> EnvDatabaseDiscord s ()
 interactionResponseDeferUpdateMessage i = do
   res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeDeferredUpdateMessage Nothing)
