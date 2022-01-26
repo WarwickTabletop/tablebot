@@ -60,17 +60,17 @@ parseReactionDel cs info = mapM_ doReactionAdd cs
 -- | When given the compiled component recv actions and a component interaction,
 -- find and run the correct action.
 parseComponentRecv :: [CompiledComponentRecv] -> Interaction -> CompiledDatabaseDiscord ()
-parseComponentRecv cs info@InteractionComponent {interactionDataComponent = Just idc} = mapM_ removePrefix cs'
+parseComponentRecv cs info@InteractionComponent {interactionDataComponent = idc} = mapM_ removePrefix cs'
   where
     getPrefix ccr = componentPluginName ccr <> componentName ccr
     cs' = filter (\ccr -> getPrefix ccr `isPrefixOf` interactionDataComponentCustomId idc) cs
-    removePrefix ccr = ccr `onComponentRecv` (info {interactionDataComponent = Just (idc {interactionDataComponentCustomId = T.drop (T.length (getPrefix ccr)) (interactionDataComponentCustomId idc)})})
+    removePrefix ccr = ccr `onComponentRecv` (info {interactionDataComponent = (idc {interactionDataComponentCustomId = T.drop (T.length (getPrefix ccr)) (interactionDataComponentCustomId idc)})})
 parseComponentRecv _ _ = return ()
 
 -- | When given an application command interaction, find and run the correct
 -- action.
 parseApplicationCommandRecv :: Interaction -> CompiledDatabaseDiscord ()
-parseApplicationCommandRecv info@InteractionApplicationCommand {interactionDataApplicationCommand = Just idac} = do
+parseApplicationCommandRecv info@InteractionApplicationCommand {interactionDataApplicationCommand = idac} = do
   tvar <- ask
   cache <- liftIO $ readMVar tvar
   let action = UT.cacheApplicationCommands cache M.!? interactionDataApplicationCommandId idac

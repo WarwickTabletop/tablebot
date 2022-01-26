@@ -24,7 +24,7 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
 import Discord (DiscordHandler)
-import Discord.Interactions (CreateApplicationCommand, Interaction, InteractionCallbackDataFlags, InteractionCallbackMessages (InteractionCallbackMessages))
+import Discord.Interactions (CreateApplicationCommand, Interaction, InteractionResponseMessage (InteractionResponseMessage), InteractionResponseMessageFlags)
 import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
 import Discord.Types
   ( AllowedMentions,
@@ -372,16 +372,16 @@ data MessageDetails = MessageDetails
     messageDetailsEmbeds :: Maybe [Embed],
     messageDetailsFile :: Maybe (Text, ByteString),
     messageDetailsAllowedMentions :: Maybe AllowedMentions,
-    messageDetailsFlags :: Maybe InteractionCallbackDataFlags,
+    messageDetailsFlags :: Maybe InteractionResponseMessageFlags,
     messageDetailsReference :: Maybe MessageReference,
     messageDetailsComponents :: Maybe [ComponentActionRow],
     messageDetailsAttachments :: Maybe [Attachment],
     messageDetailsStickerIds :: Maybe [StickerId]
   }
 
-convertMessageFormatInteraction :: MessageDetails -> InteractionCallbackMessages
+convertMessageFormatInteraction :: MessageDetails -> InteractionResponseMessage
 convertMessageFormatInteraction MessageDetails {..} =
-  InteractionCallbackMessages
+  InteractionResponseMessage
     messageDetailsTTS
     messageDetailsContent
     messageDetailsEmbeds

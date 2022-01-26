@@ -41,7 +41,7 @@ packages:
 #
 extra-deps:
 - git: https://github.com/L0neGamer/discord-haskell.git
-  commit: 403ebc9cc0cf1f2367c0ad2677fcf2ad0c76e133
+  commit: 8ac23e4598f501136109090a8ddb073eaac59889
 - emoji-0.1.0.2
 - load-env-0.2.1.0
 - megaparsec-9.0.1

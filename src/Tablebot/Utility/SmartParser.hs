@@ -38,7 +38,9 @@ instance Context Message where
 
 -- this is safe to do because we are guaranteed to get either a user or a member
 instance Context Interaction where
-  contextUserId i = ParseUserId $ maybe 0 userId (maybe (interactionUser i) memberUser (interactionMember i))
+  contextUserId i = ParseUserId $ maybe 0 userId (either memberUser Just mor)
+    where
+      (MemberOrUser mor) = interactionUser i
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
 -- by composing a parser per input of the function provided.
@@ -284,14 +286,14 @@ class MakeAppCommArg commandty where
   makeAppCommArg :: Proxy commandty -> ApplicationCommandOptionValue
 
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Text) where
-  makeAppCommArg l = ApplicationCommandOptionValueString n d (Just True) Nothing Nothing
+  makeAppCommArg l = ApplicationCommandOptionValueString n d True (Left False)
     where
       (n, d) = getLabelValues l
 
 instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Maybe t)) where
   makeAppCommArg _ =
     (makeAppCommArg (Proxy :: Proxy (Labelled name desc t)))
-      { applicationCommandOptionValueRequired = Just False
+      { applicationCommandOptionValueRequired = False
       }
 
 instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Quoted t)) where
@@ -303,36 +305,40 @@ class ProcessAppComm commandty s where
   processAppComm :: commandty -> Interaction -> EnvDatabaseDiscord s ()
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
+-- One base case
 instance {-# OVERLAPPING #-} ProcessAppComm (EnvDatabaseDiscord s MessageDetails) s where
   processAppComm comm i = comm >>= interactionResponseCustomMessage i
 
+-- One simple recursive case
 instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (Interaction -> pac) s where
   processAppComm comm i = processAppComm (comm i) i
 
-instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s, ProcessAppCommArg ty s) => ProcessAppComm (ty -> pac) s where
-  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = Just InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = (Just (InteractionDataApplicationCommandOptionsValues values))}} = do
+-- one overarching recursive case
+instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => ProcessAppComm (ty -> pac) s where
+  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = (Just (InteractionDataApplicationCommandOptionsValues values))}} = do
     t <- processAppCommArg values
     processAppComm (comm t) i
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
+-- one specific implementation case
 instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (ParseUserId -> pac) s where
-  processAppComm comm i@InteractionApplicationCommand {} =
+  processAppComm comm i@InteractionApplicationCommand {interactionUser = MemberOrUser u} =
     case getUser of
       Nothing -> throwBot $ InteractionException "could not process args to application command"
       Just uid -> processAppComm (comm (ParseUserId uid)) i
     where
-      getUser = userId <$> maybe (interactionUser i) memberUser (interactionMember i)
+      getUser = userId <$> either memberUser Just u
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
 class ProcessAppCommArg t s where
   processAppCommArg :: [InteractionDataApplicationCommandOptionValue] -> EnvDatabaseDiscord s t
 
-getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe ApplicationCommandInteractionDataValue
-getValue t is = interactionDataApplicationCommandOptionValueValue <$> find ((== pack t) . interactionDataApplicationCommandOptionValueName) is
+getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe InteractionDataApplicationCommandOptionValue
+getValue t = find ((== pack t) . interactionDataApplicationCommandOptionValueName)
 
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
-    Just (ApplicationCommandInteractionDataValueString t) -> return $ labelValue t
+    Just (InteractionDataApplicationCommandOptionValueString _ (Right t)) -> return $ labelValue t
     _ -> throwBot $ InteractionException "could not find required parameter"
 
 instance (KnownSymbol name, KnownSymbol desc, ProcessAppCommArg (Labelled name desc t) s) => ProcessAppCommArg (Labelled name desc (Quoted t)) s where
@@ -363,7 +369,7 @@ processComponentInteraction f = processComponentInteraction' (parseComm f)
 -- The format of the Text being given should be of space separated values,
 -- similar to the command structure.
 processComponentInteraction' :: Parser (Interaction -> EnvDatabaseDiscord s MessageDetails) -> Bool -> Interaction -> EnvDatabaseDiscord s ()
-processComponentInteraction' compParser updateOriginal i@InteractionComponent {interactionDataComponent = Just idc} = errorCatch $ do
+processComponentInteraction' compParser updateOriginal i@InteractionComponent {interactionDataComponent = idc} = errorCatch $ do
   let componentSend
         | updateOriginal = interactionResponseComponentsUpdateMessage i
         | otherwise = interactionResponseCustomMessage i
@@ -384,7 +390,7 @@ processComponentInteraction' _ _ _ = throwBot $ InteractionException "could not 
 onlyAllowRequestor :: forall f. (PComm f () Interaction MessageDetails) => f -> Parser (Interaction -> DatabaseDiscord MessageDetails)
 onlyAllowRequestor =
   onlyAllowRequestor'
-    ( (messageDetailsBasic "You don't have permission to use this component.") {messageDetailsFlags = Just $ InteractionCallbackDataFlags [InteractionCallbackDataFlagEphermeral]}
+    ( (messageDetailsBasic "You don't have permission to use this component.") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
     )
 
 -- | Take a message to send when a user that is not the one that created a

@@ -385,7 +385,7 @@ removeApplicationCommandsNotInList aid gid aciToKeep = do
 -- 15 minutes (from 3 seconds).
 interactionResponseDefer :: Interaction -> EnvDatabaseDiscord s ()
 interactionResponseDefer i = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeDeferredChannelMessageWithSource Nothing)
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) InteractionResponseDeferChannelMessage
   case res of
     Left _ -> throw $ InteractionException "Failed to defer interaction."
     Right _ -> return ()
@@ -397,7 +397,7 @@ interactionResponseDefer i = do
 -- thinking about the interaction.
 interactionResponseDeferUpdateMessage :: Interaction -> EnvDatabaseDiscord s ()
 interactionResponseDeferUpdateMessage i = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeDeferredUpdateMessage Nothing)
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) InteractionResponseDeferUpdateMessage
   case res of
     Left _ -> throw $ InteractionException "Failed to defer interaction."
     Right _ -> return ()
@@ -409,7 +409,7 @@ interactionResponseMessage i t = interactionResponseCustomMessage i (messageDeta
 -- | Respond to the given interaction with a custom messages object.
 interactionResponseCustomMessage :: Interaction -> MessageDetails -> EnvDatabaseDiscord s ()
 interactionResponseCustomMessage i t = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeChannelMessageWithSource (Just $ InteractionCallbackDataMessages $ convertMessageFormatInteraction t))
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponseChannelMessage (convertMessageFormatInteraction t))
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction."
     Right _ -> return ()
@@ -417,15 +417,15 @@ interactionResponseCustomMessage i t = do
 -- | Respond to the given interaction by updating the component's message.
 interactionResponseComponentsUpdateMessage :: Interaction -> MessageDetails -> EnvDatabaseDiscord s ()
 interactionResponseComponentsUpdateMessage i t = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeUpdateMessage (Just $ InteractionCallbackDataMessages $ convertMessageFormatInteraction t))
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponseUpdateMessage (convertMessageFormatInteraction t))
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction with components update."
     Right _ -> return ()
 
 -- | Respond to the given interaction by sending a list of choices back.
-interactionResponseAutocomplete :: Interaction -> InteractionCallbackAutocomplete -> EnvDatabaseDiscord s ()
+interactionResponseAutocomplete :: Interaction -> InteractionResponseAutocomplete -> EnvDatabaseDiscord s ()
 interactionResponseAutocomplete i ac = do
-  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponse InteractionCallbackTypeApplicationCommandAutocompleteResult (Just $ InteractionCallbackDataAutocomplete ac))
+  res <- liftDiscord $ restCall $ R.CreateInteractionResponse (interactionId i) (interactionToken i) (InteractionResponseAutocompleteResult ac)
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction with autocomplete response."
     Right _ -> return ()
