@@ -389,6 +389,21 @@ quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataAppl
     vals = interactionDataApplicationCommandOptionSubcommandOptions subc
     handleNothing Nothing _ = return ()
     handleNothing (Just a) f = f a
+quoteApplicationCommandRecv i@InteractionApplicationCommandAutocomplete {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
+  "show" -> 
+    handleNothing
+      (getValue "id" vals)
+      ( \case
+          InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+          InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> 
+            -- interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+          _ -> return ()
+      )
+  where
+    subcname = interactionDataApplicationCommandOptionSubcommandName subc
+    vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+    handleNothing Nothing _ = return ()
+    handleNothing (Just a) f = f a
 quoteApplicationCommandRecv _ = return ()
 
 showQuoteHelp :: HelpPage
