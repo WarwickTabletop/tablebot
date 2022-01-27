@@ -77,6 +77,7 @@ eventHandler pl prefix = \case
   MessageReactionRemoveEmoji _rri -> pure ()
   InteractionCreate i@InteractionComponent {} -> parseComponentRecv (compiledOnComponentRecvs pl) i `interactionErrorCatch` i
   InteractionCreate i@InteractionApplicationCommand {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
+  InteractionCreate i@InteractionApplicationCommandAutocomplete {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
   -- TODO: add application command autocomplete as an option
   e -> parseOther (compiledOtherEvents pl) e
   where

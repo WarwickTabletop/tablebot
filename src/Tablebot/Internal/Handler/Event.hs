@@ -77,6 +77,13 @@ parseApplicationCommandRecv info@InteractionApplicationCommand {interactionDataA
   case action of
     Nothing -> throwBot $ InteractionException "could not find the given application command"
     Just act -> changeAction () $ act info
+parseApplicationCommandRecv info@InteractionApplicationCommandAutocomplete {interactionDataApplicationCommand = idac} = do
+  tvar <- ask
+  cache <- liftIO $ readMVar tvar
+  let action = UT.cacheApplicationCommands cache M.!? interactionDataApplicationCommandId idac
+  case action of
+    Nothing -> throwBot $ InteractionException "could not find the given application command"
+    Just act -> changeAction () $ act info
 parseApplicationCommandRecv _ = return ()
 
 -- | This runs each 'Other' feature in @cs@ with the Discord 'Event' provided.

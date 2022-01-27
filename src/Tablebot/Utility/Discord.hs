@@ -369,7 +369,7 @@ createApplicationCommand :: ApplicationId -> GuildId -> CreateApplicationCommand
 createApplicationCommand aid gid cac = do
   res <- restCall $ R.CreateGuildApplicationCommand aid gid cac
   case res of
-    Left _ -> throw $ InteractionException "Failed to create application command."
+    Left e -> throw $ InteractionException $ "Failed to create application command :" ++ show e
     Right a -> return a
 
 -- | Remove all application commands that are active in the given server that

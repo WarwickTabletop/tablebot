@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 -- |
@@ -15,12 +16,15 @@ module Tablebot.Plugins.Quote (quotePlugin) where
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Default (Default (def))
+import Data.Functor ((<&>))
 import Data.Maybe (catMaybes)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database.Persist.Sqlite (Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
 import Database.Persist.TH
+import Discord (restCall)
 import Discord.Interactions
+import qualified Discord.Internal.Rest.Interactions as R
 import Discord.Types
 import GHC.Generics (Generic)
 import GHC.Int (Int64)
@@ -117,7 +121,7 @@ thisQuote = Command "this" (parseComm thisComm) []
     thisComm = thisQ
 
 quoteMessageAppComm :: Maybe ApplicationCommandRecv
-quoteMessageAppComm = appcomm >>= return . (`ApplicationCommandRecv` recv)
+quoteMessageAppComm = appcomm <&> (`ApplicationCommandRecv` recv)
   where
     appcomm = createApplicationCommandMessage "quote"
     recv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandMessage {..}, ..} = do
@@ -128,11 +132,8 @@ quoteMessageAppComm = appcomm >>= return . (`ApplicationCommandRecv` recv)
           m <- getMessage cid mid
           case m of
             Left _ -> throwBot $ InteractionException "could not get message to quote"
-            Right msg -> interactionResponseCustomMessage i =<< addQ' (messageContent msg) (toMention $ messageAuthor msg) (toMention' $ parseUserId $ contextUserId i) mid cid i
+            Right msg -> interactionResponseCustomMessage i =<< fst <$> addQ' (messageContent msg) (toMention $ messageAuthor msg) (toMention' $ parseUserId $ contextUserId i) mid cid i
     recv _ = return def
-
--- return $ messageDetailsBasic (pack $ show idac)
--- content <-
 
 authorQuote :: Command
 authorQuote = Command "author" (parseComm authorComm) []
@@ -215,15 +216,15 @@ filteredRandomQuote' quoteFilter errorMessage m = do
 -- @!quote add "quoted text" - author@, and then stores said quote in the
 -- database, returning the ID used.
 addQ :: Text -> Text -> Message -> DatabaseDiscord MessageDetails
-addQ qu author m = addQ' qu author (toMention $ messageAuthor m) (messageId m) (messageChannelId m) m
+addQ qu author m = fst <$> addQ' qu author (toMention $ messageAuthor m) (messageId m) (messageChannelId m) m
 
-addQ' :: Context m => Text -> Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord MessageDetails
+addQ' :: Context m => Text -> Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord (MessageDetails, Int64)
 addQ' qu author requestor sourceMsg sourceChannel m = do
   now <- liftIO $ systemToUTCTime <$> getSystemTime
   let new = Quote qu author requestor (fromIntegral sourceMsg) (fromIntegral sourceChannel) now
   added <- insert new
   let res = pack $ show $ fromSqlKey added
-  renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m
+  renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m <&> (,fromSqlKey added)
 
 -- | @thisQuote@, which takes the replied message or the
 -- previous message and stores said message as a quote in the database,
@@ -318,6 +319,78 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = 
     maybeAddFooter (Just l) = "\n[source](" <> l <> ") - added by " <> submitter
     maybeAddFooter Nothing = ""
 
+quoteApplicationCommand :: CreateApplicationCommand
+quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and retrieve quotes" (Just opts) True
+  where
+    opts =
+      ApplicationCommandOptionsSubcommands $
+        ApplicationCommandOptionSubcommandOrGroupSubcommand
+          <$> [ addQuoteAppComm,
+                showQuoteAppComm,
+                randomQuoteAppComm
+              ]
+    addQuoteAppComm =
+      ApplicationCommandOptionSubcommand
+        "add"
+        "add a new quote"
+        [ ApplicationCommandOptionValueString "quote" "what the actual quote is" True (Left False),
+          ApplicationCommandOptionValueString "author" "who authored this quote" True (Left False)
+        ]
+    showQuoteAppComm =
+      ApplicationCommandOptionSubcommand
+        "show"
+        "show a quote by number"
+        [ ApplicationCommandOptionValueInteger "id" "the quote's number" True (Left True) (Just 1) Nothing
+        ]
+    randomQuoteAppComm =
+      ApplicationCommandOptionSubcommand
+        "random"
+        "show a random quote"
+        []
+
+quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
+quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
+  "random" -> randomQ i >>= interactionResponseCustomMessage i
+  "show" ->
+    handleNothing
+      (getValue "id" vals)
+      ( \case
+          InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> showQ (fromIntegral showid') i >>= interactionResponseCustomMessage i
+          _ -> return ()
+      )
+  "add" ->
+    handleNothing
+      (getValue "quote" vals >>= \q -> getValue "author" vals <&> (q,))
+      ( \(qt, author) -> do
+          let qt' = either id id $ interactionDataApplicationCommandOptionValueStringValue qt
+              author' = either id id $ interactionDataApplicationCommandOptionValueStringValue author
+              requestor = toMention' $ parseUserId $ contextUserId i
+          (msg, qid) <- addQ' qt' author' requestor 0 0 i
+          interactionResponseCustomMessage i msg
+          -- to get the message to display as wanted, we have to do some trickery
+          -- we have already sent off the message above with the broken message id
+          -- and channel id, but now we have sent off this message we can refer
+          -- to it! We just have to get that message, overwrite the quote, and
+          -- hope no one cares about the edit message
+          v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
+          case v of
+            Left _ -> return ()
+            Right m -> do
+              now <- liftIO $ systemToUTCTime <$> getSystemTime
+              let new = Quote qt' author' requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
+              replace (toSqlKey qid) new
+              newMsg <- renderCustomQuoteMessage (messageContent m) new qid i
+              _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
+              return ()
+      )
+  _ -> undefined
+  where
+    subcname = interactionDataApplicationCommandOptionSubcommandName subc
+    vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+    handleNothing Nothing _ = return ()
+    handleNothing (Just a) f = f a
+quoteApplicationCommandRecv _ = return ()
+
 showQuoteHelp :: HelpPage
 showQuoteHelp =
   HelpPage
@@ -341,10 +414,10 @@ randomQuoteHelp =
 authorQuoteHelp :: HelpPage
 authorQuoteHelp =
   HelpPage
-    "user"
+    "author"
     []
-    "show a random quote by a user"
-    "**Random User Quote**\nDisplays a random quote attributed to a particular user\n\n*Usage:* `quote user <author>`"
+    "show a random quote by a author"
+    "**Random User Quote**\nDisplays a random quote attributed to a particular author\n\n*Usage:* `quote author <author>`"
     []
     Superuser
 
@@ -415,7 +488,7 @@ quotePlugin =
       onReactionAdds = [quoteReactionAdd],
       migrations = [quoteMigration],
       helpPages = [quoteHelp],
-      applicationCommands = catMaybes [quoteMessageAppComm]
+      applicationCommands = [ApplicationCommandRecv quoteApplicationCommand quoteApplicationCommandRecv] ++ catMaybes [quoteMessageAppComm]
     }
 
 deriving instance Generic Quote
