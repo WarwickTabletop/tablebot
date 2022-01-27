@@ -24,7 +24,6 @@ import Data.List (intercalate)
 import Data.Text (pack)
 import Discord.Internal.Types
 import Tablebot.Utility.Embed
-import Tablebot.Utility.Types (DiscordColour (..))
 
 -- | @BotException@ is the type for errors caught in TableBot.
 -- Declare new errors here, and define them at the bottom of the file.
@@ -95,10 +94,10 @@ showUserError :: BotException -> String
 showUserError e = formatUserError (errorName e) (errorMsg e)
 
 -- | @embedError@ takes an error and makes it into an embed.
-embedError :: BotException -> Embed
+embedError :: BotException -> CreateEmbed
 embedError e =
   addTitle (pack $ errorEmoji ++ " **" ++ errorName e ++ "** " ++ errorEmoji) $
-    addColour Red $
+    addColour DiscordColorRed $
       simpleEmbed (pack $ errorMsg e)
 
 -- | @errorInfo@ takes a BotException and converts it into an ErrorInfo struct.

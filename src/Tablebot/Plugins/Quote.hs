@@ -281,7 +281,7 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = 
     sendEmbedMessage
       m
       t
-      ( addColour Blue $
+      ( addColour DiscordColorBlue $
           addTimestamp dtm $
             addFooter (pack $ "Quote #" ++ show qId) $
               simpleEmbed (txt <> "\n - " <> author <> maybeAddFooter link)
@@ -292,6 +292,21 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = 
     maybeAddFooter :: Maybe Text -> Text
     maybeAddFooter (Just l) = "\n[source](" <> l <> ") - added by " <> submitter
     maybeAddFooter Nothing = ""
+
+-- renderCustomQuoteMessage' :: Text -> Quote -> Int64 -> GuildId -> MessageDetails
+-- renderCustomQuoteMessage' t (Quote txt author submitter msgId cnlId dtm) qId gid = do
+--   (messageDetailsBasic t)
+--     { messageDetailsEmbeds =
+--         Just
+--           [ addColour DiscordColorBlue $
+--               addTimestamp dtm $
+--                 addFooter (pack $ "Quote #" ++ show qId) $
+--                   simpleEmbed (txt <> "\n - " <> author <> addFooter')
+--           ]
+--     }
+--   where
+--     link = getMessageLink gid (fromIntegral cnlId) (fromIntegral msgId)
+--     addFooter' = "\n[source](" <> link <> ") - added by " <> submitter
 
 showQuoteHelp :: HelpPage
 showQuoteHelp =

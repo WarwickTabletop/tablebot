@@ -16,7 +16,6 @@ import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.ByteString (ByteString)
-import Data.Char (toLower)
 import Data.Default (Default (def))
 import Data.Map (Map, empty)
 import Data.Maybe (fromMaybe)
@@ -32,7 +31,7 @@ import Discord.Types
     Attachment,
     ChannelId,
     ComponentActionRow,
-    Embed,
+    CreateEmbed,
     Emoji,
     Event (..),
     Message,
@@ -41,9 +40,7 @@ import Discord.Types
     ReactionInfo,
     StickerId,
   )
-import Safe.Exact (dropExactMay, takeExactMay)
 import Text.Megaparsec (Parsec)
-import Text.Read (readMaybe)
 
 -- * DatabaseDiscord
 
@@ -229,78 +226,6 @@ data HelpPage = HelpPage
   }
   deriving (Show)
 
--- | Colour names
--- Colour is a bit of a mess on discord embeds.
--- I've here stolen the pallet list from https://gist.github.com/thomasbnt/b6f455e2c7d743b796917fa3c205f812
-data DiscordColour
-  = RGB Integer Integer Integer
-  | Default
-  | Aqua
-  | DarkAqua
-  | Green
-  | DarkGreen
-  | Blue
-  | DarkBlue
-  | Purple
-  | DarkPurple
-  | LuminousVividPink
-  | DarkVividPink
-  | Gold
-  | DarkGold
-  | Orange
-  | DarkOrange
-  | Red
-  | DarkRed
-  | Gray
-  | DarkGray
-  | DarkerGray
-  | LightGray
-  | Navy
-  | DarkNavy
-  | Yellow
-  | DiscordWhite
-  | DiscordBlurple
-  | DiscordGrayple
-  | DiscordDarkButNotBlack
-  | DiscordNotQuiteBlack
-  | DiscordGreen
-  | DiscordYellow
-  | DiscordFuschia
-  | DiscordRed
-  | DiscordBlack
-
--- | @hexToRGB@ attempts to convert a potential hex string into its decimal RGB
--- components.
-hexToRGB :: String -> Maybe (Integer, Integer, Integer)
-hexToRGB hex = do
-  let h = map toLower hex
-  r <- takeExactMay 2 h >>= toDec
-  g <- dropExactMay 2 h >>= takeExactMay 2 >>= toDec
-  b <- dropExactMay 4 h >>= toDec
-  return (r, g, b)
-  where
-    toDec :: String -> Maybe Integer
-    toDec [s, u] = do
-      a <- charToDec s
-      b <- charToDec u
-      return $ a * 16 + b
-    toDec _ = Nothing
-    charToDec :: Char -> Maybe Integer
-    charToDec 'a' = Just 10
-    charToDec 'b' = Just 11
-    charToDec 'c' = Just 12
-    charToDec 'd' = Just 13
-    charToDec 'e' = Just 14
-    charToDec 'f' = Just 15
-    charToDec c = readMaybe [c]
-
--- | @hexToDiscordColour@ converts a potential hex string into a DiscordColour,
--- evaluating to Default if it fails.
-hexToDiscordColour :: String -> DiscordColour
-hexToDiscordColour hex =
-  let (r, g, b) = fromMaybe (0, 0, 0) $ hexToRGB hex
-   in RGB r g b
-
 -- | Automatic handling of command permissions
 -- @UserPermission@ models the current permissions of the user
 -- @RequiredPermission@ models the permissions required to run a command.
@@ -369,7 +294,7 @@ instance Default MessageDetails where
 data MessageDetails = MessageDetails
   { messageDetailsTTS :: Maybe Bool,
     messageDetailsContent :: Maybe Text,
-    messageDetailsEmbeds :: Maybe [Embed],
+    messageDetailsEmbeds :: Maybe [CreateEmbed],
     messageDetailsFile :: Maybe (Text, ByteString),
     messageDetailsAllowedMentions :: Maybe AllowedMentions,
     messageDetailsFlags :: Maybe InteractionResponseMessageFlags,
@@ -395,7 +320,7 @@ convertMessageFormatBasic MessageDetails {..} =
   MessageDetailedOpts
     (fromMaybe "" messageDetailsContent)
     (fromMaybe False messageDetailsTTS)
-    Nothing
+    messageDetailsEmbeds
     messageDetailsFile
     messageDetailsAllowedMentions
     messageDetailsReference

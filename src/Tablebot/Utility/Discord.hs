@@ -52,6 +52,7 @@ where
 
 import Control.Monad.Exception (MonadException (throw))
 import Data.Char (isDigit)
+import Data.Default (Default (def))
 import Data.Foldable (msum)
 import Data.List ((\\))
 import Data.Map.Strict (keys)
@@ -66,7 +67,7 @@ import qualified Discord.Requests as R
 import Discord.Types
 import GHC.Word (Word64)
 import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
-import Tablebot.Internal.Embed (Embeddable (..), TablebotEmbedRequest (TablebotEmbedRequest))
+import Tablebot.Internal.Embed (Embeddable (..))
 import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
 import Tablebot.Utility.Exception (BotException (..))
 
@@ -162,7 +163,7 @@ sendChannelEmbedMessage ::
   e ->
   EnvDatabaseDiscord s ()
 sendChannelEmbedMessage cid t e = do
-  res <- liftDiscord . restCall $ TablebotEmbedRequest cid t (asEmbed e)
+  res <- liftDiscord . restCall $ R.CreateMessageDetailed cid (def {R.messageDetailedContent = t, R.messageDetailedEmbeds = Just [asEmbed e]})
   case res of
     Left _ -> throw $ MessageSendException "Failed to send message."
     Right _ -> return ()
