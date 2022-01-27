@@ -24,7 +24,7 @@ import Discord.Types
 import GHC.OldList (find)
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 import Tablebot.Internal.Handler.Command (parseValue)
-import Tablebot.Utility.Discord (interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage)
+import Tablebot.Utility.Discord (getChannel, interactionResponseComponentsUpdateMessage, interactionResponseCustomMessage, sendCustomMessage)
 import Tablebot.Utility.Exception (BotException (InteractionException, ParserException), catchBot, embedError, throwBot)
 import Tablebot.Utility.Parser
 import Tablebot.Utility.Types
@@ -32,15 +32,35 @@ import Text.Megaparsec (MonadParsec (eof, try), chunk, many, optional, (<?>), (<
 
 class Context a where
   contextUserId :: a -> ParseUserId
+  contextGuildId :: a -> EnvDatabaseDiscord s (Maybe GuildId)
+  contextMember :: a -> Maybe GuildMember
+  contextMessageId :: a -> Maybe MessageId
 
 instance Context Message where
   contextUserId = ParseUserId . userId . messageAuthor
+  contextGuildId m = case messageGuildId m of
+    Just a -> pure $ Just a
+    Nothing -> do
+      let chanId = messageChannelId m
+      channel <- getChannel chanId
+      case fmap channelGuild channel of
+        Right a -> pure $ Just a
+        Left _ -> pure Nothing
+  contextMember = messageMember
+  contextMessageId = return . messageId
 
--- this is safe to do because we are guaranteed to get either a user or a member
 instance Context Interaction where
+  -- this is safe to do because we are guaranteed to get either a user or a member
   contextUserId i = ParseUserId $ maybe 0 userId (either memberUser Just mor)
     where
       (MemberOrUser mor) = interactionUser i
+  contextGuildId i = return $ interactionGuildId i
+  contextMember i = case interactionUser i of
+    (MemberOrUser (Left m)) -> return m
+    (MemberOrUser (Right _)) -> Nothing
+  contextMessageId InteractionComponent {interactionMessage = m} = return $ messageId m
+  contextMessageId InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandMessage {..}} = return interactionDataApplicationCommandTargetId
+  contextMessageId _ = Nothing
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
 -- by composing a parser per input of the function provided.
@@ -232,7 +252,7 @@ newtype RestOfInput1 a = ROI1 a
 instance IsString a => CanParse (RestOfInput1 a) where
   pars = ROI1 . fromString <$> untilEnd1
 
-newtype ParseUserId = ParseUserId UserId
+newtype ParseUserId = ParseUserId {parseUserId :: UserId}
 
 -- | Labelled value for use with smart commands.
 newtype Labelled (name :: Symbol) (desc :: Symbol) a = Labelled a

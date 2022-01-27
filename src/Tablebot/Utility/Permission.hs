@@ -9,15 +9,15 @@
 -- This contains a simple interface for plugin authors to require a specific level of privilege.
 module Tablebot.Utility.Permission where
 
-import Discord.Internal.Rest (Message)
 import Tablebot.Internal.Permission
-import Tablebot.Utility.Discord (sendMessage)
+import Tablebot.Utility.Exception (BotException (PermissionException), throwBot)
+import Tablebot.Utility.SmartParser (Context)
 import Tablebot.Utility.Types
 
 -- | @requirePermission@ only runs the inputted effect if permissions are matched. Otherwise it returns an error.
-requirePermission :: RequiredPermission -> Message -> EnvDatabaseDiscord s () -> EnvDatabaseDiscord s ()
+requirePermission :: Context m => RequiredPermission -> m -> EnvDatabaseDiscord s a -> EnvDatabaseDiscord s a
 requirePermission perm m a = do
   p <- getSenderPermission m
   if userHasPermission perm p
     then a
-    else sendMessage m "Sorry, you don't have permission to do that."
+    else throwBot $ PermissionException "Sorry, you don't have permission to do that."

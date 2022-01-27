@@ -37,6 +37,7 @@ data BotException
   | IOException String
   | NetrunnerException String
   | InteractionException String
+  | PermissionException String
   deriving (Show, Eq)
 
 instance Exception BotException
@@ -127,3 +128,4 @@ errorInfo (EvaluationException msg' locs) = ErrorInfo "EvaluationException" $ ms
 errorInfo (IOException msg') = ErrorInfo "IOException" msg'
 errorInfo (NetrunnerException msg') = ErrorInfo "NetrunnerException" msg'
 errorInfo (InteractionException msg') = ErrorInfo "InteractionException" msg'
+errorInfo (PermissionException msg') = ErrorInfo "InteractionException" msg'

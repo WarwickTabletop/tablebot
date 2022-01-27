@@ -10,9 +10,9 @@
 module Tablebot.Internal.Permission where
 
 import Control.Monad.IO.Class (liftIO)
-import Discord.Types (GuildMember, Message, RoleId, memberRoles)
+import Discord.Types (GuildMember, RoleId, memberRoles)
 import System.Environment (lookupEnv)
-import Tablebot.Utility.Discord (getMessageMember)
+import Tablebot.Utility.SmartParser (Context (contextMember))
 import Tablebot.Utility.Types
 import Tablebot.Utility.Utils (isDebug)
 import Text.Read (readMaybe)
@@ -57,9 +57,16 @@ permsFromGroups debug krls gps =
     elemish (Just a) b = a `elem` b
     elemish Nothing _ = False
 
-getSenderPermission :: Message -> EnvDatabaseDiscord s UserPermission
+-- getSenderPermission :: Message -> EnvDatabaseDiscord s UserPermission
+-- getSenderPermission m = do
+--   member <- getMessageMember m
+--   knownroles <- liftIO getKnownRoles
+--   debug <- liftIO isDebug
+--   return $ permsFromGroups debug knownroles $ getMemberGroups member
+
+getSenderPermission :: Context m => m -> EnvDatabaseDiscord s UserPermission
 getSenderPermission m = do
-  member <- getMessageMember m
+  let member = contextMember m
   knownroles <- liftIO getKnownRoles
   debug <- liftIO isDebug
   return $ permsFromGroups debug knownroles $ getMemberGroups member

@@ -19,6 +19,7 @@ module Tablebot.Utility.Discord
     reactToMessage,
     findGuild,
     findEmoji,
+    getChannel,
     getMessage,
     getMessageMember,
     getReplyMessage,
