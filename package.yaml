@@ -59,6 +59,7 @@ dependencies:
 - unliftio
 - split
 - regex-pcre
+- scientific
 
 library:
   source-dirs: src

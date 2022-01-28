@@ -17,6 +17,7 @@ module Tablebot.Utility.SmartParser where
 import Control.Monad.Exception (MonadException (catch))
 import Data.Default (Default (def))
 import Data.Proxy (Proxy (..))
+import Data.Scientific
 import Data.String (IsString (fromString))
 import Data.Text (Text, pack)
 import Discord.Interactions
@@ -355,6 +356,18 @@ class ProcessAppCommArg t s where
 
 getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe InteractionDataApplicationCommandOptionValue
 getValue t = find ((== pack t) . interactionDataApplicationCommandOptionValueName)
+
+integerFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Integer
+integerFromOptionValue InteractionDataApplicationCommandOptionValueInteger {interactionDataApplicationCommandOptionValueIntegerValue = Right i} = Just i
+integerFromOptionValue _ = Nothing
+
+scientificFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Scientific
+scientificFromOptionValue InteractionDataApplicationCommandOptionValueNumber {interactionDataApplicationCommandOptionValueNumberValue = Right i} = Just i
+scientificFromOptionValue _ = Nothing
+
+stringFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Text
+stringFromOptionValue InteractionDataApplicationCommandOptionValueString {interactionDataApplicationCommandOptionValueStringValue = Right i} = Just i
+stringFromOptionValue _ = Nothing
 
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of

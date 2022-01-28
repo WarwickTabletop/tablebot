@@ -62,7 +62,7 @@ parseReactionDel cs info = mapM_ doReactionAdd cs
 parseComponentRecv :: [CompiledComponentRecv] -> Interaction -> CompiledDatabaseDiscord ()
 parseComponentRecv cs info@InteractionComponent {interactionDataComponent = idc} = mapM_ removePrefix cs'
   where
-    getPrefix ccr = componentPluginName ccr <> componentName ccr
+    getPrefix ccr = componentPluginName ccr <> " " <> componentName ccr
     cs' = filter (\ccr -> getPrefix ccr `isPrefixOf` interactionDataComponentCustomId idc) cs
     removePrefix ccr = ccr `onComponentRecv` (info {interactionDataComponent = (idc {interactionDataComponentCustomId = T.drop (T.length (getPrefix ccr)) (interactionDataComponentCustomId idc)})})
 parseComponentRecv _ _ = return ()

@@ -69,7 +69,7 @@ rollDice' e t u@(ParseUserId uid) = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ (mkButton "Reroll" ((("rollreroll " <> pack (show uid)) `appendIf` e) `appendIf` t)) {componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False))}
+                  [ (mkButton "Reroll" ((("roll reroll " <> pack (show uid)) `appendIf` e) `appendIf` t)) {componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False))}
                   ]
               ]
         }

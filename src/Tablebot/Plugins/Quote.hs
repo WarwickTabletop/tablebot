@@ -182,12 +182,22 @@ showQ qId m = do
 -- | @randomQuote@, which looks for a message of the form @!quote random@,
 -- selects a random quote from the database and responds with that quote.
 randomQ :: Context m => m -> DatabaseDiscord MessageDetails
-randomQ = filteredRandomQuote [] "Couldn't find any quotes!"
+randomQ c = filteredRandomQuote [] "Couldn't find any quotes!" c >>= \m -> return (m {messageDetailsComponents = Just [ComponentActionRowButton [randomButton]]})
+  where
+    randomButton = mkButton "Random quote" "quote random"
+
+randomQuoteComponentRecv :: ComponentRecv
+randomQuoteComponentRecv = ComponentRecv "random" (processComponentInteraction (randomQ @Interaction) True)
 
 -- | @authorQuote@, which looks for a message of the form @!quote author u@,
 -- selects a random quote from the database attributed to u and responds with that quote.
 authorQ :: Context m => Text -> m -> DatabaseDiscord MessageDetails
-authorQ t = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!"
+authorQ t c = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!" c >>= \m -> return (m {messageDetailsComponents = Just [ComponentActionRowButton [authorButton]]})
+  where
+    authorButton = mkButton "Random author quote" ("quote author " <> t)
+
+authorQuoteComponentRecv :: ComponentRecv
+authorQuoteComponentRecv = ComponentRecv "author" (processComponentInteraction (\(ROI t) -> (authorQ @Interaction t)) True)
 
 -- | @filteredRandomQuote@ selects a random quote that meets a
 -- given criteria, and returns that as the response, sending the user a message if the
@@ -329,7 +339,8 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
         ApplicationCommandOptionSubcommandOrGroupSubcommand
           <$> [ addQuoteAppComm,
                 showQuoteAppComm,
-                randomQuoteAppComm
+                randomQuoteAppComm,
+                authorQuoteAppComm
               ]
     addQuoteAppComm =
       ApplicationCommandOptionSubcommand
@@ -349,25 +360,31 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
         "random"
         "show a random quote"
         []
+    authorQuoteAppComm =
+      ApplicationCommandOptionSubcommand
+        "author"
+        "show a random quote by an author"
+        [ApplicationCommandOptionValueString "author" "whose quotes do you want to see" True (Left False)]
 
 quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
 quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
   "random" -> randomQ i >>= interactionResponseCustomMessage i
+  "author" ->
+    handleNothing
+      (getValue "author" vals >>= stringFromOptionValue)
+      ( \author -> authorQ author i >>= interactionResponseCustomMessage i
+      )
   "show" ->
     handleNothing
-      (getValue "id" vals)
-      ( \case
-          InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> showQ (fromIntegral showid') i >>= interactionResponseCustomMessage i
-          _ -> return ()
+      (getValue "id" vals >>= integerFromOptionValue)
+      ( \showid -> showQ (fromIntegral showid) i >>= interactionResponseCustomMessage i
       )
   "add" ->
     handleNothing
-      (getValue "quote" vals >>= \q -> getValue "author" vals <&> (q,))
+      ((getValue "quote" vals >>= stringFromOptionValue) >>= \q -> (getValue "author" vals >>= stringFromOptionValue) <&> (q,))
       ( \(qt, author) -> do
-          let qt' = either id id $ interactionDataApplicationCommandOptionValueStringValue qt
-              author' = either id id $ interactionDataApplicationCommandOptionValueStringValue author
-              requestor = toMention' $ parseUserId $ contextUserId i
-          (msg, qid) <- addQ' qt' author' requestor 0 0 i
+          let requestor = toMention' $ parseUserId $ contextUserId i
+          (msg, qid) <- addQ' qt author requestor 0 0 i
           interactionResponseCustomMessage i msg
           -- to get the message to display as wanted, we have to do some trickery
           -- we have already sent off the message above with the broken message id
@@ -379,7 +396,7 @@ quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataAppl
             Left _ -> return ()
             Right m -> do
               now <- liftIO $ systemToUTCTime <$> getSystemTime
-              let new = Quote qt' author' requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
+              let new = Quote qt author requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
               replace (toSqlKey qid) new
               newMsg <- renderCustomQuoteMessage (messageContent m) new qid i
               _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
@@ -509,7 +526,8 @@ quotePlugin =
       onReactionAdds = [quoteReactionAdd],
       migrations = [quoteMigration],
       helpPages = [quoteHelp],
-      applicationCommands = [ApplicationCommandRecv quoteApplicationCommand quoteApplicationCommandRecv] ++ catMaybes [quoteMessageAppComm]
+      applicationCommands = [ApplicationCommandRecv quoteApplicationCommand quoteApplicationCommandRecv] ++ catMaybes [quoteMessageAppComm],
+      onComponentRecvs = [randomQuoteComponentRecv, authorQuoteComponentRecv]
     }
 
 deriving instance Generic Quote
