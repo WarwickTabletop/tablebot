@@ -134,7 +134,7 @@ quoteMessageAppComm = appcomm <&> (`ApplicationCommandRecv` recv)
           m <- getMessage cid mid
           case m of
             Left _ -> throwBot $ InteractionException "could not get message to quote"
-            Right msg -> interactionResponseCustomMessage i =<< fst <$> addQ' (messageContent msg) (toMention $ messageAuthor msg) (toMention' $ parseUserId $ contextUserId i) mid cid i
+            Right msg -> interactionResponseCustomMessage i =<< addMessageQuote (parseUserId $ contextUserId i) msg i
     recv _ = return def
 
 authorQuote :: Command
@@ -262,8 +262,8 @@ addMessageQuote submitter q' m = do
           added <- insert new
           let res = pack $ show $ fromSqlKey added
           renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m
-        else return $ messageDetailsBasic "Can't quote a bot"
-    else return $ messageDetailsBasic "Message already quoted"
+        else return $ (messageDetailsBasic "Can't quote a bot") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
+    else return $ (messageDetailsBasic "Message already quoted") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
 
 -- | @editQuote@, which looks for a message of the form
 -- @!quote edit n "quoted text" - author@, and then updates quote with id n in the
