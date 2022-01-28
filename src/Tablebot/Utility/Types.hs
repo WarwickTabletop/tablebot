@@ -23,7 +23,13 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
 import Discord (DiscordHandler)
-import Discord.Interactions (CreateApplicationCommand, Interaction, InteractionResponseMessage (InteractionResponseMessage), InteractionResponseMessageFlags)
+import Discord.Interactions
+  ( CreateApplicationCommand,
+    Interaction,
+    InteractionResponseMessage (InteractionResponseMessage),
+    InteractionResponseMessageFlag (..),
+    InteractionResponseMessageFlags (..),
+  )
 import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
 import Discord.Types
   ( AllowedMentions,
@@ -303,6 +309,9 @@ data MessageDetails = MessageDetails
     messageDetailsAttachments :: Maybe [Attachment],
     messageDetailsStickerIds :: Maybe [StickerId]
   }
+
+makeEphermeral :: MessageDetails -> MessageDetails
+makeEphermeral m = m {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
 
 convertMessageFormatInteraction :: MessageDetails -> InteractionResponseMessage
 convertMessageFormatInteraction MessageDetails {..} =

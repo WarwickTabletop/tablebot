@@ -17,7 +17,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Default (Default (def))
 import Data.Functor ((<&>))
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
@@ -197,7 +197,7 @@ authorQ t c = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes 
     authorButton = mkButton "Random author quote" ("quote author " <> t)
 
 authorQuoteComponentRecv :: ComponentRecv
-authorQuoteComponentRecv = ComponentRecv "author" (processComponentInteraction (\(ROI t) -> (authorQ @Interaction t)) True)
+authorQuoteComponentRecv = ComponentRecv "author" (processComponentInteraction (\(ROI t) -> authorQ @Interaction t) True)
 
 -- | @filteredRandomQuote@ selects a random quote that meets a
 -- given criteria, and returns that as the response, sending the user a message if the
@@ -272,25 +272,28 @@ addMessageQuote submitter q' m = do
           added <- insert new
           let res = pack $ show $ fromSqlKey added
           renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m
-        else return $ (messageDetailsBasic "Can't quote a bot") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
-    else return $ (messageDetailsBasic "Message already quoted") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
+        else return $ makeEphermeral (messageDetailsBasic "Can't quote a bot")
+    else return $ makeEphermeral (messageDetailsBasic "Message already quoted")
 
 -- | @editQuote@, which looks for a message of the form
 -- @!quote edit n "quoted text" - author@, and then updates quote with id n in the
 -- database, to match the provided quote.
 editQ :: Int64 -> Text -> Text -> Message -> DatabaseDiscord ()
-editQ qId qu author m =
+editQ qId qu author m = editQ' qId (Just qu) (Just author) (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) m >>= sendCustomMessage m
+
+editQ' :: Context m => Int64 -> Maybe Text -> Maybe Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord MessageDetails
+editQ' qId qu author requestor mid cid m =
   requirePermission Any m $
     let k = toSqlKey qId
      in do
-          oQu <- get k
+          (oQu :: Maybe Quote) <- get k
           case oQu of
-            Just Quote {} -> do
+            Just (Quote qu' author' _ _ _ _) -> do
               now <- liftIO $ systemToUTCTime <$> getSystemTime
-              let new = Quote qu author (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
+              let new = Quote (fromMaybe qu' qu) (fromMaybe author' author) requestor (fromIntegral mid) (fromIntegral cid) now
               replace k new
-              renderCustomQuoteMessage "Quote updated" new qId m >>= sendCustomMessage m
-            Nothing -> sendMessage m "Couldn't update that quote!"
+              renderCustomQuoteMessage "Quote updated" new qId m
+            Nothing -> return $ messageDetailsBasic "Couldn't update that quote!"
 
 -- | @deleteQuote@, which looks for a message of the form @!quote delete n@,
 -- and removes it from the database.
@@ -340,7 +343,8 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
           <$> [ addQuoteAppComm,
                 showQuoteAppComm,
                 randomQuoteAppComm,
-                authorQuoteAppComm
+                authorQuoteAppComm,
+                editQuoteAppComm
               ]
     addQuoteAppComm =
       ApplicationCommandOptionSubcommand
@@ -365,6 +369,14 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
         "author"
         "show a random quote by an author"
         [ApplicationCommandOptionValueString "author" "whose quotes do you want to see" True (Left False)]
+    editQuoteAppComm =
+      ApplicationCommandOptionSubcommand
+        "edit"
+        "edit a quote"
+        [ ApplicationCommandOptionValueInteger "quoteid" "the id of the quote to edit" True (Left False) Nothing Nothing,
+          ApplicationCommandOptionValueString "quote" "what the actual quote is" False (Left False),
+          ApplicationCommandOptionValueString "author" "who authored this quote" False (Left False)
+        ]
 
 quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
 quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
@@ -402,7 +414,27 @@ quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataAppl
               _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
               return ()
       )
-  _ -> undefined
+  "edit" ->
+    handleNothing
+      (getValue "quoteid" vals >>= integerFromOptionValue)
+      ( \qid' -> do
+          let qid = fromIntegral qid'
+              qt = getValue "quote" vals >>= stringFromOptionValue
+              author = getValue "author" vals >>= stringFromOptionValue
+          case (qt, author) of
+            (Nothing, Nothing) -> interactionResponseCustomMessage i (makeEphermeral (messageDetailsBasic "No edits made to quote."))
+            _ -> do
+              msg <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) 0 0 i
+              interactionResponseCustomMessage i msg
+              v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
+              case v of
+                Left _ -> return ()
+                Right m -> do
+                  msg' <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
+                  _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction msg')
+                  return ()
+      )
+  _ -> throwBot $ InteractionException "unexpected quote interaction"
   where
     subcname = interactionDataApplicationCommandOptionSubcommandName subc
     vals = interactionDataApplicationCommandOptionSubcommandOptions subc
