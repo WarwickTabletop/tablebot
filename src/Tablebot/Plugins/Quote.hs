@@ -20,7 +20,7 @@ import Data.Functor ((<&>))
 import Data.Maybe (catMaybes)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
-import Database.Persist.Sqlite (Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
+import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
 import Database.Persist.TH
 import Discord (restCall)
 import Discord.Interactions
@@ -36,6 +36,7 @@ import Tablebot.Utility.Discord
     getMessageLink,
     getPrecedingMessage,
     getReplyMessage,
+    interactionResponseAutocomplete,
     interactionResponseCustomMessage,
     sendCustomMessage,
     sendMessage,
@@ -45,6 +46,7 @@ import Tablebot.Utility.Discord
 import Tablebot.Utility.Embed
 import Tablebot.Utility.Exception (BotException (GenericException, InteractionException), catchBot, throwBot)
 import Tablebot.Utility.Permission (requirePermission)
+import Tablebot.Utility.Search
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ (r)
 
@@ -390,15 +392,19 @@ quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataAppl
     handleNothing Nothing _ = return ()
     handleNothing (Just a) f = f a
 quoteApplicationCommandRecv i@InteractionApplicationCommandAutocomplete {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
-  "show" -> 
+  "show" ->
     handleNothing
       (getValue "id" vals)
       ( \case
           InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
-          InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> 
-            -- interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+          InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> do
+            allQ <- allQuotes ()
+            let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
+                options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
+            interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) (toInteger qid)) <$> options)
           _ -> return ()
       )
+  _ -> return ()
   where
     subcname = interactionDataApplicationCommandOptionSubcommandName subc
     vals = interactionDataApplicationCommandOptionSubcommandOptions subc
@@ -513,8 +519,8 @@ instance FromJSON Quote
 instance ToJSON Quote
 
 -- | Get all the quotes in the database.
-allQuotes :: DatabaseDiscord [Quote]
-allQuotes = fmap entityVal <$> selectList [] []
+allQuotes :: () -> DatabaseDiscord [Entity Quote]
+allQuotes _ = selectList [] []
 
 -- | Export all the quotes in the database to either a default quotes file or to a given
 -- file name that is quoted in the command. Superuser only.
@@ -525,7 +531,7 @@ exportQ :: Maybe (Quoted FilePath) -> Message -> DatabaseDiscord ()
 exportQ qfp m = requirePermission Superuser m $ do
   let defFileName = getSystemTime >>= \now -> return $ "quotes_" <> show (systemSeconds now) <> ".json"
   (Qu fp) <- liftIO $ maybe (Qu <$> defFileName) return qfp
-  aq <- allQuotes
+  aq <- fmap entityVal <$> allQuotes ()
   _ <- liftIO $ encodeFile fp aq
   sendMessage m ("Succesfully exported all " <> (pack . show . length) aq <> " quotes to `" <> pack fp <> "`")
 
