@@ -21,6 +21,7 @@ import Data.Maybe (catMaybes)
 import Data.Set (singleton, toList)
 import Data.Text (Text)
 import Data.Void (Void)
+import Debug.Trace (trace)
 import Discord.Types (Message (messageText))
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
@@ -106,11 +107,12 @@ makeBundleReadable (ParseErrorBundle errs state) =
 -- This uses the Label hidden within each error to build an error message,
 -- as we have used labels to give parsers user-facing errors.
 makeReadable :: ParseError Text Void -> (ParseError Text ReadableError, Maybe String)
-makeReadable (TrivialError i _ good) =
-  let (lab, others) = getLabel (toList good)
-   in case lab of
-        Just l -> (FancyError i . singleton . ErrorCustom $ KnownError l others, Just l)
-        Nothing -> (FancyError i . singleton $ ErrorCustom UnknownError, Nothing)
+makeReadable te@(TrivialError i _ good) =
+  trace (show te) $
+    let (lab, others) = getLabel (toList good)
+     in case lab of
+          Just l -> (FancyError i . singleton . ErrorCustom $ KnownError l others, Just l)
+          Nothing -> (FancyError i . singleton $ ErrorCustom UnknownError, Nothing)
   where
     getLabel :: [ErrorItem (Token Text)] -> (Maybe String, [String])
     getLabel [] = (Nothing, [])

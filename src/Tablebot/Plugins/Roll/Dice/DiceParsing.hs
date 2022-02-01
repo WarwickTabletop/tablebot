@@ -1,3 +1,4 @@
+{-# LANGUAGE LiberalTypeSynonyms #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
@@ -28,7 +29,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace)
 import Tablebot.Utility.SmartParser (CanParse (..))
 import Tablebot.Utility.Types (Parser)
-import Text.Megaparsec (MonadParsec (observing, try), choice, failure, optional, (<?>), (<|>))
+import Text.Megaparsec (MonadParsec (observing, try), choice, failure, optional, some, (<?>), (<|>))
 import Text.Megaparsec.Char (char, string)
 import Text.Megaparsec.Error (ErrorItem (Tokens))
 
@@ -43,16 +44,42 @@ failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Token
     Left _ -> fail s
     Right a -> return a
 
+varName :: Parser T.Text
+varName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
+
+-- instance CanParse a => CanParse (Let a) where
+parseLet :: Parser (a -> Let a)
+parseLet = do
+  _ <- try (string "let") <* skipSpace
+  letCon <- try (char '!' $> LetLazy) <|> return Let
+  varName' <- varName
+  _ <- skipSpace >> char '=' >> skipSpace
+  return $ letCon varName'
+
+instance CanParse Statement where
+  pars =
+    ((LetList <$> (try (parseLet <*> pars) >>= \l@(Let t _) -> if T.isPrefixOf "l_" t then return l else fail "list variables must be prepended with l_")) <|> LetExpr <$> (parseLet <*> pars)) <* skipSpace <* char ';' <* skipSpace
+
+-- do
+-- letP <- parseLet :: Parser (forall a. a -> Let a)
+-- val <- (Left <$> pars <|> Right <$> pars) <* skipSpace <* char ';' <* skipSpace
+-- return $ either (LetList . letP) (LetExpr . letP) val
+
+instance CanParse Program where
+  pars = pars >>= \ss -> Program ss <$> pars
+
 instance CanParse ListValues where
   pars =
     do
-      LVBase <$> pars
-      <|> functionParser listFunctions LVFunc
-      <|> ( do
-              nb <- pars
-              _ <- char '#'
-              MultipleValues nb <$> pars
-          )
+      functionParser listFunctions LVFunc
+      <|> LVBase <$> pars
+      <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
+
+-- ( do
+--         nb <- pars
+--         _ <- char '#'
+--         MultipleValues nb <$> pars
+--     )
 
 instance CanParse ListValuesBase where
   pars = do
@@ -64,6 +91,7 @@ instance CanParse ListValuesBase where
           )
       <|> LVBParen . unnest
       <$> pars
+      <|> (LVBVar . ("l_" <>) <$> try (string "l_" *> varName))
     where
       unnest (Paren (LVBase (LVBParen e))) = e
       unnest e = e
@@ -129,6 +157,7 @@ instance CanParse Base where
           --     <|> return (NBase nb)
     )
       <|> DiceBase <$> parseDice (Value 1)
+      <|> (Var <$> try varName)
 
 instance CanParse Die where
   pars = do

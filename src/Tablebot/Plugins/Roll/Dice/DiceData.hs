@@ -17,6 +17,12 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
+data Let a = Let Text a | LetLazy Text a
+
+data Statement = LetExpr (Let Expr) | LetList (Let ListValues)
+
+data Program = Program [Statement] (Either ListValues Expr)
+
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
   deriving (Show)
@@ -26,7 +32,7 @@ data ListValues = MultipleValues NumBase Base | LVFunc (FuncInfoBase [Integer]) 
   deriving (Show)
 
 -- | The type for basic list values (that can be used as is for custom dice).
-data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
+data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr] | LVBVar Text
   deriving (Show)
 
 -- | The type of the top level expression. Represents one of addition,
@@ -59,7 +65,7 @@ newtype Paren a = Paren a
   deriving (Show)
 
 -- | The type representing a numeric base value value or a dice value.
-data Base = NBase NumBase | DiceBase Dice
+data Base = NBase NumBase | DiceBase Dice | Var Text
   deriving (Show)
 
 -- Dice Operations after this point
@@ -165,3 +171,6 @@ instance Converter Dice Base where
 
 instance Converter Die Base where
   promote d = promote $ Dice (promote (1 :: Integer)) d Nothing
+
+instance Converter [Integer] ListValues where
+  promote = LVBase . LVBList . (promote <$>)

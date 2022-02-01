@@ -10,7 +10,6 @@
 module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO), void)
-import Data.Bifunctor (Bifunctor (first))
 import Data.ByteString.Lazy (toStrict)
 import Data.Distribution (isValid)
 import Data.Maybe (fromMaybe)
@@ -34,12 +33,10 @@ import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
+rollDice' :: Maybe Program -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
 rollDice' e' t m = do
-  let e = fromMaybe (Right defaultRoll) e'
-  (vs, ss) <- case e of
-    (Left a) -> liftIO $ first Left <$> evalList a
-    (Right b) -> liftIO $ first Right <$> evalInteger b
+  let e = fromMaybe (Program [] (Right defaultRoll)) e'
+  (vs, ss) <- liftIO $ evalProgram e
   let msg = makeMsg vs ss
   if countFormatting msg < 199
     then sendMessage m msg
@@ -62,11 +59,11 @@ rollDice' e' t m = do
 rollDiceParser :: Parser (Message -> DatabaseDiscord ())
 rollDiceParser = choice (try <$> options)
   where
-    justEither :: WithError "Incorrect expression/list value. Please check the expression" (Either ListValues Expr) -> Message -> DatabaseDiscord ()
+    justEither :: WithError "Incorrect expression/list value. Please check the expression" Program -> Message -> DatabaseDiscord ()
     justEither (WErr x) = rollDice' (Just x) Nothing
     nothingAtAll :: WithError "Expected eof" () -> Message -> DatabaseDiscord ()
     nothingAtAll (WErr _) = rollDice' Nothing Nothing
-    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Either ListValues Expr, Quoted Text) -> Message -> DatabaseDiscord ()
+    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Program, Quoted Text) -> Message -> DatabaseDiscord ()
     bothVals (WErr (x, y)) = rollDice' (Just x) (Just y)
     justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> Message -> DatabaseDiscord ()
     justText (WErr x) = rollDice' Nothing (Just x)
@@ -130,7 +127,7 @@ To see a full list of uses and options, please go to <https://github.com/Warwick
 genchar :: Command
 genchar = Command "genchar" (snd $ head rpgSystems') (toCommand <$> rpgSystems')
   where
-    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Left lv)) (Just (Qu ("genchar for " <> nm))))
+    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Program [] (Left lv))) (Just (Qu ("genchar for " <> nm))))
     rpgSystems' = doDiceRoll <$> rpgSystems
     toCommand (nm, ps) = Command nm ps []
 
