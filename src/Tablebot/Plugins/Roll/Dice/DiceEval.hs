@@ -20,7 +20,6 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.String (IsString (fromString))
 import Data.Text (Text, intercalate, pack, unpack)
 import qualified Data.Text as T
-import Debug.Trace (trace)
 import System.Random (randomRIO)
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
@@ -188,15 +187,16 @@ instance IOEvalList ListValues where
     return (vs, Nothing, rc)
   evalShowL' rngCount (LVFunc fi exprs) = evaluateFunction rngCount fi exprs >>= \(i, s, rc) -> return ((,"") <$> i, Just s, rc)
   evalShowL' rngCount (LVBase lvb) = evalShowL rngCount lvb
+  evalShowL' rngCount (LVVar t) = case M.lookup t (getVariables rngCount) of
+    Just (Left e) -> evalShowL rngCount e >>= \(i, _, rngCount') -> return (i, Just t, rngCount')
+    _ -> evaluationException ("could not find list variable `" <> t <> "`") []
+  evalShowL' rngCount (LVLet l) = evalShowL rngCount l
 
 instance IOEvalList ListValuesBase where
   evalShowL' rngCount (LVBList es) = do
     (vs, rc) <- evalShowList' rngCount es
     return (vs, Nothing, rc)
   evalShowL' rngCount (LVBParen (Paren lv)) = evalShowL rngCount lv
-  evalShowL' rngCount (LVBVar t) = case M.lookup t (getVariables rngCount) of
-    Just (Left e) -> evalShowL rngCount e >>= \(i, _, rngCount') -> return (i, Just t, rngCount')
-    _ -> evaluationException ("could not find list variable `" <> t <> "`") []
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
@@ -444,14 +444,14 @@ instance IOEvalList (Let ListValues) where
     return (v, Just (prettyShow l), addVariable rngCount' t (Left a))
 
 evalStatement :: ProgramState -> Statement -> IO (Text, ProgramState)
-evalStatement ps (LetExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
+evalStatement ps (StatementExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
   where
-    evalShowStatement l'@(Let _ _) = evalShow ps l'
-    evalShowStatement l'@(LetLazy t a) = return (0, prettyShow l', addVariable ps t (Right a))
-evalStatement ps (LetList l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
+    evalShowStatement (ExprLet l'@(LetLazy t a)) = return (0, prettyShow l', addVariable ps t (Right a))
+    evalShowStatement l' = evalShow ps l'
+evalStatement ps (StatementListValues l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
   where
-    evalShowStatement l'@(Let _ _) = evalShowL ps l'
-    evalShowStatement l'@(LetLazy t a) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
+    evalShowStatement (LVLet l'@(LetLazy t a)) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
+    evalShowStatement l' = evalShowL ps l'
 
 --- Pretty printing the AST
 -- The output from this should be parseable
@@ -469,11 +469,12 @@ instance PrettyShow ListValues where
   prettyShow (LVBase e) = prettyShow e
   prettyShow (MultipleValues nb b) = prettyShow nb <> "#" <> prettyShow b
   prettyShow (LVFunc s n) = funcInfoName s <> "(" <> intercalate "," (prettyShow <$> n) <> ")"
+  prettyShow (LVVar t) = t
+  prettyShow (LVLet l) = prettyShow l
 
 instance PrettyShow ListValuesBase where
   prettyShow (LVBList es) = "{" <> intercalate ", " (prettyShow <$> es) <> "}"
   prettyShow (LVBParen p) = prettyShow p
-  prettyShow (LVBVar t) = t
 
 instance PrettyShow Expr where
   prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
@@ -540,8 +541,8 @@ instance (PrettyShow a) => PrettyShow (Let a) where
   prettyShow (LetLazy t a) = "let !" <> t <> " = " <> prettyShow a
 
 instance PrettyShow Statement where
-  prettyShow (LetExpr l) = prettyShow l <> "; "
-  prettyShow (LetList l) = prettyShow l <> "; "
+  prettyShow (StatementExpr l) = prettyShow l <> "; "
+  prettyShow (StatementListValues l) = prettyShow l <> "; "
 
 instance PrettyShow Program where
   prettyShow (Program ss a) = foldr ((<>) . prettyShow) (prettyShow a) ss

@@ -17,9 +17,11 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
-data Let a = Let Text a | LetLazy Text a deriving (Show)
+data Let a = Let {letName :: Text, letValue :: a} | LetLazy {letName :: Text, letValue :: a} deriving (Show)
 
-data Statement = LetExpr (Let Expr) | LetList (Let ListValues) deriving (Show)
+-- data Statement = LetExpr (Let Expr) | LetList (Let ListValues) deriving (Show)
+
+data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
 
 data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
 
@@ -28,11 +30,11 @@ data ArgValue = AVExpr Expr | AVListValues ListValues
   deriving (Show)
 
 -- | The type for list values.
-data ListValues = MultipleValues NumBase Base | LVFunc (FuncInfoBase [Integer]) [ArgValue] | LVBase ListValuesBase
+data ListValues = MultipleValues NumBase Base | LVFunc (FuncInfoBase [Integer]) [ArgValue] | LVVar Text | LVLet (Let ListValues) | LVBase ListValuesBase
   deriving (Show)
 
 -- | The type for basic list values (that can be used as is for custom dice).
-data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr] | LVBVar Text
+data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
   deriving (Show)
 
 -- | The type of the top level expression. Represents one of addition,

@@ -47,18 +47,16 @@ failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Token
 varName :: Parser T.Text
 varName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
 
--- instance CanParse a => CanParse (Let a) where
-parseLet :: Parser (a -> Let a)
-parseLet = do
-  _ <- try (string "let") <* skipSpace
-  letCon <- try (char '!' $> LetLazy) <|> return Let
-  varName' <- varName
-  _ <- skipSpace >> char '=' >> skipSpace
-  return $ letCon varName'
+instance CanParse a => CanParse (Let a) where
+  pars = do
+    _ <- try (string "let") <* skipSpace
+    letCon <- try (char '!' $> LetLazy) <|> return Let
+    varName' <- varName
+    _ <- skipSpace >> char '=' >> skipSpace
+    letCon varName' <$> pars
 
 instance CanParse Statement where
-  pars =
-    ((LetList <$> (try (parseLet <*> pars) >>= \l@(Let t _) -> if T.isPrefixOf "l_" t then return l else fail "list variables must be prepended with l_")) <|> LetExpr <$> (parseLet <*> pars)) <* skipSpace <* char ';' <* skipSpace
+  pars = (StatementListValues <$> pars) <|> (StatementExpr <$> pars)
 
 {-
 -- alternative method to the above.
@@ -89,7 +87,13 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> LVBase <$> pars
+      <|> (LVVar . ("l_" <>) <$> try (string "l_" *> varName))
+      <|> (LVLet <$> (pars >>= checkLet))
       <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
+    where
+      checkLet l
+        | T.isPrefixOf "l_" (letName l) = return l
+        | otherwise = fail "list variables must be prepended with l_"
 
 -- ( do
 --         nb <- pars
@@ -107,7 +111,6 @@ instance CanParse ListValuesBase where
           )
       <|> LVBParen . unnest
       <$> pars
-      <|> (LVBVar . ("l_" <>) <$> try (string "l_" *> varName))
     where
       unnest (Paren (LVBase (LVBParen e))) = e
       unnest e = e
@@ -118,7 +121,7 @@ binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
 instance CanParse Expr where
   pars =
-    (ExprLet <$> (parseLet <*> pars)) <|> do
+    (ExprLet <$> pars) <|> do
       t <- pars
       binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
 
