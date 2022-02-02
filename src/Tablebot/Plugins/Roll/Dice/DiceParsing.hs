@@ -26,7 +26,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
     integerFunctions,
     listFunctions,
   )
-import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace)
+import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace, skipSpace1)
 import Tablebot.Utility.SmartParser (CanParse (..))
 import Tablebot.Utility.Types (Parser)
 import Text.Megaparsec (MonadParsec (observing, try), choice, failure, optional, some, (<?>), (<|>))
@@ -126,9 +126,19 @@ instance CanParse ListValuesBase where
 binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
 binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
+instance (CanParse a, CanParse b) => CanParse (If a b) where
+  pars = do
+    a <- string "if" *> skipSpace1 *> pars <* skipSpace1
+    t <- string "then" *> skipSpace1 *> pars <* skipSpace1
+    e <- string "else" *> skipSpace1 *> pars
+    return $ If a t e
+
+instance CanParse ExprMisc where
+  pars = (ExprLet <$> pars) <|> (ExprIfExpr <$> pars) <|> (ExprIfList <$> pars)
+
 instance CanParse Expr where
   pars =
-    (ExprLet <$> pars)
+    (ExprMisc <$> pars)
       <|> ( do
               t <- pars
               binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t

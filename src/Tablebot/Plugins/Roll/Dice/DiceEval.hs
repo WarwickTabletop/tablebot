@@ -378,9 +378,14 @@ binOpHelp rngCount a b opS op = do
   (b', b's, rngCount'') <- evalShow rngCount' b
   return (op a' b', a's <> " " <> opS <> " " <> b's, rngCount'')
 
+instance IOEval ExprMisc where
+  evalShow' rngCount (ExprLet l) = evalShow rngCount l
+  evalShow' rngCount (ExprIfExpr l) = evalShow rngCount l
+  evalShow' rngCount (ExprIfList l) = evalShow rngCount l
+
 instance IOEval Expr where
   evalShow' rngCount (NoExpr t) = evalShow rngCount t
-  evalShow' rngCount (ExprLet e) = evalShow rngCount e
+  evalShow' rngCount (ExprMisc e) = evalShow rngCount e
   evalShow' rngCount (Add t e) = binOpHelp rngCount t e "+" (+)
   evalShow' rngCount (Sub t e) = binOpHelp rngCount t e "-" (-)
 
@@ -446,12 +451,43 @@ instance IOEvalList (Let ListValues) where
 evalStatement :: ProgramState -> Statement -> IO (Text, ProgramState)
 evalStatement ps (StatementExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
   where
-    evalShowStatement (ExprLet l'@(LetLazy t a)) = return (0, prettyShow l', addVariable ps t (Right a))
+    evalShowStatement (ExprMisc (ExprLet l'@(LetLazy t a))) = return (0, prettyShow l', addVariable ps t (Right a))
     evalShowStatement l' = evalShow ps l'
 evalStatement ps (StatementListValues l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
   where
     evalShowStatement (LVLet l'@(LetLazy t a)) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
     evalShowStatement l' = evalShowL ps l'
+
+class GetTruth a where
+  getTruthy :: ProgramState -> a -> IO (Bool, ProgramState)
+
+instance GetTruth Expr where
+  getTruthy ps a = do
+    (i, _, ps') <- evalShow ps a
+    return (i /= 0, ps')
+
+instance GetTruth ListValues where
+  getTruthy ps a = do
+    (i, _, ps') <- evalShowL ps a
+    return (not $ null i, ps')
+
+instance GetTruth a => IOEval (If a Expr) where
+  evalShow' ps if'@(If b t e) = do
+    (i, ps') <- getTruthy ps b
+    (i', _, ps'') <-
+      if i
+        then evalShow ps' t
+        else evalShow ps' e
+    return (i', prettyShow if', ps'')
+
+instance GetTruth a => IOEvalList (If a ListValues) where
+  evalShowL' ps if'@(If b t e) = do
+    (i, ps') <- getTruthy ps b
+    (i', _, ps'') <-
+      if i
+        then evalShowL ps' t
+        else evalShowL ps' e
+    return (i', Just $ prettyShow if', ps'')
 
 --- Pretty printing the AST
 -- The output from this should be parseable
@@ -476,11 +512,16 @@ instance PrettyShow ListValuesBase where
   prettyShow (LVBList es) = "{" <> intercalate ", " (prettyShow <$> es) <> "}"
   prettyShow (LVBParen p) = prettyShow p
 
+instance PrettyShow ExprMisc where
+  prettyShow (ExprLet l) = prettyShow l
+  prettyShow (ExprIfExpr l) = prettyShow l
+  prettyShow (ExprIfList l) = prettyShow l
+
 instance PrettyShow Expr where
   prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
   prettyShow (Sub t e) = prettyShow t <> " - " <> prettyShow e
   prettyShow (NoExpr t) = prettyShow t
-  prettyShow (ExprLet e) = prettyShow e
+  prettyShow (ExprMisc e) = prettyShow e
 
 instance PrettyShow Term where
   prettyShow (Multi f t) = prettyShow f <> " * " <> prettyShow t
@@ -539,6 +580,9 @@ instance (PrettyShow a, PrettyShow b) => PrettyShow (Either a b) where
 instance (PrettyShow a) => PrettyShow (Let a) where
   prettyShow (Let t a) = "let " <> t <> " = " <> prettyShow a
   prettyShow (LetLazy t a) = "let !" <> t <> " = " <> prettyShow a
+
+instance (PrettyShow a, PrettyShow b) => PrettyShow (If a b) where
+  prettyShow (If b t e) = "if " <> prettyShow b <> " then " <> prettyShow t <> " else " <> prettyShow e
 
 instance PrettyShow Statement where
   prettyShow (StatementExpr l) = prettyShow l <> "; "

@@ -25,7 +25,6 @@ import Data.List (genericDrop, genericLength, genericTake, sort)
 import Data.Map as M (Map, fromList, keys)
 import Data.Maybe (fromJust)
 import Data.Text (Text, unpack)
-import Debug.Trace (trace)
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
 
 -- | The limit to how big a factorial value is permitted. Notably, the factorial
@@ -91,7 +90,7 @@ funcInfoIndex = FuncInfo "index" [ATInteger, ATIntegerList] ATInteger fiIndex
     fiIndex (LIInteger i : [LIList is])
       | i < 0 || i >= genericLength is = throwBot $ EvaluationException ("index out of range: " ++ show i) []
       | otherwise = return (is !! fromInteger i)
-    fiIndex is = trace (show is) throwBot $ EvaluationException ("incorrect number of arguments. expected 2, got " ++ show (length is)) []
+    fiIndex is = throwBot $ EvaluationException ("incorrect number of arguments. expected 2, got " ++ show (length is)) []
 
 -- | A data structure to contain the information about a given function,
 -- including types, the function name, and the function itself.

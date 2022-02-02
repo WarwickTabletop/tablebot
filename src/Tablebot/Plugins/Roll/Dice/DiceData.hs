@@ -19,7 +19,11 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
 data Let a = Let {letName :: Text, letValue :: a} | LetLazy {letName :: Text, letValue :: a} deriving (Show)
 
--- data Statement = LetExpr (Let Expr) | LetList (Let ListValues) deriving (Show)
+data If a b = If {ifCond :: a, thenValue :: b, elseValue :: b} deriving (Show)
+
+type IfExpr b = If Expr b
+
+type IfList b = If ListValues b
 
 data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
 
@@ -37,9 +41,13 @@ data ListValues = MultipleValues NumBase Base | LVFunc (FuncInfoBase [Integer]) 
 data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
   deriving (Show)
 
+-- | Miscellaneous expressions statements.
+data ExprMisc = ExprLet (Let Expr) | ExprIfExpr (IfExpr Expr) | ExprIfList (IfList Expr)
+  deriving (Show)
+
 -- | The type of the top level expression. Represents one of addition,
--- subtraction, or a single term.
-data Expr = ExprLet (Let Expr) | Add Term Expr | Sub Term Expr | NoExpr Term
+-- subtraction, or a single term; or some misc expression statement.
+data Expr = ExprMisc ExprMisc | Add Term Expr | Sub Term Expr | NoExpr Term
   deriving (Show)
 
 -- | The type representing multiplication, division, or a single negated term.
