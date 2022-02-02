@@ -20,6 +20,7 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.String (IsString (fromString))
 import Data.Text (Text, intercalate, pack, unpack)
 import qualified Data.Text as T
+import Debug.Trace (trace)
 import System.Random (randomRIO)
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
@@ -38,6 +39,7 @@ data ProgramState = ProgramState
   }
   deriving (Show)
 
+-- | Add the given variable to the `ProgramState`
 addVariable :: ProgramState -> Text -> Either ListValues Expr -> ProgramState
 addVariable (ProgramState i vs) t val = ProgramState i (M.insert t val vs)
 
@@ -73,6 +75,7 @@ evaluationException nm locs = throwBot $ EvaluationException (unpack nm) (unpack
 --     (i, t', ps') <- evalShowL ps e
 --     return (i, (t <>) <$> t', ps')
 
+-- | Evaluating a full program
 evalProgram :: Program -> IO (Either [(Integer, Text)] Integer, Text)
 evalProgram (Program ss elve) = do
   let rngCount = ProgramState 0 empty
@@ -140,7 +143,7 @@ evalShowList' = evalShowList'' evalShow
 -- | Evaluate (using a custom evaluator function) a series of values, getting
 -- strings and values as a result.
 evalShowList'' :: (ProgramState -> a -> IO (i, Text, ProgramState)) -> ProgramState -> [a] -> IO ([(i, Text)], ProgramState)
-evalShowList'' customEvalShow rngCount = foldr foldF (return ([], rngCount))
+evalShowList'' customEvalShow rngCount as = foldl' (flip foldF) (return ([], rngCount)) as >>= \(lst, ps) -> return (reverse lst, ps)
   where
     foldF a sumrngcount = do
       (diceSoFar, rngCountTotal) <- sumrngcount
@@ -377,6 +380,7 @@ binOpHelp rngCount a b opS op = do
 
 instance IOEval Expr where
   evalShow' rngCount (NoExpr t) = evalShow rngCount t
+  evalShow' rngCount (ExprLet e) = evalShow rngCount e
   evalShow' rngCount (Add t e) = binOpHelp rngCount t e "+" (+)
   evalShow' rngCount (Sub t e) = binOpHelp rngCount t e "-" (-)
 
@@ -429,7 +433,7 @@ instance IOEval (Let Expr) where
     return (v, "let " <> t <> " = " <> lt, addVariable rngCount' t (Right $ promote v))
   evalShow' rngCount l@(LetLazy t a) = do
     (v, _, rngCount') <- evalShow rngCount a
-    return (v, prettyShow l, addVariable rngCount' t (Right a))
+    return $ v `seq` (v, prettyShow l, addVariable rngCount' t (Right a))
 
 instance IOEvalList (Let ListValues) where
   evalShowL' rngCount l@(Let t a) = do
@@ -440,10 +444,14 @@ instance IOEvalList (Let ListValues) where
     return (v, Just (prettyShow l), addVariable rngCount' t (Left a))
 
 evalStatement :: ProgramState -> Statement -> IO (Text, ProgramState)
-evalStatement ps (LetExpr l) = evalShow ps l >>= \(_, t, ps') -> return (t <> "; ", ps')
-evalStatement ps (LetList l) = evalShowL ps l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
-
--- instance IOEval (Program Expr) where
+evalStatement ps (LetExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
+  where
+    evalShowStatement l'@(Let _ _) = evalShow ps l'
+    evalShowStatement l'@(LetLazy t a) = return (0, prettyShow l', addVariable ps t (Right a))
+evalStatement ps (LetList l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
+  where
+    evalShowStatement l'@(Let _ _) = evalShowL ps l'
+    evalShowStatement l'@(LetLazy t a) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
 
 --- Pretty printing the AST
 -- The output from this should be parseable
@@ -471,6 +479,7 @@ instance PrettyShow Expr where
   prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
   prettyShow (Sub t e) = prettyShow t <> " - " <> prettyShow e
   prettyShow (NoExpr t) = prettyShow t
+  prettyShow (ExprLet e) = prettyShow e
 
 instance PrettyShow Term where
   prettyShow (Multi f t) = prettyShow f <> " * " <> prettyShow t
@@ -478,7 +487,7 @@ instance PrettyShow Term where
   prettyShow (NoTerm f) = prettyShow f
 
 instance PrettyShow Func where
-  prettyShow (Func s n) = funcInfoName s <> "(" <> intercalate "," (prettyShow <$> n) <> ")"
+  prettyShow (Func s n) = funcInfoName s <> "(" <> intercalate ", " (prettyShow <$> n) <> ")"
   prettyShow (NoFunc b) = prettyShow b
 
 instance PrettyShow Negation where

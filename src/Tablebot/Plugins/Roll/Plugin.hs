@@ -21,6 +21,7 @@ import Discord.Types (Message (messageAuthor, messageChannel))
 import System.Timeout (timeout)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
+import Tablebot.Plugins.Roll.Dice.DiceEval (evaluationException)
 import Tablebot.Plugins.Roll.Dice.DiceStats (getStats, rangeExpr)
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (distributionByteString)
 import Tablebot.Utility
@@ -36,11 +37,15 @@ import Text.RawString.QQ (r)
 rollDice' :: Maybe Program -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
 rollDice' e' t m = do
   let e = fromMaybe (Program [] (Right defaultRoll)) e'
-  (vs, ss) <- liftIO $ evalProgram e
-  let msg = makeMsg vs ss
-  if countFormatting msg < 199
-    then sendMessage m msg
-    else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
+  liftIO $ putStrLn (unpack $ prettyShow e)
+  maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
+  case maybemsss of
+    Nothing -> evaluationException "Could not process expression in one second" []
+    Just (vs, ss) -> do
+      let msg = makeMsg vs ss
+      if countFormatting msg < 199
+        then sendMessage m msg
+        else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
     baseMsg = toMention (messageAuthor m) <> " rolled" <> dsc

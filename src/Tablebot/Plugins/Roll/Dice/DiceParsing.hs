@@ -60,10 +60,26 @@ instance CanParse Statement where
   pars =
     ((LetList <$> (try (parseLet <*> pars) >>= \l@(Let t _) -> if T.isPrefixOf "l_" t then return l else fail "list variables must be prepended with l_")) <|> LetExpr <$> (parseLet <*> pars)) <* skipSpace <* char ';' <* skipSpace
 
--- do
--- letP <- parseLet :: Parser (forall a. a -> Let a)
--- val <- (Left <$> pars <|> Right <$> pars) <* skipSpace <* char ';' <* skipSpace
--- return $ either (LetList . letP) (LetExpr . letP) val
+{-
+-- alternative method to the above.
+-- from https://canary.discord.com/channels/280033776820813825/280036215477239809/938154455612919838
+-- - Morrow#1157
+newtype LetCon = LetCon (forall a. a -> Let a)
+
+parseLet :: Parser LetCon
+parseLet = do
+  _ <- try (string "let") <* skipSpace
+  lazy <- try (char '!' $> True) <|> return False
+  varName' <- varName
+  _ <- skipSpace >> char '=' >> skipSpace
+  return $ LetCon (\a -> if lazy then LetLazy varName' a else Let varName' a)
+
+instance CanParse Statement where
+  pars = do
+    LetCon letP <- parseLet
+    val <- (Left <$> pars <|> Right <$> pars) <* skipSpace <* char ';' <* skipSpace
+    return $ either (LetList . letP) (LetExpr . letP) val
+-}
 
 instance CanParse Program where
   pars = pars >>= \ss -> Program ss <$> pars
@@ -101,9 +117,10 @@ binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
 binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
 instance CanParse Expr where
-  pars = do
-    t <- pars
-    binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
+  pars =
+    (ExprLet <$> (parseLet <*> pars)) <|> do
+      t <- pars
+      binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
 
 instance CanParse Term where
   pars = do

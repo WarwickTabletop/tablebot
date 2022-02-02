@@ -17,11 +17,11 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
-data Let a = Let Text a | LetLazy Text a
+data Let a = Let Text a | LetLazy Text a deriving (Show)
 
-data Statement = LetExpr (Let Expr) | LetList (Let ListValues)
+data Statement = LetExpr (Let Expr) | LetList (Let ListValues) deriving (Show)
 
-data Program = Program [Statement] (Either ListValues Expr)
+data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
 
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
@@ -37,7 +37,7 @@ data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr] | LVBVar Text
 
 -- | The type of the top level expression. Represents one of addition,
 -- subtraction, or a single term.
-data Expr = Add Term Expr | Sub Term Expr | NoExpr Term
+data Expr = ExprLet (Let Expr) | Add Term Expr | Sub Term Expr | NoExpr Term
   deriving (Show)
 
 -- | The type representing multiplication, division, or a single negated term.
