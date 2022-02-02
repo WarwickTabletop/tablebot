@@ -56,7 +56,7 @@ instance CanParse a => CanParse (Let a) where
     letCon varName' <$> pars
 
 instance CanParse Statement where
-  pars = (StatementListValues <$> pars) <|> (StatementExpr <$> pars)
+  pars = ((StatementListValues <$> try pars) <|> (StatementExpr <$> pars)) <* skipSpace <* char ';' <* skipSpace
 
 {-
 -- alternative method to the above.
@@ -79,8 +79,15 @@ instance CanParse Statement where
     return $ either (LetList . letP) (LetExpr . letP) val
 -}
 
+parseStatements :: Parser [Statement]
+parseStatements = do
+  s <- optional $ try pars
+  case s of
+    Nothing -> return []
+    Just s' -> (s' :) <$> parseStatements
+
 instance CanParse Program where
-  pars = pars >>= \ss -> Program ss <$> pars
+  pars = parseStatements >>= \ss -> Program ss <$> pars
 
 instance CanParse ListValues where
   pars =
@@ -121,9 +128,11 @@ binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
 instance CanParse Expr where
   pars =
-    (ExprLet <$> pars) <|> do
-      t <- pars
-      binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
+    (ExprLet <$> pars)
+      <|> ( do
+              t <- pars
+              binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
+          )
 
 instance CanParse Term where
   pars = do
@@ -169,7 +178,7 @@ instance (CanParse a) => CanParse (Paren a) where
 instance CanParse Base where
   pars =
     ( do
-        nb <- try pars
+        nb <- try pars <?> "could not parse numbase in base"
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
           -- try pars >>= \nb ->
