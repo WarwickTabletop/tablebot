@@ -86,21 +86,15 @@ instance CanParse ListValues where
   pars =
     do
       functionParser listFunctions LVFunc
-      <|> LVBase <$> pars
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> varName))
       <|> ListValuesMisc <$> (pars >>= checkLet)
       <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
+      <|> LVBase <$> pars
     where
       checkLet (MiscLet l)
         | T.isPrefixOf "l_" (letName l) = return (MiscLet l)
         | otherwise = fail "list variables must be prepended with l_"
       checkLet l = return l
-
--- ( do
---         nb <- pars
---         _ <- char '#'
---         MultipleValues nb <$> pars
---     )
 
 instance CanParse ListValuesBase where
   pars = do
