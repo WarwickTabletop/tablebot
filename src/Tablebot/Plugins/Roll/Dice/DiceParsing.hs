@@ -11,7 +11,7 @@
 --
 -- This plugin contains the tools for parsing Dice. -Wno-orphans is enabled so
 -- that parsing can occur here instead of in SmartParser or DiceData.
-module Tablebot.Plugins.Roll.Dice.DiceParsing where
+module Tablebot.Plugins.Roll.Dice.DiceParsing () where
 
 import Data.Functor (($>), (<&>))
 import Data.List (sortBy)
@@ -27,7 +27,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
     listFunctions,
   )
 import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace, skipSpace1)
-import Tablebot.Utility.SmartParser (CanParse (..))
+import Tablebot.Utility.SmartParser (CanParse (..), (<??>))
 import Tablebot.Utility.Types (Parser)
 import Text.Megaparsec (MonadParsec (observing, try), choice, failure, optional, some, (<?>), (<|>))
 import Text.Megaparsec.Char (char, string)
@@ -36,13 +36,6 @@ import Text.Megaparsec.Error (ErrorItem (Tokens))
 -- | An easier way to handle failure in parsers.
 failure' :: T.Text -> Set T.Text -> Parser a
 failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Tokens . NE.fromList . T.unpack) ss)
-
-(<??>) :: Parser a -> String -> Parser a
-(<??>) p s = do
-  r <- observing p
-  case r of
-    Left _ -> fail s
-    Right a -> return a
 
 varName :: Parser T.Text
 varName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
@@ -114,7 +107,7 @@ instance CanParse ListValuesBase where
       <$> ( try (char '{' *> skipSpace)
               *> parseCommaSeparated1 pars
               <* skipSpace
-              <* char '}'
+              <* (char '}' <??> "could not find closing brace for list")
           )
       <|> LVBParen . unnest
       <$> pars
@@ -159,10 +152,12 @@ instance CanParse Func where
 functionParser :: M.Map T.Text (FuncInfoBase j) -> (FuncInfoBase j -> [ArgValue] -> e) -> Parser e
 functionParser m mainCons =
   do
-    fi <- try (choice (string <$> M.keys m) >>= \t -> return (m M.! t)) <?> "could not find function"
+    fi <- try (choice (string <$> functionNames) >>= \t -> return (m M.! t)) <?> "could not find function"
     let ft = funcInfoParameters fi
-    es <- skipSpace *> string "(" *> skipSpace *> parseArgValues ft <* skipSpace <* (try (string ")") <?> "expected only " ++ show (length ft) ++ " arguments, got more")
+    es <- skipSpace *> string "(" *> skipSpace *> parseArgValues ft <* skipSpace <* (string ")" <??> "could not find closing bracket on function call")
     return $ mainCons fi es
+  where
+    functionNames = sortBy (\a b -> compare (T.length b) (T.length a)) $ M.keys m
 
 instance CanParse Negation where
   pars =
@@ -191,9 +186,6 @@ instance CanParse Base where
         nb <- try pars <?> "could not parse numbase in base"
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
-          -- try pars >>= \nb ->
-          --   (DiceBase <$> parseDice nb)
-          --     <|> return (NBase nb)
     )
       <|> DiceBase <$> parseDice (Value 1)
       <|> (Var <$> try varName)
@@ -202,13 +194,11 @@ instance CanParse Die where
   pars = do
     _ <- try (char 'd') <?> "could not find 'd' for die"
     lazyFunc <- (try (char '!') $> LazyDie) <|> return id
-    ( ( lazyFunc . CustomDie
-          <$> pars
-      )
-        <??> "could not parse list values for die"
-      )
-      <|> ( lazyFunc . Die
-              <$> (pars <??> "couldn't parse base number for die")
+    lazyFunc
+      <$> ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
+              <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
+                      <|> (Die <$> pars <??> "could not parse base number for die")
+                  )
           )
 
 -- | Given a `NumBase` (the value on the front of a set of dice), construct a
@@ -240,7 +230,7 @@ parseAdvancedOrdering = (try (choice opts) <?> "could not parse an ordering") >>
 
 -- | Parse a `LowHighWhere`, which is an `h` followed by an integer.
 parseLowHigh :: Parser LowHighWhere
-parseLowHigh = (try (choice @[] $ char <$> "lhw") <?> "could not parse high, low or where") >>= helper
+parseLowHigh = ((choice @[] $ char <$> "lhw") <??> "could not parse high, low or where") >>= helper
   where
     helper 'h' = High <$> pars
     helper 'l' = Low <$> pars
@@ -262,7 +252,7 @@ parseDieOpOption = do
         <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
                   <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
               )
-                <??> "could not parse keep/drop"
+                <?> "could not parse keep/drop"
             )
     )
       <&> lazyFunc
@@ -271,8 +261,8 @@ parseDieOpOption = do
 
 -- | Parse a single `ArgType` into an `ArgValue`.
 parseArgValue :: ArgType -> Parser ArgValue
-parseArgValue ATIntegerList = AVListValues <$> try pars <?> "could not parse a list value from the argument"
-parseArgValue ATInteger = AVExpr <$> try pars <?> "could not parse an integer from the argument"
+parseArgValue ATIntegerList = AVListValues <$> pars <?> "could not parse a list value from the argument"
+parseArgValue ATInteger = AVExpr <$> pars <?> "could not parse an integer from the argument"
 
 -- | Parse a list of comma separated arguments.
 parseArgValues :: [ArgType] -> Parser [ArgValue]

@@ -29,7 +29,7 @@ import Tablebot.Utility.Discord (Format (Code), formatText, sendMessage, toMenti
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
 import Tablebot.Utility.Parser (inlineCommandHelper, skipSpace)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), WithError (WErr), pars)
-import Text.Megaparsec (MonadParsec (eof, try), choice, many)
+import Text.Megaparsec
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
@@ -64,12 +64,16 @@ rollDice' e' t m = do
 rollDiceParser :: Parser (Message -> DatabaseDiscord ())
 rollDiceParser = choice (try <$> options)
   where
+    -- Just the value is given to the command, no quote.
     justEither :: WithError "Incorrect expression/list value. Please check the expression" Program -> Message -> DatabaseDiscord ()
     justEither (WErr x) = rollDice' (Just x) Nothing
+    -- Nothing is given to the command, a default case.
     nothingAtAll :: WithError "Expected eof" () -> Message -> DatabaseDiscord ()
     nothingAtAll (WErr _) = rollDice' Nothing Nothing
+    -- Both the value and the quote are present.
     bothVals :: WithError "Incorrect format. Please check the expression and quote" (Program, Quoted Text) -> Message -> DatabaseDiscord ()
     bothVals (WErr (x, y)) = rollDice' (Just x) (Just y)
+    -- Just the quote is given to the command.
     justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> Message -> DatabaseDiscord ()
     justText (WErr x) = rollDice' Nothing (Just x)
     options =
@@ -84,10 +88,9 @@ rollDice :: Command
 rollDice = Command "roll" rollDiceParser [statsCommand]
 
 -- where
--- below does not work
--- rollDiceParser = parseComm rollDiceParser'
--- rollDiceParser' :: WithError "Incorrect rolling format. Please check your expression and quote is of the correct format" (Maybe (Either ListValues Expr), Maybe (Quoted Text)) -> Message -> DatabaseDiscord ()
--- rollDiceParser' (WErr (x,y)) = rollDice' x y
+--   rollDiceParser = parseComm rollDiceParser'
+--   rollDiceParser' :: WithError "Incorrect rolling format. Please check your expression and quote is of the correct format" (Maybe (Either ListValues Expr), Maybe (Quoted Text)) -> Message -> DatabaseDiscord ()
+--   rollDiceParser' (WErr (x, y)) = rollDice' x y
 
 -- | Rolling dice inline.
 rollDiceInline :: InlineCommand
@@ -113,13 +116,13 @@ Given an expression, evaluate the expression. Can roll inline using |]
       ++ "`[|to roll|]`."
       ++ [r| Can use `r` instead of `roll`.
 
-This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, dice of arbitrary size, dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists, and using functions like |]
+This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, dice of arbitrary size, dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum, configurable size of 50), and using functions like |]
       ++ unpack (intercalate ", " integerFunctionsList)
       ++ [r| (which return integers), or functions like |]
       ++ unpack (intercalate ", " listFunctionsList)
       ++ [r| (which return lists).
 
-To see a full list of uses and options, please go to <https://github.com/WarwickTabletop/tablebot/blob/main/docs/Roll.md>.
+To see a full list of uses, options and limitations, please go to <https://github.com/WarwickTabletop/tablebot/blob/main/docs/Roll.md>.
 
 *Usage:*
   - `roll 1d20` -> rolls a twenty sided die and returns the outcome
@@ -171,7 +174,7 @@ statsCommand = Command "stats" statsCommandParser []
       case mrange' of
         Nothing -> throwBot (EvaluationException "Timed out calculating statistics" [])
         (Just range') -> do
-          mimage <- liftIO $ timeout (oneSecond * 5) $ distributionByteString range'
+          mimage <- liftIO $ timeout (oneSecond * 5) (distributionByteString range' >>= \res -> res `seq` return res)
           case mimage of
             Nothing -> do
               sendMessage m (msg range')

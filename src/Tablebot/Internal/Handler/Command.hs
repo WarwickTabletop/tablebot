@@ -117,7 +117,7 @@ makeReadable te@(TrivialError i _ good) =
     getLabel :: [ErrorItem (Token Text)] -> (Maybe String, [String])
     getLabel [] = (Nothing, [])
     getLabel ((Tokens nel) : xs) = (Nothing, [NE.toList nel]) <> getLabel xs
-    getLabel ((Label ls) : xs) = (Just (NE.toList ls), []) <> getLabel xs
+    getLabel ((Label ls) : xs) = (Just (NE.toList ls <> "\n"), []) <> getLabel xs
     getLabel (EndOfInput : xs) = (Nothing, ["no more input"]) <> getLabel xs
 makeReadable e = (mapParseError (const UnknownError) e, Nothing)
 

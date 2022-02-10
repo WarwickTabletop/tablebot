@@ -47,6 +47,9 @@ addVariable (ProgramState i vs) t val = ProgramState i (M.insert t val vs)
 maximumRNG :: Integer
 maximumRNG = 150
 
+maximumListLength :: Integer
+maximumListLength = 50
+
 -- | Increment the rngcount by 1.
 incRNGCount :: ProgramState -> ProgramState
 incRNGCount ps = ps {getRNGCount = 1 + getRNGCount ps}
@@ -168,7 +171,9 @@ class IOEvalList a where
   -- displayed. This function adds the current location to the exception
   -- callstack.
   evalShowL :: PrettyShow a => ProgramState -> a -> IO ([(Integer, Text)], Maybe Text, ProgramState)
-  evalShowL rngCount a = propagateException (prettyShow a) (evalShowL' rngCount a)
+  evalShowL rngCount a = do
+    (is, mt, rngCount') <- propagateException (prettyShow a) (evalShowL' rngCount a)
+    return (genericTake maximumListLength is, mt, rngCount')
 
   evalShowL' :: PrettyShow a => ProgramState -> a -> IO ([(Integer, Text)], Maybe Text, ProgramState)
 
