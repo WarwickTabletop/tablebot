@@ -66,9 +66,15 @@ As an addendum to custom dice, if a list value is bracketed then it can be used 
 
 Lists are limited to 50 items long currently (which is configurable).
 
+## Complex Operations
+
+There are two operators that are more complex and have specific organisational requirements, that allow for a great deal of control in the program.
+
+If statements take an expression or list to check for falseyness, 
+
 ## Functions
 
-Here are all the functions, what they take, and what they return.
+Here are all the functions, what they take, and what they return. They are called with `name(arg1, arg2)`.
 
 ### Returns an Integer
 - abs (integer) - the absolute value of an integer

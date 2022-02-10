@@ -8,7 +8,7 @@
 --
 -- Functions, type classes, and other utilities to evaluate dice values and
 -- expressions.
-module Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalProgram, evalList, evalInteger, evaluationException, propagateException) where
+module Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalProgram, evalList, evalInteger, evaluationException, propagateException, maximumRNG, maximumListLength) where
 
 import Control.Monad (when)
 import Control.Monad.Exception (MonadException)

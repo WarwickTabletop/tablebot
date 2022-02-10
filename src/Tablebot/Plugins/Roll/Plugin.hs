@@ -21,7 +21,6 @@ import Discord.Types (Message (messageAuthor, messageChannel))
 import System.Timeout (timeout)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
-import Tablebot.Plugins.Roll.Dice.DiceEval (evaluationException)
 import Tablebot.Plugins.Roll.Dice.DiceStats (getStats, rangeExpr)
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (distributionByteString)
 import Tablebot.Utility
@@ -40,7 +39,7 @@ rollDice' e' t m = do
   -- liftIO $ putStrLn (unpack $ prettyShow e)
   maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
   case maybemsss of
-    Nothing -> evaluationException "Could not process expression in one second" []
+    Nothing -> throwBot (EvaluationException "Could not process expression in one second" [])
     Just (vs, ss) -> do
       let msg = makeMsg vs ss
       if countFormatting msg < 199
@@ -116,7 +115,11 @@ Given an expression, evaluate the expression. Can roll inline using |]
       ++ "`[|to roll|]`."
       ++ [r| Can use `r` instead of `roll`.
 
-This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, dice of arbitrary size, dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum, configurable size of 50), and using functions like |]
+This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, rolling dice of arbitrary size (up to |]
+      ++ show maximumRNG
+      ++ [r| RNG calls), dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum size of |]
+      ++ show maximumListLength
+      ++ [r|), if statements, let statements, and using functions like |]
       ++ unpack (intercalate ", " integerFunctionsList)
       ++ [r| (which return integers), or functions like |]
       ++ unpack (intercalate ", " listFunctionsList)

@@ -17,27 +17,38 @@
 -- - DiceEval - methods for evaluating elements from DiceData
 --
 -- Below is the regex representing the parsing for the expressions, and
--- explanations for each component
+-- explanations for each component. It's not 100% accurate to the actual data
+-- representation, but it's close enough that you can start reading `DiceData`,
+-- which is the canonical representation of the AST, and then DiceParsing.
 --
--- If there is a gap between terms, any number of spaces (including none) is valid, barring in lstv, dice, die, dopr, ords; spaces are added manually in those.
+-- If there is a gap between terms, any number of spaces (including none) is
+-- valid, barring in lstv, dice, die, dopr, ords, funcBasics, misc; spaces are
+-- added manually in those.
 --
--- lstv - nbse "#" base | funcBasics | lstb
+-- prog - stat* (lstv | expr)
+-- stat - (lstv | expr) ";"
+-- misc - ifst | lets
+-- ifst - "if" spc1 (lstv | expr) spc1 "then" spc1 (lstv | expr) spc1 "else" spc1 (lstv | expr)
+-- lets - "let" spc1 ("l_" name spcs "=" spcs lstv | name spcs "=" spcs expr)
+-- lstv - nbse "#" base | funcBasics | lstb | name | misc
 -- lstb - "{" expr ("," expr)* "}" | "(" lstv ")"
--- expr - term ([+-] expr)?
+-- expr - term ([+-] expr)? | misc
 -- term - nega ([*/] term)?
 -- nega - "-" expo | expo
 -- expo - func "^" expo | func
 -- func - funcBasics | base
--- base - dice | nbse
+-- base - dice | nbse | name
 -- nbse - "(" expr ")" | [0-9]+
 -- dice - base die dopr?
--- die  - "d" "!"? (bse | lstb)
+-- die  - "d" "!"? (base | lstb)
 -- dopr - dopo+
 -- dopo - "!"? (("rr" | "ro") ords | ("k"|"d") (("l" | "h") nbse | "w" ords))
 -- ords - ("/=" | "<=" | ">=" | "<" | "=" | ">") nbase
 -- spcs - " "*
+-- spc1 - " "+
 -- argv - lstv | expr
--- funcBasics - {some string identifier} "(" (argv ("," argv)*)? ")"
+-- funcBasics - {some string identifier} "(" spcs (argv (spcs "," spcs argv)*)? spcs ")"
+-- name - [a-z_]*
 --
 -- lstv (ListValues)                   - representing all possible list values (basic list values, functions that return lists, and values which are lists of length N that consist of `Base`s)
 -- lstb (ListValuesBase)               - representing some basic list values (those that can be used in dice expressions, such as manually created lists and bracketed `ListValues`)
@@ -55,7 +66,7 @@
 -- ords (AdvancedOrdering and NumBase) - representing a more complex ordering operation than a basic `Ordering`, when compared to a `NumBase`
 -- argv (ArgValue)                     - representing an argument to a function
 -- funcBasics                          - a generic regex representation for a general function parser
-module Tablebot.Plugins.Roll.Dice (evalProgram, evalInteger, evalList, ListValues (..), defaultRoll, PrettyShow (prettyShow), integerFunctionsList, listFunctionsList, Converter (promote)) where
+module Tablebot.Plugins.Roll.Dice (evalProgram, evalInteger, evalList, ListValues (..), defaultRoll, PrettyShow (prettyShow), integerFunctionsList, listFunctionsList, maximumListLength, maximumRNG, Converter (promote)) where
 
 import Tablebot.Plugins.Roll.Dice.DiceData
   ( Converter (promote),
@@ -64,7 +75,7 @@ import Tablebot.Plugins.Roll.Dice.DiceData
     ListValues (..),
     NumBase (Value),
   )
-import Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalInteger, evalList, evalProgram)
+import Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalInteger, evalList, evalProgram, maximumListLength, maximumRNG)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (integerFunctionsList, listFunctionsList)
 import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 
