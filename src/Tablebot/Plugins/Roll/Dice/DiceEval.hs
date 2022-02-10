@@ -8,7 +8,7 @@
 --
 -- Functions, type classes, and other utilities to evaluate dice values and
 -- expressions.
-module Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalList, evalInteger) where
+module Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalList, evalInteger, evaluationException, propagateException) where
 
 import Control.Monad (when)
 import Control.Monad.Exception (MonadException)
@@ -35,6 +35,9 @@ newtype RNGCount = RNGCount {getRNGCount :: Integer} deriving (Eq, Ord)
 -- and rerolls.
 maximumRNG :: RNGCount
 maximumRNG = RNGCount 150
+
+maximumListLength :: Integer
+maximumListLength = 50
 
 -- | Increment the rngcount by 1.
 incRNGCount :: RNGCount -> RNGCount
@@ -135,7 +138,9 @@ class IOEvalList a where
   -- displayed. This function adds the current location to the exception
   -- callstack.
   evalShowL :: ParseShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
-  evalShowL rngCount a = propagateException (parseShow a) (evalShowL' rngCount a)
+  evalShowL rngCount a = do
+    (is, mt, rngCount') <- propagateException (parseShow a) (evalShowL' rngCount a)
+    return (genericTake maximumListLength is, mt, rngCount')
 
   evalShowL' :: ParseShow a => RNGCount -> a -> IO ([(Integer, Text)], Maybe Text, RNGCount)
 
@@ -358,7 +363,7 @@ instance IOEval Func where
   evalShow' rngCount (NoFunc b) = evalShow rngCount b
 
 -- | Evaluate a function when given a list of parameters
-evaluateFunction :: RNGCount -> FuncInfoBase IO j -> [ArgValue] -> IO (j, Text, RNGCount)
+evaluateFunction :: RNGCount -> FuncInfoBase j -> [ArgValue] -> IO (j, Text, RNGCount)
 evaluateFunction rngCount fi exprs = do
   (exprs', rngCount') <- evalShowList'' (\r a -> evalArgValue r a >>= \(i, r') -> return (i, "", r')) rngCount exprs
   f <- funcInfoFunc fi (fst <$> exprs')

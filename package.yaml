@@ -1,5 +1,5 @@
 name:                tablebot
-version:             0.3.2
+version:             0.3.3
 github:              "WarwickTabletop/tablebot"
 license:             MIT
 author:              "Warwick Tabletop"
@@ -57,9 +57,16 @@ dependencies:
 - safe
 - edit-distance
 - unliftio
+- Chart
+- Chart-diagrams
+- diagrams-core
+- diagrams-lib
+- diagrams-rasterific
+- JuicyPixels
 - split
 - regex-pcre
 - scientific
+- distribution
 
 library:
   source-dirs: src
@@ -88,6 +95,7 @@ library:
   - ScopedTypeVariables
   - TypeOperators
   - RankNTypes
+  - BangPatterns
   ghc-options:
   - -Wall
 
