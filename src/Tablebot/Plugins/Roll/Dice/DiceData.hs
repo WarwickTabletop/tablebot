@@ -17,25 +17,39 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
+-- | Set the variable `letName` to the value `letValue`. This also returns the
+-- evaluated `letValue`.
+--
+-- List variables have to be prefixed with `l_`. This really helps with parsing.
 data Let a = Let {letName :: Text, letValue :: a} | LetLazy {letName :: Text, letValue :: a} deriving (Show)
 
+-- | If the first value is truthy (non-zero or a non-empty list) then return
+-- the `thenValue`, else return the `elseValue`.
 data If a b = If {ifCond :: a, thenValue :: b, elseValue :: b} deriving (Show)
 
 type IfExpr b = If Expr b
 
 type IfList b = If ListValues b
 
+-- | Either an If or a Let that returns a `b`.
 data MiscData b = MiscIfExpr (IfExpr b) | MiscIfList (IfList b) | MiscLet (Let b) deriving (Show)
 
+-- | An expression is just an Expr or a ListValues with a semicolon on the end.
+--
+-- When evaluating, LetLazy expressions are handled with a special case - they
+-- are not evaluated until the value is first referenced. Otherwise, the value
+-- is evaluated as the statement is encountered
 data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
 
--- | A program is a series of statements followed by
+-- | A program is a series of `Statement`s followed by either a `ListValues` or
+-- an Expr.
 data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
 
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
   deriving (Show)
 
+-- | Alias for `MiscData` that returns a `ListValues`.
 type ListValuesMisc = MiscData ListValues
 
 -- | The type for list values.
@@ -48,7 +62,8 @@ data ListValues
     LVBase ListValuesBase
   | -- | A variable that has been defined elsewhere.
     LVVar Text
-  | ListValuesMisc ListValuesMisc
+  | -- | A misc list values expression.
+    ListValuesMisc ListValuesMisc
   deriving (Show)
 
 -- | The type for basic list values (that can be used as is for custom dice).
@@ -60,7 +75,7 @@ data ListValues
 data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
   deriving (Show)
 
--- | Miscellaneous expressions statements.
+-- | Alias for `MiscData` that returns an `Expr`.
 type ExprMisc = MiscData Expr
 
 -- | The type of the top level expression. Represents one of addition,
