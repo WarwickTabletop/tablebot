@@ -25,13 +25,18 @@ type IfExpr b = If Expr b
 
 type IfList b = If ListValues b
 
+data MiscData b = MiscIfExpr (IfExpr b) | MiscIfList (IfList b) | MiscLet (Let b) deriving (Show)
+
 data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
 
+-- | A program is a series of statements followed by
 data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
 
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
   deriving (Show)
+
+type ListValuesMisc = MiscData ListValues
 
 -- | The type for list values.
 data ListValues
@@ -41,8 +46,9 @@ data ListValues
     LVFunc (FuncInfoBase [Integer]) [ArgValue]
   | -- | A base ListValues value - parentheses or a list of expressions
     LVBase ListValuesBase
-  | LVVar Text
-  | LVLet (Let ListValues)
+  | -- | A variable that has been defined elsewhere.
+    LVVar Text
+  | ListValuesMisc ListValuesMisc
   deriving (Show)
 
 -- | The type for basic list values (that can be used as is for custom dice).
@@ -55,8 +61,7 @@ data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
   deriving (Show)
 
 -- | Miscellaneous expressions statements.
-data ExprMisc = ExprLet (Let Expr) | ExprIfExpr (IfExpr Expr) | ExprIfList (IfList Expr)
-  deriving (Show)
+type ExprMisc = MiscData Expr
 
 -- | The type of the top level expression. Represents one of addition,
 -- subtraction, or a single term; or some misc expression statement.

@@ -16,6 +16,7 @@ import Data.Bifunctor (Bifunctor (first))
 import Data.Distribution hiding (Distribution, Experiment, fromList)
 import qualified Data.Distribution as D
 import Data.List
+import qualified Data.Map as M
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceEval
 import Tablebot.Plugins.Roll.Dice.DiceFunctions
@@ -75,7 +76,7 @@ rangeListValues lv = do
 -- has a variety of  functions that operate on them.
 --
 -- An `Data.Distribution.Experiment` is a monadic form of this.
-class Range a where
+class PrettyShow a => Range a where
   -- | Try and get the `Experiment` of the given value, throwing a
   -- `MonadException` on failure.
   range :: (MonadException m, PrettyShow a) => a -> m Experiment
@@ -83,10 +84,57 @@ class Range a where
 
   range' :: (MonadException m, PrettyShow a) => a -> m Experiment
 
+instance (Range a) => Range (MiscData a) where
+  range' (MiscLet l) = range l
+  range' (MiscIfExpr i) = rangeIfExpr range i
+  range' (MiscIfList i) = rangeIfList range i
+
+instance (RangeList a) => RangeList (MiscData a) where
+  rangeList' (MiscLet l) = rangeList l
+  rangeList' (MiscIfExpr i) = rangeIfExpr rangeList i
+  rangeList' (MiscIfList i) = rangeIfList rangeList i
+
+rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If Expr a -> m (D.Experiment b)
+rangeIfExpr func (If b t f) = do
+  b' <- range b
+  let mp = toMap $ run b'
+      canBeFalse = M.member 0 mp
+      canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= 0) mp
+      emptyExp = from $ D.fromList @_ @Integer []
+  t' <- if canBeTrue then func t else return emptyExp
+  f' <- if canBeFalse then func f else return emptyExp
+  return $
+    do
+      b'' <- b'
+      if b'' /= 0 then t' else f'
+
+rangeIfList :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If ListValues a -> m (D.Experiment b)
+rangeIfList func (If b t f) = do
+  b' <- rangeList b
+  let mp = toMap $ run b'
+      canBeFalse = M.member [] mp
+      canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= []) mp
+      emptyExp = from $ D.fromList @_ @Integer []
+  t' <- if canBeTrue then func t else return emptyExp
+  f' <- if canBeFalse then func f else return emptyExp
+  return $
+    do
+      b'' <- b'
+      if b'' /= [] then t' else f'
+
+instance (Range a) => Range (Let a) where
+  range' (Let _ a) = range a
+  range' (LetLazy _ a) = range a
+
+instance (RangeList a) => RangeList (Let a) where
+  rangeList' (Let _ a) = rangeList a
+  rangeList' (LetLazy _ a) = rangeList a
+
 instance Range Expr where
   range' (NoExpr t) = range t
   range' (Add t e) = combineRangesBinOp (+) t e
   range' (Sub t e) = combineRangesBinOp (-) t e
+  range' (ExprMisc t) = range t
 
 instance Range Term where
   range' (NoTerm t) = range t
@@ -120,6 +168,7 @@ instance Range NumBase where
 instance Range Base where
   range' (NBase nb) = range nb
   range' (DiceBase d) = range d
+  range' b@(Var _) = evaluationException "cannot find range of variable" [prettyShow b]
 
 instance Range Die where
   range' (LazyDie d) = range d
@@ -208,7 +257,7 @@ rangeDieOpExperimentKD kd lhw is = do
 --
 -- Only used within `DiceStats` as I have no interest in producing statistics on
 -- lists
-class RangeList a where
+class PrettyShow a => RangeList a where
   -- | Try and get the `DistributionList` of the given value, throwing a
   -- `MonadException` on failure.
   rangeList :: (MonadException m, PrettyShow a) => a -> m ExperimentList
@@ -232,6 +281,8 @@ instance RangeList ListValues where
         valNum <- nbd
         getDiceExperiment valNum (run bd)
   rangeList' (LVFunc fi avs) = rangeFunction fi avs
+  rangeList' (ListValuesMisc m) = rangeList m
+  rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [prettyShow b]
 
 rangeArgValue :: MonadException m => ArgValue -> m (D.Experiment ListInteger)
 rangeArgValue (AVExpr e) = (LIInteger <$>) <$> range e

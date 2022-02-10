@@ -29,7 +29,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace, skipSpace1)
 import Tablebot.Utility.SmartParser (CanParse (..), (<??>))
 import Tablebot.Utility.Types (Parser)
-import Text.Megaparsec (MonadParsec (observing, try), choice, failure, optional, some, (<?>), (<|>))
+import Text.Megaparsec (MonadParsec (try), choice, failure, optional, some, (<?>), (<|>))
 import Text.Megaparsec.Char (char, string)
 import Text.Megaparsec.Error (ErrorItem (Tokens))
 
@@ -88,12 +88,13 @@ instance CanParse ListValues where
       functionParser listFunctions LVFunc
       <|> LVBase <$> pars
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> varName))
-      <|> (LVLet <$> (pars >>= checkLet))
+      <|> ListValuesMisc <$> (pars >>= checkLet)
       <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
     where
-      checkLet l
-        | T.isPrefixOf "l_" (letName l) = return l
+      checkLet (MiscLet l)
+        | T.isPrefixOf "l_" (letName l) = return (MiscLet l)
         | otherwise = fail "list variables must be prepended with l_"
+      checkLet l = return l
 
 -- ( do
 --         nb <- pars
@@ -126,8 +127,8 @@ instance (CanParse a, CanParse b) => CanParse (If a b) where
     e <- string "else" *> skipSpace1 *> pars
     return $ If a t e
 
-instance CanParse ExprMisc where
-  pars = (ExprLet <$> pars) <|> (ExprIfExpr <$> pars) <|> (ExprIfList <$> pars)
+instance CanParse a => CanParse (MiscData a) where
+  pars = (MiscLet <$> pars) <|> (MiscIfExpr <$> pars) <|> (MiscIfList <$> pars)
 
 instance CanParse Expr where
   pars =

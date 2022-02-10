@@ -195,13 +195,18 @@ instance IOEvalList ListValues where
   evalShowL' rngCount (LVVar t) = case M.lookup t (getVariables rngCount) of
     Just (Left e) -> evalShowL rngCount e >>= \(i, _, rngCount') -> return (i, Just t, rngCount')
     _ -> evaluationException ("could not find list variable `" <> t <> "`") []
-  evalShowL' rngCount (LVLet l) = evalShowL rngCount l
+  evalShowL' rngCount (ListValuesMisc l) = evalShowL rngCount l
 
 instance IOEvalList ListValuesBase where
   evalShowL' rngCount (LVBList es) = do
     (vs, rc) <- evalShowList' rngCount es
     return (vs, Nothing, rc)
   evalShowL' rngCount (LVBParen (Paren lv)) = evalShowL rngCount lv
+
+instance IOEvalList ListValuesMisc where
+  evalShowL' rngCount (MiscLet l) = evalShowL rngCount l
+  evalShowL' rngCount (MiscIfExpr l) = evalShowL rngCount l
+  evalShowL' rngCount (MiscIfList l) = evalShowL rngCount l
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
@@ -384,9 +389,9 @@ binOpHelp rngCount a b opS op = do
   return (op a' b', a's <> " " <> opS <> " " <> b's, rngCount'')
 
 instance IOEval ExprMisc where
-  evalShow' rngCount (ExprLet l) = evalShow rngCount l
-  evalShow' rngCount (ExprIfExpr l) = evalShow rngCount l
-  evalShow' rngCount (ExprIfList l) = evalShow rngCount l
+  evalShow' rngCount (MiscLet l) = evalShow rngCount l
+  evalShow' rngCount (MiscIfExpr l) = evalShow rngCount l
+  evalShow' rngCount (MiscIfList l) = evalShow rngCount l
 
 instance IOEval Expr where
   evalShow' rngCount (NoExpr t) = evalShow rngCount t
@@ -456,11 +461,11 @@ instance IOEvalList (Let ListValues) where
 evalStatement :: ProgramState -> Statement -> IO (Text, ProgramState)
 evalStatement ps (StatementExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
   where
-    evalShowStatement (ExprMisc (ExprLet l'@(LetLazy t a))) = return (0, prettyShow l', addVariable ps t (Right a))
+    evalShowStatement (ExprMisc (MiscLet l'@(LetLazy t a))) = return (0, prettyShow l', addVariable ps t (Right a))
     evalShowStatement l' = evalShow ps l'
 evalStatement ps (StatementListValues l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
   where
-    evalShowStatement (LVLet l'@(LetLazy t a)) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
+    evalShowStatement (ListValuesMisc (MiscLet l'@(LetLazy t a))) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
     evalShowStatement l' = evalShowL ps l'
 
 class GetTruth a where
@@ -511,16 +516,16 @@ instance PrettyShow ListValues where
   prettyShow (MultipleValues nb b) = prettyShow nb <> "#" <> prettyShow b
   prettyShow (LVFunc s n) = funcInfoName s <> "(" <> intercalate "," (prettyShow <$> n) <> ")"
   prettyShow (LVVar t) = t
-  prettyShow (LVLet l) = prettyShow l
+  prettyShow (ListValuesMisc l) = prettyShow l
 
 instance PrettyShow ListValuesBase where
   prettyShow (LVBList es) = "{" <> intercalate ", " (prettyShow <$> es) <> "}"
   prettyShow (LVBParen p) = prettyShow p
 
-instance PrettyShow ExprMisc where
-  prettyShow (ExprLet l) = prettyShow l
-  prettyShow (ExprIfExpr l) = prettyShow l
-  prettyShow (ExprIfList l) = prettyShow l
+instance PrettyShow a => PrettyShow (MiscData a) where
+  prettyShow (MiscLet l) = prettyShow l
+  prettyShow (MiscIfExpr l) = prettyShow l
+  prettyShow (MiscIfList l) = prettyShow l
 
 instance PrettyShow Expr where
   prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
