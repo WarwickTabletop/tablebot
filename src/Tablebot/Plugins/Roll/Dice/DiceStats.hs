@@ -86,15 +86,13 @@ class PrettyShow a => Range a where
 
 instance (Range a) => Range (MiscData a) where
   range' (MiscLet l) = range l
-  range' (MiscIfExpr i) = rangeIfExpr range i
-  range' (MiscIfList i) = rangeIfList range i
+  range' (MiscIf i) = rangeIfExpr range i
 
 instance (RangeList a) => RangeList (MiscData a) where
   rangeList' (MiscLet l) = rangeList l
-  rangeList' (MiscIfExpr i) = rangeIfExpr rangeList i
-  rangeList' (MiscIfList i) = rangeIfList rangeList i
+  rangeList' (MiscIf i) = rangeIfExpr rangeList i
 
-rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If Expr a -> m (D.Experiment b)
+rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If a -> m (D.Experiment b)
 rangeIfExpr func (If b t f) = do
   b' <- range b
   let mp = toMap $ run b'
@@ -108,19 +106,19 @@ rangeIfExpr func (If b t f) = do
       b'' <- b'
       if b'' /= 0 then t' else f'
 
-rangeIfList :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If ListValues a -> m (D.Experiment b)
-rangeIfList func (If b t f) = do
-  b' <- rangeList b
-  let mp = toMap $ run b'
-      canBeFalse = M.member [] mp
-      canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= []) mp
-      emptyExp = from $ D.fromList @_ @Integer []
-  t' <- if canBeTrue then func t else return emptyExp
-  f' <- if canBeFalse then func f else return emptyExp
-  return $
-    do
-      b'' <- b'
-      if b'' /= [] then t' else f'
+-- rangeIfList :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If ListValues a -> m (D.Experiment b)
+-- rangeIfList func (If b t f) = do
+--   b' <- rangeList b
+--   let mp = toMap $ run b'
+--       canBeFalse = M.member [] mp
+--       canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= []) mp
+--       emptyExp = from $ D.fromList @_ @Integer []
+--   t' <- if canBeTrue then func t else return emptyExp
+--   f' <- if canBeFalse then func f else return emptyExp
+--   return $
+--     do
+--       b'' <- b'
+--       if b'' /= [] then t' else f'
 
 instance (Range a) => Range (Let a) where
   range' (Let _ a) = range a

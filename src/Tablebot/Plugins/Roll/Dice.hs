@@ -28,8 +28,8 @@
 -- prog - stat* (lstv | expr)
 -- stat - (lstv | expr) ";"
 -- misc - ifst | lets
--- ifst - "if" spc1 (lstv | expr) spc1 "then" spc1 (lstv | expr) spc1 "else" spc1 (lstv | expr)
--- lets - "let" spc1 ("l_" name spcs "=" spcs lstv | name spcs "=" spcs expr)
+-- ifst - "if" spc1 expr spc1 "then" spc1 (lstv | expr) spc1 "else" spc1 (lstv | expr)
+-- lets - "let" spc1 "!"? ("l_" name spcs "=" spcs lstv | name spcs "=" spcs expr)
 -- lstv - nbse "#" base | funcBasics | lstb | name | misc
 -- lstb - "{" expr ("," expr)* "}" | "(" lstv ")"
 -- expr - term ([+-] expr)? | misc
@@ -50,9 +50,14 @@
 -- funcBasics - {some string identifier} "(" spcs (argv (spcs "," spcs argv)*)? spcs ")"
 -- name - [a-z_]*
 --
--- lstv (ListValues)                   - representing all possible list values (basic list values, functions that return lists, and values which are lists of length N that consist of `Base`s)
+-- prog (Program)                      - representing a complete program - a series of statements and a value to output at the end.
+-- stat (Statement)                    - representing a single statement - an expression or list value
+-- misc (MiscData)                     - either an if or a let
+-- ifst (If)                           - representing one of two values depending on the outcome of an expression
+-- lets (Let)                          - setting a variable to a certain value
+-- lstv (ListValues)                   - representing all possible list values (basic list values, functions that return lists, and values which are lists of length N that consist of `Base`s, as well as a MiscData value)
 -- lstb (ListValuesBase)               - representing some basic list values (those that can be used in dice expressions, such as manually created lists and bracketed `ListValues`)
--- expr (Expr)                         - representing addition, subtraction, or a single `Term` value
+-- expr (Expr)                         - representing addition, subtraction, or a single `Term` value, or a MiscData value
 -- term (Term)                         - representing multiplication, division, or a single `Negation` value
 -- nega (Negation)                     - representing a negation, or a single `Expo` value
 -- expo (Expo)                         - representing exponentiation or a single `Func` value

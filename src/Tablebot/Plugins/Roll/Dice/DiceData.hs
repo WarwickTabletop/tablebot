@@ -25,14 +25,10 @@ data Let a = Let {letName :: Text, letValue :: a} | LetLazy {letName :: Text, le
 
 -- | If the first value is truthy (non-zero or a non-empty list) then return
 -- the `thenValue`, else return the `elseValue`.
-data If a b = If {ifCond :: a, thenValue :: b, elseValue :: b} deriving (Show)
-
-type IfExpr b = If Expr b
-
-type IfList b = If ListValues b
+data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show)
 
 -- | Either an If or a Let that returns a `b`.
-data MiscData b = MiscIfExpr (IfExpr b) | MiscIfList (IfList b) | MiscLet (Let b) deriving (Show)
+data MiscData b = MiscIf (If b) | MiscLet (Let b) deriving (Show)
 
 -- | An expression is just an Expr or a ListValues with a semicolon on the end.
 --

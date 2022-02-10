@@ -120,7 +120,7 @@ instance CanParse ListValuesBase where
 binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
 binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
-instance (CanParse a, CanParse b) => CanParse (If a b) where
+instance (CanParse b) => CanParse (If b) where
   pars = do
     a <- string "if" *> skipSpace1 *> pars <* skipSpace1
     t <- string "then" *> skipSpace1 *> pars <* skipSpace1
@@ -128,7 +128,7 @@ instance (CanParse a, CanParse b) => CanParse (If a b) where
     return $ If a t e
 
 instance CanParse a => CanParse (MiscData a) where
-  pars = (MiscLet <$> pars) <|> (MiscIfExpr <$> pars) <|> (MiscIfList <$> pars)
+  pars = (MiscLet <$> pars) <|> (MiscIf <$> pars)
 
 instance CanParse Expr where
   pars =

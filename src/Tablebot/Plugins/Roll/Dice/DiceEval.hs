@@ -205,8 +205,7 @@ instance IOEvalList ListValuesBase where
 
 instance IOEvalList ListValuesMisc where
   evalShowL' rngCount (MiscLet l) = evalShowL rngCount l
-  evalShowL' rngCount (MiscIfExpr l) = evalShowL rngCount l
-  evalShowL' rngCount (MiscIfList l) = evalShowL rngCount l
+  evalShowL' rngCount (MiscIf l) = evalShowL rngCount l
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
@@ -390,8 +389,7 @@ binOpHelp rngCount a b opS op = do
 
 instance IOEval ExprMisc where
   evalShow' rngCount (MiscLet l) = evalShow rngCount l
-  evalShow' rngCount (MiscIfExpr l) = evalShow rngCount l
-  evalShow' rngCount (MiscIfList l) = evalShow rngCount l
+  evalShow' rngCount (MiscIf l) = evalShow rngCount l
 
 instance IOEval Expr where
   evalShow' rngCount (NoExpr t) = evalShow rngCount t
@@ -468,33 +466,20 @@ evalStatement ps (StatementListValues l) = evalShowStatement l >>= \(_, t, ps') 
     evalShowStatement (ListValuesMisc (MiscLet l'@(LetLazy t a))) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
     evalShowStatement l' = evalShowL ps l'
 
-class GetTruth a where
-  getTruthy :: ProgramState -> a -> IO (Bool, ProgramState)
-
-instance GetTruth Expr where
-  getTruthy ps a = do
-    (i, _, ps') <- evalShow ps a
-    return (i /= 0, ps')
-
-instance GetTruth ListValues where
-  getTruthy ps a = do
-    (i, _, ps') <- evalShowL ps a
-    return (not $ null i, ps')
-
-instance GetTruth a => IOEval (If a Expr) where
+instance IOEval (If Expr) where
   evalShow' ps if'@(If b t e) = do
-    (i, ps') <- getTruthy ps b
+    (i, _, ps') <- evalShow ps b
     (i', _, ps'') <-
-      if i
+      if i /= 0
         then evalShow ps' t
         else evalShow ps' e
     return (i', prettyShow if', ps'')
 
-instance GetTruth a => IOEvalList (If a ListValues) where
+instance IOEvalList (If ListValues) where
   evalShowL' ps if'@(If b t e) = do
-    (i, ps') <- getTruthy ps b
+    (i, _, ps') <- evalShow ps b
     (i', _, ps'') <-
-      if i
+      if i /= 0
         then evalShowL ps' t
         else evalShowL ps' e
     return (i', Just $ prettyShow if', ps'')
@@ -524,8 +509,7 @@ instance PrettyShow ListValuesBase where
 
 instance PrettyShow a => PrettyShow (MiscData a) where
   prettyShow (MiscLet l) = prettyShow l
-  prettyShow (MiscIfExpr l) = prettyShow l
-  prettyShow (MiscIfList l) = prettyShow l
+  prettyShow (MiscIf l) = prettyShow l
 
 instance PrettyShow Expr where
   prettyShow (Add t e) = prettyShow t <> " + " <> prettyShow e
@@ -591,7 +575,7 @@ instance (PrettyShow a) => PrettyShow (Let a) where
   prettyShow (Let t a) = "let " <> t <> " = " <> prettyShow a
   prettyShow (LetLazy t a) = "let !" <> t <> " = " <> prettyShow a
 
-instance (PrettyShow a, PrettyShow b) => PrettyShow (If a b) where
+instance (PrettyShow b) => PrettyShow (If b) where
   prettyShow (If b t e) = "if " <> prettyShow b <> " then " <> prettyShow t <> " else " <> prettyShow e
 
 instance PrettyShow Statement where
