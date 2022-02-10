@@ -72,7 +72,7 @@ There are two operators that are more complex and have specific organisational r
 
 If statements take an expression, and then two either integer values or list values. If the expression is non-zero, the first value is returned. If the expression is zero, the second value is returned. The syntax for it is `if expression then t else f`, where `expression` is an integer value, and `t` and `f` are both either integer values or list values. Only one of `t` or `f` is ever evaluated.
 
-Let statements take a name and either an integer value or a list, and set a variable with that name to that value. If the let statement is lazy (with an exclamation mark before the variable name) instead, the value is recalculated every time the variable is used. A let statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`.
+Let statements take a name and either an integer value or a list, and set a variable with that name to that value. If the let statement is lazy (with an exclamation mark before the variable name) instead, the value is recalculated every time the variable is used. A let statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `let name = value`, `let !name = value`, or `let l_name = value`, or so on.
 
 As well as normal expressions, statements can be used now. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs. One small quirk is that a lazy let expression won't be evaluated until the variable is first used.
 
