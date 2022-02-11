@@ -22,7 +22,7 @@ As well as the arithmetic operators above, dice can be rolled, hence the name of
 
 The basic format for this is `dX` where X is some number, meaning a single die of size X. Multiple dice can be rolled using `YdX`, meaning that Y dice are rolled of size X. Parentheses can be used for both Y and X in this case. If Y is greater than a number determined by the bot owner (150 by default), the roll will not be executed. This is the same number that governs the total amount of RNG calls allowed within a command's execution.
 
-In addition to the above, there is syntax for rolling dice with arbitrary sides - `d{4,7,19,-5}`. This results in a die that is equally likely to result in four, seven, nineteen, or minus five. These numbers could be any expression instead.
+In addition to the above, there is syntax for rolling dice with arbitrary sides - `d{4, 7, 19, -5}`. This results in a die that is equally likely to result in four, seven, nineteen, or minus five. These numbers could be any expression instead.
 
 There is support for stacking dice. This means that if you write `2d4d5d6`, it will be parsed and executed as `((2d4)d5)d6`. Operations can be applied to the dice in this stack.
 
@@ -60,7 +60,7 @@ With the introduction of this notation, it is worth noting that the normal (with
 
 ## Lists
 
-As well as simple expressions, basic list expressions can be formed. You can form a basic list using `{e,f,g}`, where `e`, `f`, and `g` are expressions as seen before. Additionally, by using `N#YdX` syntax, you can roll `N` amount of dice following `YdX`.
+As well as simple expressions, basic list expressions can be formed. You can form a basic list using `{e, f, g}`, where `e`, `f`, and `g` are expressions as seen before. Additionally, by using `N#YdX` syntax, you can roll `N` amount of dice following `YdX`.
 
 As an addendum to custom dice, if a list value is bracketed then it can be used in custom dice. For example, `5d(4#4d6)` rolls five dice, whose sides are determined by rolling 4d6 4 times. Do note that laziness still applies here, meaning that the RNG cap can be very quickly reached.
 
@@ -76,9 +76,9 @@ Let statements take a name and either an integer value or a list, and set a vari
 
 As well as normal expressions, statements can be used now. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs. One small quirk is that a lazy let expression won't be evaluated until the variable is first used.
 
-- `let l_list = (2d6)#3d6 ; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
+- `let l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
     - Get the length, minimum, maximum, and average value of a random list
-- `let !k = 1d20; let t = k; let !t_iseven = if mod(t,2) then 0 else 1; if t_iseven then k * t else t`
+- `let !k = 1d20; let t = k; let !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t else t`
     - Create a lazy variable k. Evaluate it into a variable t. Check whether t is even, and place in a variable. Depending on whether t is even or not, either output another random number times by t, or just output t.
 
 ## Functions
