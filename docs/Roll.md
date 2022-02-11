@@ -106,6 +106,9 @@ Here are all the functions, what they take, and what they return. They are calle
 - take (integer, list) - take the first `n` values from a list, where `n` is the integer given
 - between (integer, integer) - generate a list between the two given integers (inclusive)
 - concat (list, list) - concatenate two lists together
+- replicate (integer, integer) - create a list of length the first integer, consisting of elements of only the second element
+- set (integer, integer, list) - set the item at the index of the first integer to the value of the second integer in the given list
+- insert (integer, integer, list) - insert the item at the index of the first integer to the value of the second integer in the given list
 
 # Statistics
 

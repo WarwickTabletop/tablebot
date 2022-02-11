@@ -76,6 +76,8 @@ listFunctionsList = M.keys listFunctions
 -- each function that returns an integer.
 listFunctions' :: [FuncInfoBase [Integer]]
 listFunctions' =
+  funcInfoInsert :
+  constructFuncInfo "prepend" (:) :
   constructFuncInfo "replicate" (genericReplicate @Integer) :
   funcInfoSet :
   constructFuncInfo "concat" (++) :
@@ -101,6 +103,14 @@ funcInfoSet = FuncInfo "set" [ATInteger, ATInteger, ATIntegerList] ATIntegerList
     fiSet (LIInteger i : LIInteger j : [LIList js])
       | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
       | otherwise = return $ genericTake i js ++ j : genericDrop (i + 1) js
+    fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
+
+funcInfoInsert :: FuncInfoBase [Integer]
+funcInfoInsert = FuncInfo "insert" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
+  where
+    fiSet (LIInteger i : LIInteger j : [LIList js])
+      | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
+      | otherwise = return $ genericTake i js ++ j : genericDrop i js
     fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
 
 -- | A data structure to contain the information about a given function,
