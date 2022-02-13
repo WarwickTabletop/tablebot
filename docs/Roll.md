@@ -77,7 +77,7 @@ Let statements take a name and either an integer value or a list, and set a vari
 As well as normal expressions, statements can be used now. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs. One small quirk is that a lazy let expression won't be evaluated until the variable is first used.
 
 - `let l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
-    - Get the length, minimum, maximum, and average value of a random list
+    - Get the length, minimum, maximum, and average value of a random list.
 - `let !k = 1d20; let t = k; let !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t else t`
     - Create a lazy variable k. Evaluate it into a variable t. Check whether t is even, and place in a variable. Depending on whether t is even or not, either output another random number times by t, or just output t.
 
