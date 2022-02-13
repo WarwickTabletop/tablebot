@@ -36,7 +36,6 @@ import Text.RawString.QQ (r)
 rollDice' :: Maybe Program -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
 rollDice' e' t m = do
   let e = fromMaybe (Program [] (Right defaultRoll)) e'
-  -- liftIO $ putStrLn (unpack $ prettyShow e)
   maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
   case maybemsss of
     Nothing -> throwBot (EvaluationException "Could not process expression in one second" [])
