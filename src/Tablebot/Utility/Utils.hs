@@ -51,3 +51,8 @@ maybeEmptyPrepend s = maybe "" (s <>)
 
 mkProxy :: forall a. a -> Proxy a
 mkProxy _ = Proxy :: Proxy a
+
+newtype DebugString = DStr String
+
+instance Show DebugString where
+  show (DStr a) = a

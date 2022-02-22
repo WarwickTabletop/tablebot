@@ -17,9 +17,10 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.ByteString (ByteString)
 import Data.Default (Default (def))
-import Data.Map (Map, empty)
+import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
+import Data.Version.Extra (Version)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
 import Discord (DiscordHandler)
@@ -67,11 +68,15 @@ type Database d = SqlPersistM d
 
 data TablebotCache = TCache
   { cacheKnownEmoji :: Map Text Emoji,
-    cacheApplicationCommands :: Map ApplicationCommandId (Interaction -> EnvDatabaseDiscord () ())
+    cacheApplicationCommands :: Map ApplicationCommandId (Interaction -> EnvDatabaseDiscord () ()),
+    cacheVersionInfo :: VersionInfo
   }
 
-instance Default TablebotCache where
-  def = TCache empty empty
+data VersionInfo = VInfo
+  { gitHash :: Text,
+    procVersion :: Version
+  }
+  deriving (Show, Eq)
 
 -- * Parser
 
