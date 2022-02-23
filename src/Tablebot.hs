@@ -37,13 +37,13 @@ import Database.Persist.Sqlite
     runSqlPool,
   )
 import Discord
+import Discord.Internal.Rest
 import Tablebot.Handler (eventHandler, killCron, runCron)
 import Tablebot.Internal.Administration (adminMigration, currentBlacklist, removeBlacklisted)
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
+import Tablebot.Utility
 import Tablebot.Utility.Help
-import Tablebot.Utility.Types (TablebotCache (..))
-import Tablebot.Utility.Utils (debugPrint)
 
 -- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ runs the bot using the
 -- given Discord API token @dToken@ and SQLite connection string @dbpath@. Only
@@ -55,8 +55,8 @@ import Tablebot.Utility.Utils (debugPrint)
 -- This creates a small pool of database connections used by the event handler,
 -- builds an event handler and starts cron jobs. It also kills the cron jobs on
 -- bot close.
-runTablebot :: Text -> Text -> FilePath -> [CompiledPlugin] -> IO ()
-runTablebot dToken prefix dbpath plugins =
+runTablebot :: VersionInfo -> Text -> Text -> FilePath -> [CompiledPlugin] -> IO ()
+runTablebot vinfo dToken prefix dbpath plugins =
   do
     debugPrint ("DEBUG enabled. This is strongly not recommended in production!" :: String)
     -- Create multiple database threads.
@@ -77,7 +77,7 @@ runTablebot dToken prefix dbpath plugins =
     mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
     -- Create a var to kill any ongoing tasks.
     mvar <- newEmptyMVar :: IO (MVar [ThreadId])
-    cacheMVar <- newMVar (TCache M.empty) :: IO (MVar TablebotCache)
+    cacheMVar <- newMVar (TCache M.empty vinfo) :: IO (MVar TablebotCache)
     userFacingError <-
       runDiscord $
         def
@@ -91,8 +91,24 @@ runTablebot dToken prefix dbpath plugins =
               -- (which can just happen due to databases being unavailable
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
-              liftIO $ putStrLn "Tablebot lives!",
+              liftIO $ putStrLn "Tablebot lives!"
+              sendCommand (UpdateStatus activityStatus),
             -- Kill every cron job in the mvar.
             discordOnEnd = takeMVar mvar >>= killCron
           }
     TIO.putStrLn userFacingError
+  where
+    activityStatus =
+      UpdateStatusOpts
+        { updateStatusOptsSince = Nothing,
+          updateStatusOptsGame =
+            Just
+              ( Activity
+                  { activityName = "with dice. Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help",
+                    activityType = ActivityTypeGame,
+                    activityUrl = Nothing
+                  }
+              ),
+          updateStatusOptsNewStatus = UpdateStatusOnline,
+          updateStatusOptsAFK = False
+        }
