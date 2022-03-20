@@ -106,7 +106,7 @@ runTablebot vinfo dToken prefix dbpath plugins =
         { updateStatusOptsSince = Nothing,
           updateStatusOptsGame =
             Just
-              ( Activity
+              ( def
                   { activityName = "with dice. Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help",
                     activityType = ActivityTypeGame,
                     activityUrl = Nothing
