@@ -18,7 +18,7 @@ module Tablebot.Handler
 where
 
 import Control.Concurrent (MVar, putMVar, takeMVar)
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Control.Monad.Exception (MonadException (catch))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
@@ -27,8 +27,9 @@ import Data.Map as M (fromList)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.Persist.Sqlite (SqlBackend, runSqlPool)
-import Discord (Cache (cacheApplication), DiscordHandler, readCache)
+import Discord (Cache (cacheApplication), DiscordHandler, readCache, restCall)
 import Discord.Interactions (ApplicationCommand (..), Interaction (..))
+import Discord.Requests (ChannelRequest (JoinThread))
 import Discord.Types
 import System.Environment (getEnv)
 import Tablebot.Internal.Handler.Command (parseNewMessage)
@@ -44,7 +45,7 @@ import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (createApplicationCommand, interactionResponseCustomMessage, removeApplicationCommandsNotInList, sendChannelEmbedMessage)
 import Tablebot.Utility.Exception (BotException, embedError)
-import Tablebot.Utility.Types (MessageDetails (messageDetailsEmbeds), TablebotCache (cacheApplicationCommands), messageDetailsBasic)
+import Tablebot.Utility.Types (MessageDetails (messageDetailsEmbeds), TablebotCache (cacheApplicationCommands), liftDiscord, messageDetailsBasic)
 import Text.Read (readMaybe)
 import UnliftIO.Concurrent
   ( ThreadId,
@@ -79,6 +80,7 @@ eventHandler pl prefix = \case
   InteractionCreate i@InteractionApplicationCommand {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
   InteractionCreate i@InteractionApplicationCommandAutocomplete {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
   -- TODO: add application command autocomplete as an option
+  ThreadCreate c -> changeAction () $ void $ liftDiscord $ restCall $ JoinThread (channelId c)
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
