@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- A command that shows the link for a user to suggest a new game to buy.
-module Tablebot.Plugins.Suggest (suggestPlugin) where
+module Tablebot.Plugins.Suggest (suggests) where
 
 import Data.Text (pack)
 import Tablebot.Utility
@@ -38,3 +38,6 @@ suggestHelp = HelpPage "suggest" [] "show links to suggest a new game for the so
 
 suggestPlugin :: Plugin
 suggestPlugin = (plug "suggest") {commands = [suggest], helpPages = [suggestHelp]}
+
+suggests :: CompiledPlugin
+suggests = compilePlugin suggestPlugin

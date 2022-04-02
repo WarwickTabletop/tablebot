@@ -13,23 +13,20 @@
 -- from "Tablebot.Plugins".
 module Tablebot
   ( runTablebot,
+    runTablebotWithEnv,
   )
 where
 
 import Control.Concurrent
-  ( MVar,
-    ThreadId,
-    newEmptyMVar,
-    newMVar,
-    putMVar,
-    takeMVar,
-  )
+import Control.Monad.Extra
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
 import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as TIO (putStrLn)
 import Database.Persist.Sqlite
   ( createSqlitePool,
@@ -38,12 +35,38 @@ import Database.Persist.Sqlite
   )
 import Discord
 import Discord.Internal.Rest
+import LoadEnv (loadEnv)
+import Paths_tablebot (version)
+import System.Environment (getEnv, lookupEnv)
+import System.Exit (die)
 import Tablebot.Handler (eventHandler, killCron, runCron)
-import Tablebot.Internal.Administration (adminMigration, currentBlacklist, removeBlacklisted)
+import Tablebot.Internal.Administration
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
+import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
 import Tablebot.Utility.Help
+import Text.Regex.PCRE ((=~))
+
+runTablebotWithEnv :: [CompiledPlugin] -> IO ()
+runTablebotWithEnv plugins = do
+  -- fetch the version info as soon after building to reduce the likelihood that it changes between build and run
+  gv <- gitVersion
+  let vInfo = VInfo gv version
+  rFlag <- newMVar Reload :: IO (MVar ShutdownReason)
+  whileM $ do
+    _ <- swapMVar rFlag Reload
+    loadEnv
+    dToken <- pack <$> getEnv "DISCORD_TOKEN"
+    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{27}$" :: String)) $
+      die "Invalid token format. Please check it is a bot token"
+    prefix <- pack . fromMaybe "!" <$> lookupEnv "PREFIX"
+    dbpath <- getEnv "SQLITE_FILENAME"
+    runTablebot vInfo dToken prefix dbpath (addAdministrationPlugin rFlag plugins)
+    exit <- swapMVar rFlag Reload
+    restartAction exit
+    pure $ not (restartIsTerminal exit)
+  putStrLn "Bot closed"
 
 -- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ runs the bot using the
 -- given Discord API token @dToken@ and SQLite connection string @dbpath@. Only
@@ -91,7 +114,7 @@ runTablebot vinfo dToken prefix dbpath plugins =
               -- (which can just happen due to databases being unavailable
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
-              liftIO $ putStrLn "Tablebot lives!"
+              liftIO $ putStrLn "The bot lives!"
               sendCommand (UpdateStatus activityStatus),
             -- Kill every cron job in the mvar.
             discordOnEnd = takeMVar mvar >>= killCron

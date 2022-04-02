@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- This is an example plugin which just responds with a shibe photo to a .shibe call
-module Tablebot.Plugins.Shibe (shibePlugin) where
+module Tablebot.Plugins.Shibe (shibe) where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (eitherDecode)
@@ -15,27 +15,17 @@ import Data.Functor ((<&>))
 import Data.Text (Text, pack)
 import Network.HTTP.Conduit (Response (responseBody), parseRequest)
 import Network.HTTP.Simple (httpLBS)
+import Tablebot.Utility
 import Tablebot.Utility.Discord (Message, sendMessage)
 import Tablebot.Utility.SmartParser (parseComm)
-import Tablebot.Utility.Types
-  ( Command,
-    DatabaseDiscord,
-    EnvCommand (Command),
-    EnvPlugin (..),
-    HelpPage (HelpPage),
-    Plugin,
-    RequiredPermission (None),
-    commandAlias,
-    plug,
-  )
 
 -- | @ShibeAPI@ is the basic data type for the JSON object that the Shibe API returns
 type ShibeAPI = Text
 
 -- | @shibe@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a shibe. Uses https://shibe.online/ for shibe images.
-shibe :: Command
-shibe =
+shibes :: Command
+shibes =
   Command
     "shibe"
     (parseComm sendShibe)
@@ -105,4 +95,7 @@ birbHelp = HelpPage "bird" [] "displays an image of a bird" "**Bird**\nGets a ra
 
 -- | @shibePlugin@ assembles these commands into a plugin containing shibe
 shibePlugin :: Plugin
-shibePlugin = (plug "shibe") {commands = [birb, commandAlias "bird" birb, shibe], helpPages = [birbHelp, shibeHelp]}
+shibePlugin = (plug "shibe") {commands = [birb, commandAlias "bird" birb, shibes], helpPages = [birbHelp, shibeHelp]}
+
+shibe :: CompiledPlugin
+shibe = compilePlugin shibePlugin

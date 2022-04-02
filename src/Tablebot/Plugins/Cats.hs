@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- This is an example plugin which just responds with a cat photo to a .cat call
-module Tablebot.Plugins.Cats (catPlugin) where
+module Tablebot.Plugins.Cats (cat) where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (FromJSON, Object, eitherDecode)
@@ -18,18 +18,9 @@ import GHC.Generics (Generic)
 import Network.HTTP.Conduit (Response (responseBody), parseRequest)
 import Network.HTTP.Simple (addRequestHeader, httpLBS)
 import System.Environment (lookupEnv)
+import Tablebot.Utility
 import Tablebot.Utility.Discord (Message, sendMessage)
 import Tablebot.Utility.SmartParser (parseComm)
-import Tablebot.Utility.Types
-  ( Command,
-    DatabaseDiscord,
-    EnvCommand (Command),
-    EnvPlugin (..),
-    HelpPage (HelpPage),
-    Plugin,
-    RequiredPermission (None),
-    plug,
-  )
 
 -- | @CatAPI@ is the basic data type for the JSON object that thecatapi returns
 data CatAPI = CatAPI
@@ -43,10 +34,10 @@ data CatAPI = CatAPI
 
 instance FromJSON CatAPI
 
--- | @cat@ is a command that takes no arguments (using 'noArguments') and
+-- | @catmmand@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a cat. Uses https://docs.thecatapi.com/ for cats.
-cat :: Command
-cat =
+catmmand :: Command
+catmmand =
   Command
     "cat"
     (parseComm sendCat)
@@ -87,4 +78,7 @@ catHelp = HelpPage "cat" [] "displays an image of a cat" "**Cat**\nGets a random
 
 -- | @catPlugin@ assembles these commands into a plugin containing cat
 catPlugin :: Plugin
-catPlugin = (plug "cats") {commands = [cat], helpPages = [catHelp]}
+catPlugin = (plug "cats") {commands = [catmmand], helpPages = [catHelp]}
+
+cat :: CompiledPlugin
+cat = compilePlugin catPlugin
