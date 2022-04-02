@@ -13,7 +13,6 @@ module Tablebot.Internal.Types where
 
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
-import Data.Default (Default)
 import Data.Text (Text)
 import Database.Persist.Sqlite (Migration, SqlPersistT)
 import Discord
@@ -88,9 +87,6 @@ data CompiledCronJob = CCronJob
 -- Allows others to configure the bot.
 
 data BotConfig = BotConfig
-  { rootHelpText :: Maybe Text,
-    gamePlaying :: Maybe Text
+  { rootHelpText :: Text,
+    gamePlaying :: Text
   }
-
-instance Default BotConfig where
-  def = BotConfig Nothing Nothing
