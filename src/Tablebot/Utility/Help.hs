@@ -10,6 +10,7 @@
 module Tablebot.Utility.Help where
 
 import Data.Functor (($>))
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Tablebot.Internal.Permission (getSenderPermission, userHasPermission)
@@ -30,16 +31,16 @@ rootBody =
 helpHelpPage :: HelpPage
 helpHelpPage = HelpPage "help" [] "show information about commands" "**Help**\nShows information about bot commands\n\n*Usage:* `help <page>`" [] None
 
-generateHelp :: CombinedPlugin -> CombinedPlugin
-generateHelp p =
+generateHelp :: Maybe Text -> CombinedPlugin -> CombinedPlugin
+generateHelp rootText p =
   p
-    { combinedSetupAction = return (PA [CCommand "help" (handleHelp (helpHelpPage : combinedHelpPages p)) []] [] [] [] [] [] []) : combinedSetupAction p
+    { combinedSetupAction = return (PA [CCommand "help" (handleHelp rootText (helpHelpPage : combinedHelpPages p)) []] [] [] [] [] [] []) : combinedSetupAction p
     }
 
-handleHelp :: [HelpPage] -> Parser (Message -> CompiledDatabaseDiscord ())
-handleHelp hp = parseHelpPage root
+handleHelp :: Maybe Text -> [HelpPage] -> Parser (Message -> CompiledDatabaseDiscord ())
+handleHelp rootText hp = parseHelpPage root
   where
-    root = HelpPage "" [] "" rootBody hp None
+    root = HelpPage "" [] "" (fromMaybe rootBody rootText) hp None
 
 parseHelpPage :: HelpPage -> Parser (Message -> CompiledDatabaseDiscord ())
 parseHelpPage hp = do
