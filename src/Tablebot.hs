@@ -9,7 +9,7 @@
 -- Portability : POSIX
 --
 -- This module contains the main runner for Tablebot. If you're just looking to
--- run the bot with existing plugins, importing this and your favourite plugins
+-- run the bot with existing plugins, import this and your favourite plugins
 -- from "Tablebot.Plugins".
 module Tablebot
   ( runTablebot,
@@ -48,6 +48,10 @@ import Tablebot.Utility
 import Tablebot.Utility.Help
 import Text.Regex.PCRE ((=~))
 
+-- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
+-- file with the @[CompiledPlugin]@ given. If you're looking to run the bot as
+-- detailed in the README (i.e. using data from .env), you should call this
+-- function.
 runTablebotWithEnv :: [CompiledPlugin] -> IO ()
 runTablebotWithEnv plugins = do
   -- fetch the version info as soon after building to reduce the likelihood that it changes between build and run
