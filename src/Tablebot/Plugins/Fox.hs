@@ -33,8 +33,8 @@ instance FromJSON FoxAPI
 
 -- | @fox@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a fox. Uses https://randomfox.ca/ for fox images.
-foxmmand :: Command
-foxmmand =
+foxCommand :: Command
+foxCommand =
   Command
     "fox"
     (parseComm sendFox)
@@ -66,7 +66,7 @@ foxHelp = HelpPage "fox" [] "displays an image of a fox" "**Fox**\nGets a random
 
 -- | @foxPlugin@ assembles these commands into a plugin containing fox
 foxPlugin :: Plugin
-foxPlugin = (plug "fox") {commands = [foxmmand], helpPages = [foxHelp]}
+foxPlugin = (plug "fox") {commands = [foxCommand], helpPages = [foxHelp]}
 
 fox :: CompiledPlugin
 fox = compilePlugin foxPlugin

@@ -34,10 +34,10 @@ data CatAPI = CatAPI
 
 instance FromJSON CatAPI
 
--- | @catmmand@ is a command that takes no arguments (using 'noArguments') and
+-- | @catCommand@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a cat. Uses https://docs.thecatapi.com/ for cats.
-catmmand :: Command
-catmmand =
+catCommand :: Command
+catCommand =
   Command
     "cat"
     (parseComm sendCat)
@@ -78,7 +78,7 @@ catHelp = HelpPage "cat" [] "displays an image of a cat" "**Cat**\nGets a random
 
 -- | @catPlugin@ assembles these commands into a plugin containing cat
 catPlugin :: Plugin
-catPlugin = (plug "cats") {commands = [catmmand], helpPages = [catHelp]}
+catPlugin = (plug "cats") {commands = [catCommand], helpPages = [catHelp]}
 
 cat :: CompiledPlugin
 cat = compilePlugin catPlugin

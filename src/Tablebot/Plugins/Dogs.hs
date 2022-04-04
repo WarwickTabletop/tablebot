@@ -21,8 +21,8 @@ import Tablebot.Utility.SmartParser (parseComm)
 
 -- | @dog@ is a command that takes no arguments (using 'noArguments') and
 -- replies with an image of a dog. Uses https://randomdog.ca/ for dog images.
-dogmmand :: Command
-dogmmand =
+dogCommand :: Command
+dogCommand =
   Command
     "dog"
     (parseComm sendDog)
@@ -47,7 +47,7 @@ dogHelp = HelpPage "dog" [] "displays an image of a dog" "**Dog**\nGets a random
 
 -- | @dogPlugin@ assembles these commands into a plugin containing dog
 dogPlugin :: Plugin
-dogPlugin = (plug "dog") {commands = [dogmmand], helpPages = [dogHelp]}
+dogPlugin = (plug "dog") {commands = [dogCommand], helpPages = [dogHelp]}
 
 dog :: CompiledPlugin
 dog = compilePlugin dogPlugin
