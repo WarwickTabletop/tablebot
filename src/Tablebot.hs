@@ -49,9 +49,6 @@ import Tablebot.Utility
 import Tablebot.Utility.Help
 import Text.Regex.PCRE ((=~))
 
--- TODO: Make a Config type or something which can be passed in to set various bits.
--- All plugins that rely on it can have that as an Env argument, found via MVar or similar.
-
 -- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
 -- file with the @[CompiledPlugin]@ given. If you're looking to run the bot as
 -- detailed in the README (i.e. using data from .env), you should call this
@@ -76,9 +73,12 @@ runTablebotWithEnv plugins config = do
     pure $ not (restartIsTerminal exit)
   putStrLn "Bot closed"
 
--- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ @config@ runs the bot
--- using the given Discord API token @dToken@ and SQLite connection string
--- @dbpath@. Only the plugins provided by @plugins@ are run, and all commands
+-- | runTablebot @vinfo@ @dToken@ @prefix@ @dbpath@ @plugins@ @config@ runs the
+-- bot using the given Discord API token @dToken@ and SQLite connection string
+-- @dbpath@. In general, you should prefer @runTablebotWithEnv@ as it gets all
+-- of the required data for you, but this is exported for if you have weird
+-- setup requirements or don't want to use the administration plugin.
+-- Only the plugins provided by @plugins@ are run, and all commands
 -- are prefixed with @prefix@. @config@ details how the bot should present
 -- itself to users, allowing programmers to replace the Tablebot-specific text
 -- with their own.
