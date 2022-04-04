@@ -13,6 +13,7 @@ module Tablebot.Internal.Types where
 
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
+import Data.Default
 import Data.Text (Text)
 import Database.Persist.Sqlite (Migration, SqlPersistT)
 import Discord
@@ -90,3 +91,10 @@ data BotConfig = BotConfig
   { rootHelpText :: Text,
     gamePlaying :: Text
   }
+
+instance Default BotConfig where
+  def =
+    BotConfig
+      { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
+        gamePlaying = "Kirby: Planet Robobot"
+      }
