@@ -72,14 +72,14 @@ There are two operators that are more complex and have specific organisational r
 
 If statements take an expression, and then two either integer values or list values. If the expression is non-zero, the first value is returned. If the expression is zero, the second value is returned. The syntax for it is `if expression then t else f`, where `expression` is an integer value, and `t` and `f` are both either integer values or list values. Only one of `t` or `f` is ever evaluated.
 
-Let statements take a name and either an integer value or a list, and set a variable with that name to that value. If the let statement is lazy (with an exclamation mark before the variable name) instead, the value is recalculated every time the variable is used. A let statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `let name = value`, `let !name = value`, or `let l_name = value`, or so on.
+Let statements take a name and either an integer value or a list, and set a variable with that name to that value. If the let statement is lazy (with an exclamation mark before the variable name) instead, the value is recalculated every time the variable is used. A let statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `let name = value`, `let !name = value`, or `let l_name = value`, or so on. These bound values can then be used in other calculations.
 
-As well as normal expressions, statements can be used now. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs. One quality of life feature is that a lazy let expression won't be evaluated until the variable is first used.
+To fully utilise these expression types, statements have been made, which, when constructed together with a value, creates a program. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs (which are multiple statements followed by a single value). One quality of life feature is that a lazy let expression won't be evaluated until the variable is first used.
 
 - `let l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
     - Get the length, minimum, maximum, and average value of a random list.
-- `let !k = 1d20; let t = k; let !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t else t`
-    - Create a lazy variable k. Evaluate it into a variable t. Check whether t is even, and place in a variable. Depending on whether t is even or not, either output another random number times by t, or just output t.
+- `let !k = 1d20; let t = k; let !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t + 20 else t`
+    - Create a lazy variable `k`. Evaluate it into a variable `t`. Check whether `t` is even, and place in a variable. Depending on whether `t` is even or not, either output another random number times by `t` (and add 20 to distinguish it), or just output `t`.
 
 ## Functions
 
@@ -114,7 +114,7 @@ Here are all the functions, what they take, and what they return. They are calle
 
 As well as generating values, statistics based off of expressions can be found. There is a total time limit of 10 seconds for this command, with 5 seconds given to calculations and 5 seconds given to generating the bar chart.
 
-To get these statistics, calling the `roll` command with the `stats` subcommand will generate the requested statistics. The expression given has to return an integer.
+To get these statistics, calling the `roll` command with the `stats` subcommand will generate the requested statistics. The expression given has to return an integer. Stats can only be generated on single expressions and not programs.
 
 The bot will give the mean, the standard deviation, and the top ten most common values of the distribution, as well as graphing the entire distribution.
 
