@@ -10,8 +10,8 @@
 -- expressions.
 module Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalProgram, evalList, evalInteger, evaluationException, propagateException, maximumRNG, maximumListLength) where
 
-import Control.Monad (when)
 import Control.Monad.Exception (MonadException)
+import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify, when)
 import Data.List (foldl', genericDrop, genericReplicate, genericTake, sortBy)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), head, tail, (<|))
 import Data.Map (Map, empty)
@@ -38,9 +38,14 @@ data ProgramState = ProgramState
   }
   deriving (Show)
 
+startState :: ProgramState
+startState = ProgramState 0 empty
+
+type ProgramStateM = StateT ProgramState IO
+
 -- | Add the given variable to the `ProgramState`
-addVariable :: ProgramState -> Text -> Either ListValues Expr -> ProgramState
-addVariable (ProgramState i vs) t val = ProgramState i (M.insert t val vs)
+addVariable :: Text -> Either ListValues Expr -> ProgramStateM ()
+addVariable t val = modify $ \s -> s {getVariables = M.insert t val (getVariables s)}
 
 -- | The maximum depth that should be permitted. Used to limit number of dice
 -- and rerolls.
@@ -51,13 +56,14 @@ maximumListLength :: Integer
 maximumListLength = 50
 
 -- | Increment the rngcount by 1.
-incRNGCount :: ProgramState -> ProgramState
-incRNGCount ps = ps {getRNGCount = 1 + getRNGCount ps}
+incRNGCount :: ProgramStateM ()
+incRNGCount = modify (\s -> s {getRNGCount = getRNGCount s + 1}) >> checkRNGCount
 
 -- | Check whether the RNG count has been exceeded by the integer given.
-checkRNGCount :: ProgramState -> IO ()
-checkRNGCount i =
-  when (getRNGCount i > maximumRNG) $ throwBot $ EvaluationException ("exceeded maximum rng count (" <> show maximumRNG <> ")") []
+checkRNGCount :: ProgramStateM ()
+checkRNGCount = do
+  rngCount <- gets getRNGCount
+  when (rngCount > maximumRNG) $ evaluationException ("Maximum RNG count exceeded (" <> pack (show maximumRNG) <> ")") []
 
 -- | Utility function to throw an `EvaluationException` when using `Text`.
 evaluationException :: (MonadException m) => Text -> [Text] -> m a
@@ -65,40 +71,31 @@ evaluationException nm locs = throwBot $ EvaluationException (unpack nm) (unpack
 
 --- Evaluating an expression. Uses IO because dice are random
 
--- instance IOEval (Program Expr) where
---   evalShow' rngCount (Program ss e) = do
---     (t, ps) <- foldr (\s b -> b >>= \(t, ps) -> evalStatement ps s >>= \(st, ps') -> return (t <> st, ps')) (return ("", rngCount)) ss
---     (i, t', ps') <- evalShow ps e
---     return (i, t <> t', ps')
-
--- instance IOEvalList (Program ListValues) where
---   evalShowL' rngCount (Program ss e) = do
---     (t, ps) <- foldr (\s b -> b >>= \(t, ps) -> evalStatement ps s >>= \(st, ps') -> return (t <> st, ps')) (return ("", rngCount)) ss
---     (i, t', ps') <- evalShowL ps e
---     return (i, (t <>) <$> t', ps')
-
 -- | Evaluating a full program
 evalProgram :: Program -> IO (Either [(Integer, Text)] Integer, Text)
-evalProgram (Program ss elve) = do
-  let rngCount = ProgramState 0 empty
-  (t, ps) <- foldl' (\b s -> b >>= \(t, ps) -> evalStatement ps s >>= \(st, ps') -> return (t <> st, ps')) (return ("", rngCount)) ss
-  r <- either ((Left <$>) . evalShowL ps) ((Right <$>) . evalShow ps) elve
-  case r of
-    Left (is, mt, _) -> return (Left is, t <> fromMaybe (prettyShow elve) mt)
-    Right (is, mt, _) -> return (Right is, t <> mt)
+evalProgram (Program ss elve) =
+  evalStateT
+    ( do
+        t <- foldl' (\b s -> b >>= \t -> evalStatement s >>= \st -> return (t <> st)) (return "") ss
+        r <- either ((Left <$>) . evalShowL) ((Right <$>) . evalShow) elve
+        case r of
+          Left (is, mt) -> return (Left is, t <> fromMaybe (prettyShow elve) mt)
+          Right (is, mt) -> return (Right is, t <> mt)
+    )
+    startState
 
 -- | Given a list expression, evaluate it, getting the pretty printed string and
 -- the value of the result.
 evalList :: (IOEvalList a, PrettyShow a) => a -> IO ([(Integer, Text)], Text)
 evalList a = do
-  (is, ss, _) <- evalShowL (ProgramState 0 empty) a
+  (is, ss) <- evalStateT (evalShowL a) startState
   return (is, fromMaybe (prettyShow a) ss)
 
 -- | Given an integer expression, evaluate it, getting the pretty printed string
 -- and the value of the result.
 evalInteger :: (IOEval a, PrettyShow a) => a -> IO (Integer, Text)
 evalInteger a = do
-  (is, ss, _) <- evalShow (ProgramState 0 empty) a
+  (is, ss) <- evalStateT (evalShow a) startState
   return (is, ss)
 
 -- | Utility function to display dice.
@@ -132,25 +129,25 @@ dieShow lchc d ls = return $ prettyShow d <> " [" <> intercalate ", " adjustList
 
 -- | Evaluate a series of values, combining the text output into a comma
 -- separated list.
-evalShowList :: (IOEval a, PrettyShow a) => ProgramState -> [a] -> IO ([Integer], Text, ProgramState)
-evalShowList rngCount as = do
-  (vs, rngCount') <- evalShowList' rngCount as
+evalShowList :: (IOEval a, PrettyShow a) => [a] -> ProgramStateM ([Integer], Text)
+evalShowList as = do
+  vs <- evalShowList' as
   let (is, ts) = unzip vs
-  return (is, intercalate ", " ts, rngCount')
+  return (is, intercalate ", " ts)
 
 -- | Evaluate a series of values, combining the text output a list.
-evalShowList' :: (IOEval a, PrettyShow a) => ProgramState -> [a] -> IO ([(Integer, Text)], ProgramState)
+evalShowList' :: (IOEval a, PrettyShow a) => [a] -> ProgramStateM [(Integer, Text)]
 evalShowList' = evalShowList'' evalShow
 
 -- | Evaluate (using a custom evaluator function) a series of values, getting
 -- strings and values as a result.
-evalShowList'' :: (ProgramState -> a -> IO (i, Text, ProgramState)) -> ProgramState -> [a] -> IO ([(i, Text)], ProgramState)
-evalShowList'' customEvalShow rngCount as = foldl' (flip foldF) (return ([], rngCount)) as >>= \(lst, ps) -> return (reverse lst, ps)
+evalShowList'' :: (a -> ProgramStateM (i, Text)) -> [a] -> ProgramStateM [(i, Text)]
+evalShowList'' customEvalShow as = foldl' (flip foldF) (return []) as >>= \lst -> return (reverse lst)
   where
     foldF a sumrngcount = do
-      (diceSoFar, rngCountTotal) <- sumrngcount
-      (i, s, rngCountTemp) <- customEvalShow rngCountTotal a
-      return ((i, s) : diceSoFar, rngCountTemp)
+      diceSoFar <- sumrngcount
+      (i, s) <- customEvalShow a
+      return ((i, s) : diceSoFar)
 
 -- | When given a value that may possibly have an `EvaluationException`, add the
 -- representation of the current value to the exception stack.
@@ -170,42 +167,44 @@ class IOEvalList a where
   -- it took. If the `a` value is a dice value, the values of the dice should be
   -- displayed. This function adds the current location to the exception
   -- callstack.
-  evalShowL :: PrettyShow a => ProgramState -> a -> IO ([(Integer, Text)], Maybe Text, ProgramState)
-  evalShowL rngCount a = do
-    (is, mt, rngCount') <- propagateException (prettyShow a) (evalShowL' rngCount a)
-    return (genericTake maximumListLength is, mt, rngCount')
+  evalShowL :: PrettyShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL a = do
+    (is, mt) <- propagateException (prettyShow a) (evalShowL' a)
+    return (genericTake maximumListLength is, mt)
 
-  evalShowL' :: PrettyShow a => ProgramState -> a -> IO ([(Integer, Text)], Maybe Text, ProgramState)
+  evalShowL' :: PrettyShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
 
-evalArgValue :: ProgramState -> ArgValue -> IO (ListInteger, ProgramState)
-evalArgValue rngCount (AVExpr e) = do
-  (i, _, rngCount') <- evalShow rngCount e
-  return (LIInteger i, rngCount')
-evalArgValue rngCount (AVListValues e) = do
-  (i, _, rngCount') <- evalShowL rngCount e
-  return (LIList (fst <$> i), rngCount')
+evalArgValue :: ArgValue -> ProgramStateM ListInteger
+evalArgValue (AVExpr e) = do
+  (i, _) <- evalShow e
+  return $ LIInteger i
+evalArgValue (AVListValues e) = do
+  (i, _) <- evalShowL e
+  return (LIList (fst <$> i))
 
 instance IOEvalList ListValues where
-  evalShowL' rngCount (MultipleValues nb b) = do
-    (nb', _, rngCount') <- evalShow rngCount nb
-    (vs, rc) <- evalShowList' rngCount' (genericReplicate nb' b)
-    return (vs, Nothing, rc)
-  evalShowL' rngCount (LVFunc fi exprs) = evaluateFunction rngCount fi exprs >>= \(i, s, rc) -> return ((,"") <$> i, Just s, rc)
-  evalShowL' rngCount (LVBase lvb) = evalShowL rngCount lvb
-  evalShowL' rngCount (LVVar t) = case M.lookup t (getVariables rngCount) of
-    Just (Left e) -> evalShowL rngCount e >>= \(i, _, rngCount') -> return (i, Just t, rngCount')
-    _ -> evaluationException ("could not find list variable `" <> t <> "`") []
-  evalShowL' rngCount (ListValuesMisc l) = evalShowL rngCount l
+  evalShowL' (MultipleValues nb b) = do
+    (nb', _) <- evalShow nb
+    vs <- evalShowList' (genericReplicate nb' b)
+    return (vs, Nothing)
+  evalShowL' (LVFunc fi exprs) = evaluateFunction fi exprs >>= \(i, s) -> return ((,"") <$> i, Just s)
+  evalShowL' (LVBase lvb) = evalShowL lvb
+  evalShowL' (LVVar t) = do
+    vars <- gets getVariables
+    case M.lookup t vars of
+      Just (Left e) -> evalShowL e >>= \(i, _) -> return (i, Just t)
+      _ -> evaluationException ("could not find list variable `" <> t <> "`") []
+  evalShowL' (ListValuesMisc l) = evalShowL l
 
 instance IOEvalList ListValuesBase where
-  evalShowL' rngCount (LVBList es) = do
-    (vs, rc) <- evalShowList' rngCount es
-    return (vs, Nothing, rc)
-  evalShowL' rngCount (LVBParen (Paren lv)) = evalShowL rngCount lv
+  evalShowL' (LVBList es) = do
+    vs <- evalShowList' es
+    return (vs, Nothing)
+  evalShowL' (LVBParen (Paren lv)) = evalShowL lv
 
 instance IOEvalList ListValuesMisc where
-  evalShowL' rngCount (MiscLet l) = evalShowL rngCount l
-  evalShowL' rngCount (MiscIf l) = evalShowL rngCount l
+  evalShowL' (MiscLet l) = evalShowL l
+  evalShowL' (MiscIf l) = evalShowL l
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
@@ -214,51 +213,53 @@ class IOEval a where
   -- value, and the number of RNG calls it took. If the `a` value is a dice
   -- value, the values of the dice should be displayed. This function adds
   -- the current location to the exception callstack.
-  evalShow :: PrettyShow a => ProgramState -> a -> IO (Integer, Text, ProgramState)
-  evalShow rngCount a = propagateException (prettyShow a) (evalShow' rngCount a)
+  evalShow :: PrettyShow a => a -> ProgramStateM (Integer, Text)
+  evalShow a = propagateException (prettyShow a) (evalShow' a)
 
-  evalShow' :: PrettyShow a => ProgramState -> a -> IO (Integer, Text, ProgramState)
+  evalShow' :: PrettyShow a => a -> ProgramStateM (Integer, Text)
 
 instance IOEval Base where
-  evalShow' rngCount (NBase nb) = evalShow rngCount nb
-  evalShow' rngCount (DiceBase dice) = evalShow rngCount dice
-  evalShow' rngCount (Var t) = case M.lookup t (getVariables rngCount) of
-    Just (Right e) -> evalShow rngCount e >>= \(i, _, rngCount') -> return (i, t, rngCount')
-    _ -> evaluationException ("could not find integer variable `" <> t <> "`") []
+  evalShow' (NBase nb) = evalShow nb
+  evalShow' (DiceBase dice) = evalShow dice
+  evalShow' (Var t) = do
+    vars <- gets getVariables
+    case M.lookup t vars of
+      Just (Right e) -> evalShow e >>= \(i, _) -> return (i, t)
+      _ -> evaluationException ("could not find integer variable `" <> t <> "`") []
 
 instance IOEval Die where
-  evalShow' rngCount ld@(LazyDie d) = do
-    (i, _, rngCount') <- evalShow rngCount d
+  evalShow' ld@(LazyDie d) = do
+    (i, _) <- evalShow d
     ds <- dieShow Nothing ld [(i, Nothing)]
-    return (i, ds, rngCount')
-  evalShow' rngCount d@(CustomDie (LVBList es)) = do
-    e <- chooseOne es
-    (i, _, rngCount') <- evalShow rngCount e
+    return (i, ds)
+  evalShow' d@(CustomDie (LVBList es)) = do
+    e <- liftIO $ chooseOne es
+    (i, _) <- evalShow e
     ds <- dieShow Nothing d [(i, Nothing)]
-    checkRNGCount (incRNGCount rngCount')
-    return (i, ds, incRNGCount rngCount')
-  evalShow' rngCount d@(CustomDie is) = do
-    (is', _, rngCount') <- evalShowL rngCount is
-    i <- chooseOne (fst <$> is')
+    incRNGCount
+    return (i, ds)
+  evalShow' d@(CustomDie is) = do
+    (is', _) <- evalShowL is
+    i <- liftIO $ chooseOne (fst <$> is')
     ds <- dieShow Nothing d [(i, Nothing)]
-    checkRNGCount (incRNGCount rngCount')
-    return (i, ds, incRNGCount rngCount')
-  evalShow' rngCount d@(Die b) = do
-    (bound, _, rngCount') <- evalShow rngCount b
+    incRNGCount
+    return (i, ds)
+  evalShow' d@(Die b) = do
+    (bound, _) <- evalShow b
     if bound < 1
       then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (prettyShow b) <> ")") []
       else do
         i <- randomRIO (1, bound)
         ds <- dieShow Nothing d [(i, Nothing)]
-        checkRNGCount (incRNGCount rngCount')
-        return (i, ds, incRNGCount rngCount')
+        incRNGCount
+        return (i, ds)
 
 instance IOEval Dice where
-  evalShow' rngCount dop = do
-    (lst, mnmx, rngCount') <- evalDieOp rngCount dop
+  evalShow' dop = do
+    (lst, mnmx) <- evalDieOp dop
     let vs = fromEvalDieOpList lst
     s <- dieShow mnmx dop vs
-    return (sum (fst <$> filter (isNothing . snd) vs), s, rngCount')
+    return (sum (fst <$> filter (isNothing . snd) vs), s)
 
 -- | Utility function to transform the output list type of other utility
 -- functions into one that `dieShow` recognises.
@@ -274,76 +275,76 @@ fromEvalDieOpList = foldr foldF []
 --
 -- The function itself checks to make sure the number of dice being rolled is
 -- less than the maximum recursion and is non-negative.
-evalDieOp :: ProgramState -> Dice -> IO ([(NonEmpty Integer, Bool)], Maybe (Integer, Integer), ProgramState)
-evalDieOp rngCount (Dice b ds dopo) = do
-  (nbDice, _, rngCountB) <- evalShow rngCount b
+evalDieOp :: Dice -> ProgramStateM ([(NonEmpty Integer, Bool)], Maybe (Integer, Integer))
+evalDieOp (Dice b ds dopo) = do
+  (nbDice, _) <- evalShow b
   if nbDice > maximumRNG
     then evaluationException ("tried to roll more than " <> formatInput Code maximumRNG <> " dice: " <> formatInput Code nbDice) [prettyShow b]
     else do
       if nbDice < 0
         then evaluationException ("tried to give a negative value to the number of dice: " <> formatInput Code nbDice) [prettyShow b]
         else do
-          (ds', rngCountCondense, crits) <- condenseDie rngCountB ds
-          (rolls, _, rngCountRolls) <- evalShowList rngCountCondense (genericReplicate nbDice ds')
+          (ds', crits) <- condenseDie ds
+          (rolls, _) <- evalShowList (genericReplicate nbDice ds')
           let vs = fmap (\i -> (i :| [], True)) rolls
-          (rs, rngCountRs) <- evalDieOp' rngCountRolls dopo ds' vs
-          return (sortBy sortByOption rs, crits, rngCountRs)
+          rs <- evalDieOp' dopo ds' vs
+          return (sortBy sortByOption rs, crits)
   where
-    condenseDie rngCount' (Die dBase) = do
-      (i, _, rngCount'') <- evalShow rngCount' dBase
-      return (Die (Value i), rngCount'', Just (1, i))
-    condenseDie rngCount' (CustomDie is) = do
-      (is', _, rngCount'') <- evalShowL rngCount' is
-      return (CustomDie (LVBList (promote . fst <$> is')), rngCount'', Nothing)
-    condenseDie rngCount' (LazyDie d) = return (d, rngCount', Nothing)
+    condenseDie (Die dBase) = do
+      (i, _) <- evalShow dBase
+      return (Die (Value i), Just (1, i))
+    condenseDie (CustomDie is) = do
+      (is', _) <- evalShowL is
+      return (CustomDie (LVBList (promote . fst <$> is')), Nothing)
+    condenseDie (LazyDie d) = return (d, Nothing)
     sortByOption (e :| es, _) (f :| fs, _)
       | e == f = compare (length fs) (length es)
       | otherwise = compare e f
 
 -- | Utility function that processes a `Maybe DieOpRecur`, when given a die, and
 -- dice that have already been processed.
-evalDieOp' :: ProgramState -> Maybe DieOpRecur -> Die -> [(NonEmpty Integer, Bool)] -> IO ([(NonEmpty Integer, Bool)], ProgramState)
-evalDieOp' rngCount Nothing _ is = return (is, rngCount)
-evalDieOp' rngCount (Just (DieOpRecur doo mdor)) die is = do
-  (doo', rngCount') <- processDOO rngCount doo
-  (is', rngCount'') <- evalDieOp'' rngCount' doo' die is
-  evalDieOp' rngCount'' mdor die is'
+evalDieOp' :: Maybe DieOpRecur -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOp' Nothing _ is = return is
+evalDieOp' (Just (DieOpRecur doo mdor)) die is = do
+  doo' <- processDOO doo
+  is' <- evalDieOp'' doo' die is
+  evalDieOp' mdor die is'
   where
-    processLHW rngCount' (Low i) = do
-      (i', _, rngCount'') <- evalShow rngCount' i
-      return (Low (Value i'), rngCount'')
-    processLHW rngCount' (High i) = do
-      (i', _, rngCount'') <- evalShow rngCount' i
-      return (High (Value i'), rngCount'')
-    processLHW rngCount' (Where o i) = do
-      (i', _, rngCount'') <- evalShow rngCount' i
-      return (Where o (Value i'), rngCount'')
-    processDOO rngCount' (DieOpOptionKD kd lhw) = do
-      (lhw', rngCount'') <- processLHW rngCount' lhw
-      return (DieOpOptionKD kd lhw', rngCount'')
-    processDOO rngCount' (Reroll once o i) = do
-      (i', _, rngCount'') <- evalShow rngCount' i
-      return (Reroll once o (Value i'), rngCount'')
-    processDOO rngCount' (DieOpOptionLazy doo') = return (doo', rngCount')
+    processLHW (Low i) = do
+      (i', _) <- evalShow i
+      return (Low (Value i'))
+    processLHW (High i) = do
+      (i', _) <- evalShow i
+      return (High (Value i'))
+    processLHW (Where o i) = do
+      (i', _) <- evalShow i
+      return (Where o (Value i'))
+    processDOO (DieOpOptionKD kd lhw) = do
+      lhw' <- processLHW lhw
+      return (DieOpOptionKD kd lhw')
+    processDOO (Reroll once o i) = do
+      (i', _) <- evalShow i
+      return (Reroll once o (Value i'))
+    processDOO (DieOpOptionLazy doo') = return doo'
 
 -- | Utility function that processes a `DieOpOption`, when given a die, and dice
 -- that have already been processed.
-evalDieOp'' :: ProgramState -> DieOpOption -> Die -> [(NonEmpty Integer, Bool)] -> IO ([(NonEmpty Integer, Bool)], ProgramState)
-evalDieOp'' rngCount (DieOpOptionLazy doo) die is = evalDieOp'' rngCount doo die is
-evalDieOp'' rngCount (DieOpOptionKD kd lhw) _ is = evalDieOpHelpKD rngCount kd lhw is
-evalDieOp'' rngCount (Reroll once o i) die is = foldr rerollF (return ([], rngCount)) is
+evalDieOp'' :: DieOpOption -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOp'' (DieOpOptionLazy doo) die is = evalDieOp'' doo die is
+evalDieOp'' (DieOpOptionKD kd lhw) _ is = evalDieOpHelpKD kd lhw is
+evalDieOp'' (Reroll once o i) die is = foldr rerollF (return []) is
   where
     rerollF g@(i', b) isRngCount' = do
-      (is', rngCount') <- isRngCount'
-      (iEval, _, rngCount'') <- evalShow rngCount' i
+      is' <- isRngCount'
+      (iEval, _) <- evalShow i
       if b && applyCompare o (NE.head i') iEval
         then do
-          (v, _, rngCount''') <- evalShow rngCount'' die
+          (v, _) <- evalShow die
           let ret = (v <| i', b)
           if once
-            then return (ret : is', rngCount''')
-            else rerollF ret (return (is', rngCount'''))
-        else return (g : is', rngCount'')
+            then return (ret : is')
+            else rerollF ret (return is')
+        else return (g : is')
 
 -- | Given a list of dice values, separate them into kept values and dropped values
 -- respectively.
@@ -358,17 +359,17 @@ setToDropped :: [(NonEmpty Integer, Bool)] -> [(NonEmpty Integer, Bool)]
 setToDropped = fmap (\(is, _) -> (is, False))
 
 -- | Helper function that executes the keep/drop commands on dice.
-evalDieOpHelpKD :: ProgramState -> KeepDrop -> LowHighWhere -> [(NonEmpty Integer, Bool)] -> IO ([(NonEmpty Integer, Bool)], ProgramState)
-evalDieOpHelpKD rngCount kd (Where cmp i) is = foldr foldF (return ([], rngCount)) is
+evalDieOpHelpKD :: KeepDrop -> LowHighWhere -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOpHelpKD kd (Where cmp i) is = foldr foldF (return []) is
   where
     isKeep = if kd == Keep then id else not
     foldF (iis, b) sumrngcount = do
-      (diceSoFar, rngCountTotal) <- sumrngcount
-      (i', _, rngCountTemp) <- evalShow rngCountTotal i
-      return ((iis, b && isKeep (applyCompare cmp (NE.head iis) i')) : diceSoFar, rngCountTemp)
-evalDieOpHelpKD rngCount kd lh is = do
-  (i', _, rngCount') <- evalShow rngCount i
-  return (d <> setToDropped (getDrop i' sk) <> getKeep i' sk, rngCount')
+      diceSoFar <- sumrngcount
+      (i', _) <- evalShow i
+      return ((iis, b && isKeep (applyCompare cmp (NE.head iis) i')) : diceSoFar)
+evalDieOpHelpKD kd lh is = do
+  (i', _) <- evalShow i
+  return (d <> setToDropped (getDrop i' sk) <> getKeep i' sk)
   where
     (k, d) = separateKeptDropped is
     -- Note that lh will always be one of `Low` or `High`
@@ -381,108 +382,112 @@ evalDieOpHelpKD rngCount kd lh is = do
 -- Was previously its own type class that wouldn't work for evaluating Base values.
 
 -- | Utility function to evaluate a binary operator.
-binOpHelp :: (IOEval a, IOEval b, PrettyShow a, PrettyShow b) => ProgramState -> a -> b -> Text -> (Integer -> Integer -> Integer) -> IO (Integer, Text, ProgramState)
-binOpHelp rngCount a b opS op = do
-  (a', a's, rngCount') <- evalShow rngCount a
-  (b', b's, rngCount'') <- evalShow rngCount' b
-  return (op a' b', a's <> " " <> opS <> " " <> b's, rngCount'')
+binOpHelp :: (IOEval a, IOEval b, PrettyShow a, PrettyShow b) => a -> b -> Text -> (Integer -> Integer -> Integer) -> ProgramStateM (Integer, Text)
+binOpHelp a b opS op = do
+  (a', a's) <- evalShow a
+  (b', b's) <- evalShow b
+  return (op a' b', a's <> " " <> opS <> " " <> b's)
 
 instance IOEval ExprMisc where
-  evalShow' rngCount (MiscLet l) = evalShow rngCount l
-  evalShow' rngCount (MiscIf l) = evalShow rngCount l
+  evalShow' (MiscLet l) = evalShow l
+  evalShow' (MiscIf l) = evalShow l
 
 instance IOEval Expr where
-  evalShow' rngCount (NoExpr t) = evalShow rngCount t
-  evalShow' rngCount (ExprMisc e) = evalShow rngCount e
-  evalShow' rngCount (Add t e) = binOpHelp rngCount t e "+" (+)
-  evalShow' rngCount (Sub t e) = binOpHelp rngCount t e "-" (-)
+  evalShow' (NoExpr t) = evalShow t
+  evalShow' (ExprMisc e) = evalShow e
+  evalShow' (Add t e) = binOpHelp t e "+" (+)
+  evalShow' (Sub t e) = binOpHelp t e "-" (-)
 
 instance IOEval Term where
-  evalShow' rngCount (NoTerm f) = evalShow rngCount f
-  evalShow' rngCount (Multi f t) = binOpHelp rngCount f t "*" (*)
-  evalShow' rngCount (Div f t) = do
-    (f', f's, rngCount') <- evalShow rngCount f
-    (t', t's, rngCount'') <- evalShow rngCount' t
+  evalShow' (NoTerm f) = evalShow f
+  evalShow' (Multi f t) = binOpHelp f t "*" (*)
+  evalShow' (Div f t) = do
+    (f', f's) <- evalShow f
+    (t', t's) <- evalShow t
     if t' == 0
       then evaluationException "division by zero" [prettyShow t]
-      else return (div f' t', f's <> " / " <> t's, rngCount'')
+      else return (div f' t', f's <> " / " <> t's)
 
 instance IOEval Func where
-  evalShow' rngCount (Func s exprs) = evaluateFunction rngCount s exprs
-  evalShow' rngCount (NoFunc b) = evalShow rngCount b
+  evalShow' (Func s exprs) = evaluateFunction s exprs
+  evalShow' (NoFunc b) = evalShow b
 
 -- | Evaluate a function when given a list of parameters
-evaluateFunction :: ProgramState -> FuncInfoBase j -> [ArgValue] -> IO (j, Text, ProgramState)
-evaluateFunction rngCount fi exprs = do
-  (exprs', rngCount') <- evalShowList'' (\r a -> evalArgValue r a >>= \(i, r') -> return (i, "", r')) rngCount exprs
+evaluateFunction :: FuncInfoBase j -> [ArgValue] -> ProgramStateM (j, Text)
+evaluateFunction fi exprs = do
+  exprs' <- evalShowList'' (fmap (,"") . evalArgValue) exprs
   f <- funcInfoFunc fi (fst <$> exprs')
-  return (f, funcInfoName fi <> "(" <> intercalate ", " (prettyShow <$> exprs) <> ")", rngCount')
+  return (f, funcInfoName fi <> "(" <> intercalate ", " (prettyShow <$> exprs) <> ")")
 
 instance IOEval Negation where
-  evalShow' rngCount (NoNeg expo) = evalShow rngCount expo
-  evalShow' rngCount (Neg expo) = do
-    (expo', expo's, rngCount') <- evalShow rngCount expo
-    return (negate expo', "-" <> expo's, rngCount')
+  evalShow' (NoNeg expo) = evalShow expo
+  evalShow' (Neg expo) = do
+    (expo', expo's) <- evalShow expo
+    return (negate expo', "-" <> expo's)
 
 instance IOEval Expo where
-  evalShow' rngCount (NoExpo b) = evalShow rngCount b
-  evalShow' rngCount (Expo b expo) = do
-    (expo', expo's, rngCount') <- evalShow rngCount expo
+  evalShow' (NoExpo b) = evalShow b
+  evalShow' (Expo b expo) = do
+    (expo', expo's) <- evalShow expo
     if expo' < 0
       then evaluationException ("the exponent is negative: " <> formatInput Code expo') [prettyShow expo]
       else do
-        (b', b's, rngCount'') <- evalShow rngCount' b
-        return (b' ^ expo', b's <> " ^ " <> expo's, rngCount'')
+        (b', b's) <- evalShow b
+        return (b' ^ expo', b's <> " ^ " <> expo's)
 
 instance IOEval NumBase where
-  evalShow' rngCount (NBParen (Paren e)) = do
-    (r, s, rngCount') <- evalShow rngCount e
-    return (r, "(" <> s <> ")", rngCount')
-  evalShow' rngCount (Value i) = return (i, pack (show i), rngCount)
+  evalShow' (NBParen (Paren e)) = do
+    (r, s) <- evalShow e
+    return (r, "(" <> s <> ")")
+  evalShow' (Value i) = return (i, pack (show i))
 
 instance IOEval (Let Expr) where
-  evalShow' rngCount (Let t a) = do
-    (v, lt, rngCount') <- evalShow rngCount a
-    return (v, "let " <> t <> " = " <> lt, addVariable rngCount' t (Right $ promote v))
-  evalShow' rngCount l@(LetLazy t a) = do
-    (v, _, rngCount') <- evalShow rngCount a
-    return $ v `seq` (v, prettyShow l, addVariable rngCount' t (Right a))
+  evalShow' (Let t a) = do
+    (v, lt) <- evalShow a
+    addVariable t (Right $ promote v)
+    return (v, "let " <> t <> " = " <> lt)
+  evalShow' l@(LetLazy t a) = do
+    (v, _) <- evalShow a
+    addVariable t (Right a)
+    return $ v `seq` (v, prettyShow l)
 
 instance IOEvalList (Let ListValues) where
-  evalShowL' rngCount l@(Let t a) = do
-    (v, _, rngCount') <- evalShowL rngCount a
-    return (v, Just (prettyShow l), addVariable rngCount' t (Left $ promote $ fst <$> v))
-  evalShowL' rngCount l@(LetLazy t a) = do
-    (v, _, rngCount') <- evalShowL rngCount a
-    return (v, Just (prettyShow l), addVariable rngCount' t (Left a))
+  evalShowL' l@(Let t a) = do
+    (v, _) <- evalShowL a
+    addVariable t (Left $ promote $ fst <$> v)
+    return (v, Just (prettyShow l))
+  evalShowL' l@(LetLazy t a) = do
+    (v, _) <- evalShowL a
+    addVariable t (Left a)
+    return (v, Just (prettyShow l))
 
-evalStatement :: ProgramState -> Statement -> IO (Text, ProgramState)
-evalStatement ps (StatementExpr l) = evalShowStatement l >>= \(_, t, ps') -> return (t <> "; ", ps')
+evalStatement :: Statement -> ProgramStateM Text
+evalStatement (StatementExpr l) = evalShowStatement l >>= \(_, t) -> return (t <> "; ")
   where
-    evalShowStatement (ExprMisc (MiscLet l'@(LetLazy t a))) = return (0, prettyShow l', addVariable ps t (Right a))
-    evalShowStatement l' = evalShow ps l'
-evalStatement ps (StatementListValues l) = evalShowStatement l >>= \(_, t, ps') -> return (fromMaybe (prettyShow l) t <> "; ", ps')
+    evalShowStatement (ExprMisc (MiscLet l'@(LetLazy t a))) = addVariable t (Right a) >> return (0, prettyShow l')
+    evalShowStatement l' = evalShow l'
+evalStatement (StatementListValues l) = evalShowStatement l >>= \(_, t) -> return (fromMaybe (prettyShow l) t <> "; ")
   where
-    evalShowStatement (ListValuesMisc (MiscLet l'@(LetLazy t a))) = return ([], Just (prettyShow l'), addVariable ps t (Left a))
-    evalShowStatement l' = evalShowL ps l'
+    evalShowStatement (ListValuesMisc (MiscLet l'@(LetLazy t a))) = addVariable t (Left a) >> return ([], Just (prettyShow l'))
+    evalShowStatement l' = evalShowL l'
 
 instance IOEval (If Expr) where
-  evalShow' ps if'@(If b t e) = do
-    (i, _, ps') <- evalShow ps b
-    (i', _, ps'') <-
+  evalShow' if'@(If b t e) = do
+    (i, _) <- evalShow b
+    (i', _) <-
       if i /= 0
-        then evalShow ps' t
-        else evalShow ps' e
-    return (i', prettyShow if', ps'')
+        then evalShow t
+        else evalShow e
+    return (i', prettyShow if')
 
 instance IOEvalList (If ListValues) where
-  evalShowL' ps if'@(If b t e) = do
-    (i, _, ps') <- evalShow ps b
-    (i', _, ps'') <-
+  evalShowL' if'@(If b t e) = do
+    (i, _) <- evalShow b
+    (i', _) <-
       if i /= 0
-        then evalShowL ps' t
-        else evalShowL ps' e
-    return (i', Just $ prettyShow if', ps'')
+        then evalShowL t
+        else evalShowL e
+    return (i', Just $ prettyShow if')
 
 --- Pretty printing the AST
 -- The output from this should be parseable
