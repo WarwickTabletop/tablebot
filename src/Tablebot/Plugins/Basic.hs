@@ -7,25 +7,13 @@
 -- Portability : POSIX
 --
 -- This is an example plugin which responds to certain calls with specific responses.
-module Tablebot.Plugins.Basic (basicPlugin) where
+module Tablebot.Plugins.Basic (basic) where
 
 import Data.Text as T (Text, toTitle)
-import Discord.Internal.Rest (Message)
+import Discord.Types (Message)
+import Tablebot.Utility
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.SmartParser (parseComm)
-import Tablebot.Utility.Types
-  ( Command,
-    DatabaseDiscord,
-    EnvCommand (Command),
-    EnvInlineCommand (InlineCommand),
-    EnvPlugin (commands, inlineCommands),
-    HelpPage (HelpPage),
-    InlineCommand,
-    Plugin,
-    RequiredPermission (None),
-    helpPages,
-    plug,
-  )
 import Text.Megaparsec (anySingle, skipManyTill)
 import Text.Megaparsec.Char (string')
 
@@ -100,3 +88,6 @@ basicPlugin =
       helpPages = map baseHelp basicCommands,
       inlineCommands = map baseInlineCommand basicInlineCommands
     }
+
+basic :: CompiledPlugin
+basic = compilePlugin basicPlugin

@@ -9,29 +9,19 @@
 -- Alias management
 module Tablebot.Internal.Alias where
 
-import Control.Monad.Exception (MonadException (catch), SomeException)
-import Data.Text (Text)
-import Database.Persist.Sqlite (BackendKey (SqlBackendKey))
-import qualified Database.Persist.Sqlite as Sql
-import Database.Persist.TH
-import Discord.Types (UserId)
-import Tablebot.Internal.Types (AliasType (..))
-import Tablebot.Utility.Database (selectList)
-import Tablebot.Utility.Types (EnvDatabaseDiscord)
+import Database.Persist.Sqlite
+import Discord.Types (Snowflake (Snowflake), UserId)
 
-share
-  [mkPersist sqlSettings, mkMigrate "aliasMigration"]
-  [persistLowerCase|
-Alias
-    alias Text
-    command Text
-    type AliasType
-    UniqueAlias alias type
-    deriving Show
-    deriving Eq
-|]
+data AliasType = AliasPublic | AliasPrivate UserId
+  deriving (Eq, Show, Ord)
 
-getAliases :: UserId -> EnvDatabaseDiscord d (Maybe [Alias])
-getAliases uid =
-  (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
-    `catch` (\(_ :: SomeException) -> return Nothing)
+instance PersistField AliasType where
+  toPersistValue (AliasPrivate (Snowflake wd)) = PersistInt64 (fromIntegral wd)
+  toPersistValue AliasPublic = PersistInt64 (-1)
+  fromPersistValue = \case
+    PersistInt64 (-1) -> Right AliasPublic
+    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
+    _ -> Left "AliasType: fromPersistValue: Invalid value"
+
+instance PersistFieldSql AliasType where
+  sqlType _ = SqlInt64

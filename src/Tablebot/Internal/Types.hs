@@ -13,6 +13,7 @@ module Tablebot.Internal.Types where
 
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
+import Data.Default
 import Data.Text (Text)
 import Database.Persist.Sqlite
 import Discord
@@ -82,16 +83,18 @@ data CompiledCronJob = CCronJob
     onCron :: CompiledDatabaseDiscord ()
   }
 
-data AliasType = AliasPublic | AliasPrivate UserId
-  deriving (Eq, Show, Ord)
+-- * Configuration type
 
-instance PersistField AliasType where
-  toPersistValue (AliasPrivate (Snowflake wd)) = PersistInt64 (fromIntegral wd)
-  toPersistValue AliasPublic = PersistInt64 (-1)
-  fromPersistValue = \case
-    PersistInt64 (-1) -> Right AliasPublic
-    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
-    _ -> Left "AliasType: fromPersistValue: Invalid value"
+-- Allows others to configure the bot.
 
-instance PersistFieldSql AliasType where
-  sqlType _ = SqlInt64
+data BotConfig = BotConfig
+  { rootHelpText :: Text,
+    gamePlaying :: Text
+  }
+
+instance Default BotConfig where
+  def =
+    BotConfig
+      { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
+        gamePlaying = "Kirby: Planet Robobot"
+      }

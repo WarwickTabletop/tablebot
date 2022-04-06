@@ -24,9 +24,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void (Void)
 import Discord.Types (Message (messageAuthor, messageText), User (userId))
-import Tablebot.Internal.Alias (Alias (aliasAlias, aliasCommand), getAliases)
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
+import Tablebot.Plugins.Alias (Alias (aliasAlias, aliasCommand), getAliases)
 import Tablebot.Utility.Discord (sendEmbedMessage)
 import Tablebot.Utility.Exception (BotException (ParserException), embedError)
 import Tablebot.Utility.Parser (skipSpace1, space, word)

@@ -1,24 +1,56 @@
-module Tablebot.Plugins.Alias (aliasPlugin) where
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
+-- |
+-- Module      : Tablebot.Plugins.Alias
+-- Description : Alias plugin
+-- License     : MIT
+-- Maintainer  : tagarople@gmail.com
+-- Stability   : experimental
+-- Portability : POSIX
+--
+-- Allows users to add, list, and delete aliases.
+module Tablebot.Plugins.Alias (alias, Alias (..), getAliases) where
+
+import Control.Monad.Exception (MonadException (catch), SomeException)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Database.Persist.Sqlite as Sql
-import Discord.Types (Message (messageAuthor), User (userId))
+import Database.Persist.TH
+import Discord.Types
 import Tablebot.Internal.Alias
-import Tablebot.Internal.Types (AliasType (..))
 import Tablebot.Utility
-import Tablebot.Utility.Database (deleteBy, exists)
+import Tablebot.Utility.Database (deleteBy, exists, selectList)
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (..), WithError (..))
 import Text.RawString.QQ (r)
+
+share
+  [mkPersist sqlSettings, mkMigrate "aliasMigration"]
+  [persistLowerCase|
+Alias
+    alias Text
+    command Text
+    type AliasType
+    UniqueAlias alias type
+    deriving Show
+    deriving Eq
+|]
+
+getAliases :: UserId -> EnvDatabaseDiscord d (Maybe [Alias])
+getAliases uid =
+  (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
+    `catch` (\(_ :: SomeException) -> return Nothing)
+
+alias :: CompiledPlugin
+alias = compilePlugin aliasPlugin
 
 aliasTypeToText :: AliasType -> Text
 aliasTypeToText AliasPublic = "Public"
 aliasTypeToText (AliasPrivate _) = "Private"
 
 updateAlias :: Alias -> EnvDatabaseDiscord d (Sql.Entity Alias)
-updateAlias alias = liftSql $ Sql.upsertBy (UniqueAlias (aliasAlias alias) (aliasType alias)) alias [AliasCommand Sql.=. aliasCommand alias]
+updateAlias a = liftSql $ Sql.upsertBy (UniqueAlias (aliasAlias a) (aliasType a)) a [AliasCommand Sql.=. aliasCommand a]
 
 aliasPlugin :: Plugin
 aliasPlugin =

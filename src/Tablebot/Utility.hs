@@ -12,8 +12,12 @@
 module Tablebot.Utility
   ( module Types,
     module Utils,
+    compilePlugin,
+    CompiledPlugin,
   )
 where
 
+import Tablebot.Internal.Plugins (compilePlugin)
+import Tablebot.Internal.Types (CompiledPlugin)
 import Tablebot.Utility.Types as Types hiding (Pl)
 import Tablebot.Utility.Utils as Utils

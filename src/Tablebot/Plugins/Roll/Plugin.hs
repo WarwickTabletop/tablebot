@@ -120,7 +120,7 @@ This supports addition, subtraction, multiplication, integer division, exponenti
       ++ unpack (intercalate ", " listFunctionsList)
       ++ [r| (which return lists).
 
-To see a full list of uses, options and limitations, please go to <https://github.com/WarwickTabletop/tablebot/blob/main/docs/Roll.md>.
+To see a full list of uses, options and limitations, please go to <https://github.com/WarwickTabletop/tablebot/blob/stable/docs/Roll.md>.
 
 *Usage:*
   - `roll 1d20` -> rolls a twenty sided die and returns the outcome

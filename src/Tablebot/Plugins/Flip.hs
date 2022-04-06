@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- A command that picks one random element from its given arguments.
-module Tablebot.Plugins.Flip (flipPlugin) where
+module Tablebot.Plugins.Flip (flips) where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text (pack)
@@ -51,3 +51,6 @@ Randomly picks one element from its arguments or, if none are provided, picks fr
 -- | @flipPlugin@ assembles the command into a plugin.
 flipPlugin :: Plugin
 flipPlugin = (plug "flip") {commands = [flip], helpPages = [flipHelp]}
+
+flips :: CompiledPlugin
+flips = compilePlugin flipPlugin
