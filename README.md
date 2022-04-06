@@ -23,7 +23,8 @@ Create a `.env` file containing the following keys. Consult `.env.example` if yo
 * `EXEC_GROUP` (optional) - the group ID assigned to exec members.
 * `MODERATOR_GROUP` (optional) - the group ID assigned to moderator members.
 * `SUPERUSER_GROUP` (optional) - the group ID assigned to the superuser. Strongly recommended
-* `SERVER_ID` - the id of the server the bot will mainly be deployed in. Application commands will be registered here.
+* `SERVER_ID` (optional) - either `global` or the id of the server the bot will mainly be deployed in. Application commands will be
+  registered here. If absent, application commands won't be registered.
 
 The three Group settings are optional, but without them any commands that require elevated permissions will not be able
 to be called when DEBUG is false. Users with the superuser group are able to run every command (including some dangerous

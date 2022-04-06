@@ -363,25 +363,33 @@ formatText CodeBlock s = "```" <> s <> "```"
 extractFromSnowflake :: Snowflake -> Word64
 extractFromSnowflake (Snowflake w) = w
 
--- | When given an application id, server id, and a CreateApplicationCommand
--- object, create the application command.
-createApplicationCommand :: ApplicationId -> GuildId -> CreateApplicationCommand -> DiscordHandler ApplicationCommand
+-- | When given an application id, an optional server id, and a
+-- CreateApplicationCommand object, create the application command.
+createApplicationCommand :: ApplicationId -> Maybe GuildId -> CreateApplicationCommand -> DiscordHandler ApplicationCommand
 createApplicationCommand aid gid cac = do
-  res <- restCall $ R.CreateGuildApplicationCommand aid gid cac
+  res <- createAppComm
   case res of
     Left e -> throw $ InteractionException $ "Failed to create application command :" ++ show e
     Right a -> return a
+  where
+    createAppComm = case gid of
+      Nothing -> restCall $ R.CreateGlobalApplicationCommand aid cac
+      Just gid' -> restCall $ R.CreateGuildApplicationCommand aid gid' cac
 
--- | Remove all application commands that are active in the given server that
--- aren't in the given list.
-removeApplicationCommandsNotInList :: ApplicationId -> GuildId -> [ApplicationCommandId] -> DiscordHandler ()
+-- | Remove all application commands that are active (optionally in the given
+-- server) that aren't in the given list.
+removeApplicationCommandsNotInList :: ApplicationId -> Maybe GuildId -> [ApplicationCommandId] -> DiscordHandler ()
 removeApplicationCommandsNotInList aid gid aciToKeep = do
-  allACs' <- restCall $ R.GetGuildApplicationCommands aid gid
+  allACs' <- getAppComm
   case allACs' of
     Left _ -> throw $ InteractionException "Failed to get all application commands."
     Right aacs ->
       let allACs = applicationCommandId <$> aacs
-       in mapM_ (restCall . R.DeleteGuildApplicationCommand aid gid) (allACs \\ aciToKeep)
+       in mapM_ deleteAppComm (allACs \\ aciToKeep)
+  where
+    (getAppComm, deleteAppComm) = case gid of
+      Nothing -> (restCall $ R.GetGlobalApplicationCommands aid, restCall . R.DeleteGlobalApplicationCommand aid)
+      Just gid' -> (restCall $ R.GetGuildApplicationCommands aid gid', restCall . R.DeleteGuildApplicationCommand aid gid')
 
 -- | Defer an interaction response, extending the window of time to respond to
 -- 15 minutes (from 3 seconds).

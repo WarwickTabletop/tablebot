@@ -328,7 +328,6 @@ instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc
 
 class ProcessAppComm commandty s where
   processAppComm :: commandty -> Interaction -> EnvDatabaseDiscord s ()
-  processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
 -- One base case
 instance {-# OVERLAPPING #-} ProcessAppComm (EnvDatabaseDiscord s MessageDetails) s where
@@ -340,9 +339,12 @@ instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (Interact
 
 -- one overarching recursive case
 instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => ProcessAppComm (ty -> pac) s where
-  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = (Just (InteractionDataApplicationCommandOptionsValues values))}} = do
-    t <- processAppCommArg values
+  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = opts}} = do
+    t <- processAppCommArg (getVs opts)
     processAppComm (comm t) i
+    where
+      getVs (Just (InteractionDataApplicationCommandOptionsValues vs)) = vs
+      getVs _ = []
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
 -- one specific implementation case

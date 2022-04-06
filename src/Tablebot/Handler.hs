@@ -31,7 +31,7 @@ import Discord (Cache (cacheApplication), DiscordHandler, readCache, restCall)
 import Discord.Interactions (ApplicationCommand (..), Interaction (..))
 import Discord.Requests (ChannelRequest (JoinThread))
 import Discord.Types
-import System.Environment (getEnv)
+import System.Environment (lookupEnv)
 import Tablebot.Internal.Handler.Command (parseNewMessage)
 import Tablebot.Internal.Handler.Event
   ( parseApplicationCommandRecv,
@@ -116,23 +116,30 @@ killCron = mapM_ killThread
 
 -- | Given a list of compiled application commands and a pointer to the
 -- tablebot cache, create the given application commands, purge ones that
--- weren't created by us, and place the  application command id's and their
+-- weren't created by us, and place the application command id's and their
 -- actions in the cache.
 submitApplicationCommands :: [CompiledApplicationCommand] -> MVar TablebotCache -> DiscordHandler ()
 submitApplicationCommands compiledAppComms cacheMVar =
   ( do
       -- generate the application commands, cleaning up any application commands we don't like
-      serverIdStr <- liftIO $ getEnv "SERVER_ID"
-      serverId <- maybe (fail "could not read server id") return (readMaybe serverIdStr)
-      aid <- partialApplicationID . cacheApplication <$> readCache
-      applicationCommands <-
-        mapM
-          ( \(CApplicationCommand cac action) -> do
-              ac <- createApplicationCommand aid serverId cac
-              return (applicationCommandId ac, action)
-          )
-          compiledAppComms
-      removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
-      liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
+      serverIdStr' <- liftIO $ lookupEnv "SERVER_ID"
+      case serverIdStr' of
+        Nothing -> pure ()
+        Just serverIdStr -> do
+          serverId <- readServerStr serverIdStr
+          aid <- partialApplicationID . cacheApplication <$> readCache
+          applicationCommands <-
+            mapM
+              ( \(CApplicationCommand cac action) -> do
+                  ac <- createApplicationCommand aid serverId cac
+                  return (applicationCommandId ac, action)
+              )
+              compiledAppComms
+          removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
+          liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
   )
-    `catch` \(_ :: IOError) -> liftIO $ putStrLn "There was an error of some sort when submitting the application commands - verify that `SERVER_ID` is set."
+    `catch` \(e :: IOError) -> liftIO $ putStrLn $ "There was an error of some sort when submitting the application commands - verify that `SERVER_ID` is set properly. (" <> show e <> ")"
+  where
+    readServerStr :: String -> DiscordHandler (Maybe GuildId)
+    readServerStr "global" = return Nothing
+    readServerStr s = maybe (fail $ "could not read server id: " <> show s) (return . Just) (readMaybe s)
