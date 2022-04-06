@@ -14,7 +14,7 @@ module Tablebot.Internal.Types where
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
 import Data.Text (Text)
-import Database.Persist.Sqlite (Migration, SqlPersistT)
+import Database.Persist.Sqlite
 import Discord
 import Discord.Types
 import Tablebot.Utility.Types
@@ -81,3 +81,17 @@ data CompiledCronJob = CCronJob
   { timeframe :: Int,
     onCron :: CompiledDatabaseDiscord ()
   }
+
+data AliasType = AliasPublic | AliasPrivate UserId
+  deriving (Eq, Show, Ord)
+
+instance PersistField AliasType where
+  toPersistValue (AliasPrivate (Snowflake wd)) = PersistInt64 (fromIntegral wd)
+  toPersistValue AliasPublic = PersistInt64 (-1)
+  fromPersistValue = \case
+    PersistInt64 (-1) -> Right AliasPublic
+    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
+    _ -> Left "AliasType: fromPersistValue: Invalid value"
+
+instance PersistFieldSql AliasType where
+  sqlType _ = SqlInt64

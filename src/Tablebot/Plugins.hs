@@ -19,6 +19,7 @@ import Tablebot.Internal.Administration (ShutdownReason)
 import Tablebot.Internal.Plugins (compilePlugin)
 import Tablebot.Internal.Types (CompiledPlugin)
 import Tablebot.Plugins.Administration (administrationPlugin)
+import Tablebot.Plugins.Alias (aliasPlugin)
 import Tablebot.Plugins.Basic (basicPlugin)
 import Tablebot.Plugins.Cats (catPlugin)
 import Tablebot.Plugins.Dogs (dogPlugin)
@@ -40,6 +41,7 @@ plugins rFlag =
   addAdministrationPlugin
     rFlag
     [ compilePlugin pingPlugin,
+      compilePlugin aliasPlugin,
       compilePlugin basicPlugin,
       compilePlugin catPlugin,
       compilePlugin dogPlugin,
