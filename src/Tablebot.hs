@@ -9,27 +9,25 @@
 -- Portability : POSIX
 --
 -- This module contains the main runner for Tablebot. If you're just looking to
--- run the bot with existing plugins, importing this and your favourite plugins
+-- run the bot with existing plugins, import this and your favourite plugins
 -- from "Tablebot.Plugins".
 module Tablebot
   ( runTablebot,
+    runTablebotWithEnv,
+    BotConfig (..),
   )
 where
 
 import Control.Concurrent
-  ( MVar,
-    ThreadId,
-    newEmptyMVar,
-    newMVar,
-    putMVar,
-    takeMVar,
-  )
+import Control.Monad.Extra
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
 import Data.Map as M (empty)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
+import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as TIO (putStrLn)
 import Database.Persist.Sqlite
   ( createSqlitePool,
@@ -38,25 +36,68 @@ import Database.Persist.Sqlite
   )
 import Discord
 import Discord.Internal.Rest
+import LoadEnv (loadEnv)
+import Paths_tablebot (version)
+import System.Environment (getEnv, lookupEnv)
+import System.Exit (die)
 import Tablebot.Handler (eventHandler, killCron, runCron, submitApplicationCommands)
-import Tablebot.Internal.Administration (adminMigration, currentBlacklist, removeBlacklisted)
+import Tablebot.Internal.Administration
+  ( ShutdownReason (Reload),
+    adminMigration,
+    currentBlacklist,
+    gitVersion,
+    removeBlacklisted,
+    restartAction,
+    restartIsTerminal,
+  )
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
+import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
-import Tablebot.Utility.Help
+import Tablebot.Utility.Help (generateHelp)
+import Text.Regex.PCRE ((=~))
 
--- | runTablebot @dToken@ @prefix@ @dbpath@ @plugins@ runs the bot using the
--- given Discord API token @dToken@ and SQLite connection string @dbpath@. Only
--- the plugins provided by @plugins@ are run, and all commands are prefixed
--- with @prefix@.
+-- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
+-- file with the @[CompiledPlugin]@ given. If you're looking to run the bot as
+-- detailed in the README (i.e. using data from .env), you should call this
+-- function.
+runTablebotWithEnv :: [CompiledPlugin] -> BotConfig -> IO ()
+runTablebotWithEnv plugins config = do
+  -- fetch the version info as soon after building to reduce the likelihood that it changes between build and run
+  gv <- gitVersion
+  let vInfo = VInfo gv version
+  rFlag <- newMVar Reload :: IO (MVar ShutdownReason)
+  whileM $ do
+    _ <- swapMVar rFlag Reload
+    loadEnv
+    dToken <- pack <$> getEnv "DISCORD_TOKEN"
+    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{27}$" :: String)) $
+      die "Invalid token format. Please check it is a bot token"
+    prefix <- pack . fromMaybe "!" <$> lookupEnv "PREFIX"
+    dbpath <- getEnv "SQLITE_FILENAME"
+    runTablebot vInfo dToken prefix dbpath (addAdministrationPlugin rFlag plugins) config
+    exit <- swapMVar rFlag Reload
+    restartAction exit
+    pure $ not (restartIsTerminal exit)
+  putStrLn "Bot closed"
+
+-- | runTablebot @vinfo@ @dToken@ @prefix@ @dbpath@ @plugins@ @config@ runs the
+-- bot using the given Discord API token @dToken@ and SQLite connection string
+-- @dbpath@. In general, you should prefer @runTablebotWithEnv@ as it gets all
+-- of the required data for you, but this is exported for if you have weird
+-- setup requirements or don't want to use the administration plugin.
+-- Only the plugins provided by @plugins@ are run, and all commands
+-- are prefixed with @prefix@. @config@ details how the bot should present
+-- itself to users, allowing programmers to replace the Tablebot-specific text
+-- with their own.
 -- The plugins given are combined into a single plugin with their combined
 -- functionality. Each migration present in the combined plugin is run, and
 -- each cron job and handler is set up.
 -- This creates a small pool of database connections used by the event handler,
 -- builds an event handler and starts cron jobs. It also kills the cron jobs on
 -- bot close.
-runTablebot :: VersionInfo -> Text -> Text -> FilePath -> [CompiledPlugin] -> IO ()
-runTablebot vinfo dToken prefix dbpath plugins =
+runTablebot :: VersionInfo -> Text -> Text -> FilePath -> [CompiledPlugin] -> BotConfig -> IO ()
+runTablebot vinfo dToken prefix dbpath plugins config =
   do
     debugPrint ("DEBUG enabled. This is strongly not recommended in production!" :: String)
     -- Create multiple database threads.
@@ -67,7 +108,7 @@ runTablebot vinfo dToken prefix dbpath plugins =
     blacklist <- runResourceT $ runNoLoggingT $ runSqlPool currentBlacklist pool
     let filteredPlugins = removeBlacklisted blacklist plugins
     -- Combine the list of plugins into both a combined plugin
-    let !plugin = generateHelp $ combinePlugins filteredPlugins
+    let !plugin = generateHelp (rootHelpText config) $ combinePlugins filteredPlugins
     -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
     allActions <- mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
     let !actions = combineActions allActions
@@ -94,7 +135,7 @@ runTablebot vinfo dToken prefix dbpath plugins =
 
               submitApplicationCommands (compiledApplicationCommands actions) cacheMVar
 
-              liftIO $ putStrLn "Tablebot lives!"
+              liftIO $ putStrLn "The bot lives!"
               sendCommand (UpdateStatus activityStatus),
             -- Kill every cron job in the mvar.
             discordOnEnd = takeMVar mvar >>= killCron
@@ -107,9 +148,8 @@ runTablebot vinfo dToken prefix dbpath plugins =
           updateStatusOptsGame =
             Just
               ( def
-                  { activityName = "with dice. Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help",
-                    activityType = ActivityTypeGame,
-                    activityUrl = Nothing
+                  { activityName = gamePlaying config <> ". Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help",
+                    activityType = ActivityTypeGame
                   }
               ),
           updateStatusOptsNewStatus = UpdateStatusOnline,

@@ -22,25 +22,19 @@ import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.Types hiding (helpPages)
 import Text.Megaparsec (choice, chunk, eof, try, (<?>), (<|>))
 
-rootBody :: Text
-rootBody =
-  "**Tabletop Bot**\n\
-  \This friendly little bot provides several tools to help with\
-  \ the running of the Warwick Tabletop Games and Role-Playing Society Discord server."
-
 helpHelpPage :: HelpPage
 helpHelpPage = HelpPage "help" [] "show information about commands" "**Help**\nShows information about bot commands\n\n*Usage:* `help <page>`" [] None
 
-generateHelp :: CombinedPlugin -> CombinedPlugin
-generateHelp p =
+generateHelp :: Text -> CombinedPlugin -> CombinedPlugin
+generateHelp rootText p =
   p
-    { combinedSetupAction = return (def {compiledCommands = [CCommand "help" (handleHelp (helpHelpPage : combinedHelpPages p)) []]}) : combinedSetupAction p
+    { combinedSetupAction = return (def {compiledCommands = [CCommand "help" (handleHelp rootText (helpHelpPage : combinedHelpPages p)) []]}) : combinedSetupAction p
     }
 
-handleHelp :: [HelpPage] -> Parser (Message -> CompiledDatabaseDiscord ())
-handleHelp hp = parseHelpPage root
+handleHelp :: Text -> [HelpPage] -> Parser (Message -> CompiledDatabaseDiscord ())
+handleHelp rootText hp = parseHelpPage root
   where
-    root = HelpPage "" [] "" rootBody hp None
+    root = HelpPage "" [] "" rootText hp None
 
 parseHelpPage :: HelpPage -> Parser (Message -> CompiledDatabaseDiscord ())
 parseHelpPage hp = do

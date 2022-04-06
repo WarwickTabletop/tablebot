@@ -31,3 +31,7 @@ to be called when DEBUG is false. Users with the superuser group are able to run
 ones), so caution should be used when setting these up.
 
 If you have any difficulties setting it up, see the [contributor's guide](CONTRIBUTING.md) for a walkthrough.
+
+## Importing this bot and running it yourself.
+
+If you like, rather than directly running this bot you can run it yourself with minor tweaks. An example of this is in `app/Main.hs` - tweak this to your needs and then run `stack run` as per usual.

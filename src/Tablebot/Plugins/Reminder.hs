@@ -10,10 +10,7 @@
 --
 -- This is an example plugin which allows user to ask the bot to remind them about
 -- something later in time.
-module Tablebot.Plugins.Reminder
-  ( reminderPlugin,
-  )
-where
+module Tablebot.Plugins.Reminder (reminder) where
 
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -185,3 +182,6 @@ reminderPlugin =
       migrations = [reminderMigration],
       helpPages = [reminderHelp]
     }
+
+reminder :: CompiledPlugin
+reminder = compilePlugin reminderPlugin

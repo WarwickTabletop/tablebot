@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- Commands for generating welcome messages.
-module Tablebot.Plugins.Welcome (welcomePlugin) where
+module Tablebot.Plugins.Welcome (welcome) where
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Reader (ask)
@@ -101,3 +101,6 @@ welcomeStartUp = StartUp $ liftIO readCategories
 -- | @welcomePlugin@ assembles these commands into a plugin.
 welcomePlugin :: EnvPlugin SS
 welcomePlugin = (envPlug "welcome" welcomeStartUp) {commands = [favourite], helpPages = [favouriteHelp]}
+
+welcome :: CompiledPlugin
+welcome = compilePlugin welcomePlugin

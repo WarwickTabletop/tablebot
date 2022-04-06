@@ -102,3 +102,19 @@ data CompiledCronJob = CCronJob
   { timeframe :: Int,
     onCron :: CompiledDatabaseDiscord ()
   }
+
+-- * Configuration type
+
+-- Allows others to configure the bot.
+
+data BotConfig = BotConfig
+  { rootHelpText :: Text,
+    gamePlaying :: Text
+  }
+
+instance Default BotConfig where
+  def =
+    BotConfig
+      { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
+        gamePlaying = "Kirby: Planet Robobot"
+      }
