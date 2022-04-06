@@ -31,9 +31,9 @@
 --
 -- prog - stat* (lstv | expr)
 -- stat - (lstv | expr) ";"
--- misc - ifst | lets
+-- misc - ifst | vars
 -- ifst - "if" spc1 expr spc1 "then" spc1 (lstv | expr) spc1 "else" spc1 (lstv | expr)
--- lets - "let" spc1 "!"? ("l_" name spcs "=" spcs lstv | name spcs "=" spcs expr)
+-- vars - "var" spc1 "!"? ("l_" name spcs "=" spcs lstv | name spcs "=" spcs expr)
 -- lstv - nbse "#" base | funcBasics | lstb | name | misc
 -- lstb - "{" expr ("," expr)* "}" | "(" lstv ")"
 -- expr - term ([+-] expr)? | misc
@@ -58,7 +58,7 @@
 -- stat (Statement)                    - representing a single statement - an expression or list value
 -- misc (MiscData)                     - either an if or a let
 -- ifst (If)                           - representing one of two values depending on the outcome of an expression
--- lets (Let)                          - setting a variable to a certain value
+-- vars (Var)                          - setting a variable to a certain value
 -- lstv (ListValues)                   - representing all possible list values (basic list values, functions that return lists, and values which are lists of length N that consist of `Base`s, as well as a MiscData value)
 -- lstb (ListValuesBase)               - representing some basic list values (those that can be used in dice expressions, such as manually created lists and bracketed `ListValues`)
 -- expr (Expr)                         - representing addition, subtraction, or a single `Term` value, or a MiscData value

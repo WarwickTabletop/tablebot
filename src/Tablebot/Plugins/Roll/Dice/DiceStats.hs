@@ -85,11 +85,11 @@ class PrettyShow a => Range a where
   range' :: (MonadException m, PrettyShow a) => a -> m Experiment
 
 instance (Range a) => Range (MiscData a) where
-  range' (MiscLet l) = range l
+  range' (MiscVar l) = range l
   range' (MiscIf i) = rangeIfExpr range i
 
 instance (RangeList a) => RangeList (MiscData a) where
-  rangeList' (MiscLet l) = rangeList l
+  rangeList' (MiscVar l) = rangeList l
   rangeList' (MiscIf i) = rangeIfExpr rangeList i
 
 rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If a -> m (D.Experiment b)
@@ -120,13 +120,13 @@ rangeIfExpr func (If b t f) = do
 --       b'' <- b'
 --       if b'' /= [] then t' else f'
 
-instance (Range a) => Range (Let a) where
-  range' (Let _ a) = range a
-  range' (LetLazy _ a) = range a
+instance (Range a) => Range (Var a) where
+  range' (Var _ a) = range a
+  range' (VarLazy _ a) = range a
 
-instance (RangeList a) => RangeList (Let a) where
-  rangeList' (Let _ a) = rangeList a
-  rangeList' (LetLazy _ a) = rangeList a
+instance (RangeList a) => RangeList (Var a) where
+  rangeList' (Var _ a) = rangeList a
+  rangeList' (VarLazy _ a) = rangeList a
 
 instance Range Expr where
   range' (NoExpr t) = range t
@@ -166,7 +166,7 @@ instance Range NumBase where
 instance Range Base where
   range' (NBase nb) = range nb
   range' (DiceBase d) = range d
-  range' b@(Var _) = evaluationException "cannot find range of variable" [prettyShow b]
+  range' b@(NumVar _) = evaluationException "cannot find range of variable" [prettyShow b]
 
 instance Range Die where
   range' (LazyDie d) = range d

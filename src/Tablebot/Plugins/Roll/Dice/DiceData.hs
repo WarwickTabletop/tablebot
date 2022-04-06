@@ -21,18 +21,18 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 -- evaluated `letValue`.
 --
 -- List variables have to be prefixed with `l_`. This really helps with parsing.
-data Let a = Let {letName :: Text, letValue :: a} | LetLazy {letName :: Text, letValue :: a} deriving (Show)
+data Var a = Var {letName :: Text, letValue :: a} | VarLazy {letName :: Text, letValue :: a} deriving (Show)
 
 -- | If the first value is truthy (non-zero or a non-empty list) then return
 -- the `thenValue`, else return the `elseValue`.
 data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show)
 
--- | Either an If or a Let that returns a `b`.
-data MiscData b = MiscIf (If b) | MiscLet (Let b) deriving (Show)
+-- | Either an If or a Var that returns a `b`.
+data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show)
 
 -- | An expression is just an Expr or a ListValues with a semicolon on the end.
 --
--- When evaluating, LetLazy expressions are handled with a special case - they
+-- When evaluating, VarLazy expressions are handled with a special case - they
 -- are not evaluated until the value is first referenced. Otherwise, the value
 -- is evaluated as the statement is encountered
 data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
@@ -104,7 +104,7 @@ newtype Paren a = Paren a
   deriving (Show)
 
 -- | The type representing a numeric base value value or a dice value.
-data Base = NBase NumBase | DiceBase Dice | Var Text
+data Base = NBase NumBase | DiceBase Dice | NumVar Text
   deriving (Show)
 
 -- Dice Operations after this point

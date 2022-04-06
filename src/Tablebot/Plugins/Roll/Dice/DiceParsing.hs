@@ -40,10 +40,10 @@ failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Token
 varName :: Parser T.Text
 varName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
 
-instance CanParse a => CanParse (Let a) where
+instance CanParse a => CanParse (Var a) where
   pars = do
-    _ <- try (string "let") <* skipSpace
-    letCon <- try (char '!' $> LetLazy) <|> return Let
+    _ <- try (string "var") <* skipSpace
+    letCon <- try (char '!' $> VarLazy) <|> return Var
     varName' <- varName
     _ <- skipSpace >> char '=' >> skipSpace
     letCon varName' <$> pars
@@ -55,21 +55,21 @@ instance CanParse Statement where
 -- alternative method to the above.
 -- from https://canary.discord.com/channels/280033776820813825/280036215477239809/938154455612919838
 -- - Morrow#1157
-newtype LetCon = LetCon (forall a. a -> Let a)
+newtype VarCon = VarCon (forall a. a -> Var a)
 
-parseLet :: Parser LetCon
+parseLet :: Parser VarCon
 parseLet = do
-  _ <- try (string "let") <* skipSpace
+  _ <- try (string "var") <* skipSpace
   lazy <- try (char '!' $> True) <|> return False
   varName' <- varName
   _ <- skipSpace >> char '=' >> skipSpace
-  return $ LetCon (\a -> if lazy then LetLazy varName' a else Let varName' a)
+  return $ VarCon (\a -> if lazy then VarLazy varName' a else Var varName' a)
 
 instance CanParse Statement where
   pars = do
-    LetCon letP <- parseLet
+    VarCon letP <- parseVar
     val <- (Left <$> pars <|> Right <$> pars) <* skipSpace <* char ';' <* skipSpace
-    return $ either (LetList . letP) (LetExpr . letP) val
+    return $ either (VarList . letP) (VarExpr . letP) val
 -}
 
 parseStatements :: Parser [Statement]
@@ -87,14 +87,14 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> varName))
-      <|> ListValuesMisc <$> (pars >>= checkLet)
+      <|> ListValuesMisc <$> (pars >>= checkVar)
       <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
       <|> LVBase <$> pars
     where
-      checkLet (MiscLet l)
-        | T.isPrefixOf "l_" (letName l) = return (MiscLet l)
+      checkVar (MiscVar l)
+        | T.isPrefixOf "l_" (letName l) = return (MiscVar l)
         | otherwise = fail "list variables must be prepended with l_"
-      checkLet l = return l
+      checkVar l = return l
 
 instance CanParse ListValuesBase where
   pars = do
@@ -122,7 +122,7 @@ instance (CanParse b) => CanParse (If b) where
     return $ If a t e
 
 instance CanParse a => CanParse (MiscData a) where
-  pars = (MiscLet <$> pars) <|> (MiscIf <$> pars)
+  pars = (MiscVar <$> pars) <|> (MiscIf <$> pars)
 
 instance CanParse Expr where
   pars =
@@ -183,7 +183,7 @@ instance CanParse Base where
           <|> return (NBase nb)
     )
       <|> DiceBase <$> parseDice (Value 1)
-      <|> (Var <$> try varName)
+      <|> (NumVar <$> try varName)
 
 instance CanParse Die where
   pars = do

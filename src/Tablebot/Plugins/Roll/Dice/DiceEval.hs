@@ -203,7 +203,7 @@ instance IOEvalList ListValuesBase where
   evalShowL' (LVBParen (Paren lv)) = evalShowL lv
 
 instance IOEvalList ListValuesMisc where
-  evalShowL' (MiscLet l) = evalShowL l
+  evalShowL' (MiscVar l) = evalShowL l
   evalShowL' (MiscIf l) = evalShowL l
 
 -- | This type class gives a function which evaluates the value to an integer
@@ -221,7 +221,7 @@ class IOEval a where
 instance IOEval Base where
   evalShow' (NBase nb) = evalShow nb
   evalShow' (DiceBase dice) = evalShow dice
-  evalShow' (Var t) = do
+  evalShow' (NumVar t) = do
     vars <- gets getVariables
     case M.lookup t vars of
       Just (Right e) -> evalShow e >>= \(i, _) -> return (i, t)
@@ -389,7 +389,7 @@ binOpHelp a b opS op = do
   return (op a' b', a's <> " " <> opS <> " " <> b's)
 
 instance IOEval ExprMisc where
-  evalShow' (MiscLet l) = evalShow l
+  evalShow' (MiscVar l) = evalShow l
   evalShow' (MiscIf l) = evalShow l
 
 instance IOEval Expr where
@@ -441,22 +441,22 @@ instance IOEval NumBase where
     return (r, "(" <> s <> ")")
   evalShow' (Value i) = return (i, pack (show i))
 
-instance IOEval (Let Expr) where
-  evalShow' (Let t a) = do
+instance IOEval (Var Expr) where
+  evalShow' (Var t a) = do
     (v, lt) <- evalShow a
     addVariable t (Right $ promote v)
-    return (v, "let " <> t <> " = " <> lt)
-  evalShow' l@(LetLazy t a) = do
+    return (v, "var " <> t <> " = " <> lt)
+  evalShow' l@(VarLazy t a) = do
     (v, _) <- evalShow a
     addVariable t (Right a)
     return $ v `seq` (v, prettyShow l)
 
-instance IOEvalList (Let ListValues) where
-  evalShowL' l@(Let t a) = do
+instance IOEvalList (Var ListValues) where
+  evalShowL' l@(Var t a) = do
     (v, _) <- evalShowL a
     addVariable t (Left $ promote $ fst <$> v)
     return (v, Just (prettyShow l))
-  evalShowL' l@(LetLazy t a) = do
+  evalShowL' l@(VarLazy t a) = do
     (v, _) <- evalShowL a
     addVariable t (Left a)
     return (v, Just (prettyShow l))
@@ -464,11 +464,11 @@ instance IOEvalList (Let ListValues) where
 evalStatement :: Statement -> ProgramStateM Text
 evalStatement (StatementExpr l) = evalShowStatement l >>= \(_, t) -> return (t <> "; ")
   where
-    evalShowStatement (ExprMisc (MiscLet l'@(LetLazy t a))) = addVariable t (Right a) >> return (0, prettyShow l')
+    evalShowStatement (ExprMisc (MiscVar l'@(VarLazy t a))) = addVariable t (Right a) >> return (0, prettyShow l')
     evalShowStatement l' = evalShow l'
 evalStatement (StatementListValues l) = evalShowStatement l >>= \(_, t) -> return (fromMaybe (prettyShow l) t <> "; ")
   where
-    evalShowStatement (ListValuesMisc (MiscLet l'@(LetLazy t a))) = addVariable t (Left a) >> return ([], Just (prettyShow l'))
+    evalShowStatement (ListValuesMisc (MiscVar l'@(VarLazy t a))) = addVariable t (Left a) >> return ([], Just (prettyShow l'))
     evalShowStatement l' = evalShowL l'
 
 instance IOEval (If Expr) where
@@ -513,7 +513,7 @@ instance PrettyShow ListValuesBase where
   prettyShow (LVBParen p) = prettyShow p
 
 instance PrettyShow a => PrettyShow (MiscData a) where
-  prettyShow (MiscLet l) = prettyShow l
+  prettyShow (MiscVar l) = prettyShow l
   prettyShow (MiscIf l) = prettyShow l
 
 instance PrettyShow Expr where
@@ -549,7 +549,7 @@ instance (PrettyShow a) => PrettyShow (Paren a) where
 instance PrettyShow Base where
   prettyShow (NBase nb) = prettyShow nb
   prettyShow (DiceBase dop) = prettyShow dop
-  prettyShow (Var t) = t
+  prettyShow (NumVar t) = t
 
 instance PrettyShow Die where
   prettyShow (Die b) = "d" <> prettyShow b
@@ -576,9 +576,9 @@ instance (PrettyShow a, PrettyShow b) => PrettyShow (Either a b) where
   prettyShow (Left a) = prettyShow a
   prettyShow (Right b) = prettyShow b
 
-instance (PrettyShow a) => PrettyShow (Let a) where
-  prettyShow (Let t a) = "let " <> t <> " = " <> prettyShow a
-  prettyShow (LetLazy t a) = "let !" <> t <> " = " <> prettyShow a
+instance (PrettyShow a) => PrettyShow (Var a) where
+  prettyShow (Var t a) = "var " <> t <> " = " <> prettyShow a
+  prettyShow (VarLazy t a) = "var !" <> t <> " = " <> prettyShow a
 
 instance (PrettyShow b) => PrettyShow (If b) where
   prettyShow (If b t e) = "if " <> prettyShow b <> " then " <> prettyShow t <> " else " <> prettyShow e
