@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- This is an example plugin which just responds "ping" to "!pong" and vice-versa.
-module Tablebot.Plugins.Ping (pingPlugin) where
+module Tablebot.Plugins.Ping (pingpong) where
 
 import Data.Text (Text)
 import Tablebot.Utility
@@ -49,3 +49,6 @@ pongHelp = HelpPage "pong" [] "show a more different debug message" "**Pong**\nS
 -- and pong.
 pingPlugin :: Plugin
 pingPlugin = (plug "ping") {commands = [ping, pong], helpPages = [pingHelp, pongHelp]}
+
+pingpong :: CompiledPlugin
+pingpong = compilePlugin pingPlugin

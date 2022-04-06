@@ -10,7 +10,7 @@
 --
 -- This is an example plugin which allows user to @!quote add@ their favourite
 -- quotes and then @!quote show n@ a particular quote.
-module Tablebot.Plugins.Quote (quotePlugin) where
+module Tablebot.Plugins.Quote (quotes) where
 
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
@@ -391,6 +391,9 @@ quotePlugin =
       migrations = [quoteMigration],
       helpPages = [quoteHelp]
     }
+
+quotes :: CompiledPlugin
+quotes = compilePlugin quotePlugin
 
 deriving instance Generic Quote
 
