@@ -20,8 +20,8 @@ import Discord (restCall)
 import Discord.Interactions
   ( Interaction (..),
   )
-import Discord.Internal.Rest.Channel (ChannelRequest (CreateMessageDetailed), MessageDetailedOpts (MessageDetailedOpts))
-import Discord.Types (ComponentActionRow (ComponentActionRowButton), ComponentButton (componentButtonEmoji), Emoji (Emoji), Message (messageAuthor, messageChannelId), User (userId), mkButton)
+import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
+import Discord.Types (ComponentActionRow (..), ComponentButton (..), Emoji (..), Message (..), User (..), mkButton)
 import System.Timeout (timeout)
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
@@ -70,7 +70,10 @@ rollDice' e t u@(ParseUserId uid) = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
-                  [ (mkButton "Reroll" ((("roll reroll " <> pack (show uid)) `appendIf` e) `appendIf` t)) {componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False))}
+                  [ (mkButton buttonName (T.take 100 buttonCustomId))
+                      { componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)),
+                        componentButtonDisabled = buttonDisabled
+                      }
                   ]
               ]
         }
@@ -78,6 +81,8 @@ rollDice' e t u@(ParseUserId uid) = do
   where
     appendIf t' Nothing = t'
     appendIf t' (Just e') = t' <> " " <> parseShow e'
+    buttonCustomId = (("roll reroll " <> pack (show uid)) `appendIf` e) `appendIf` t
+    (buttonName, buttonDisabled) = if T.length buttonCustomId > 100 then ("Expr too long", True) else ("Reroll", False)
 
 rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> ParseUserId -> DatabaseDiscord MessageDetails
 rollSlashCommandFunction (Labelled mt) (Labelled qt) uid = do
