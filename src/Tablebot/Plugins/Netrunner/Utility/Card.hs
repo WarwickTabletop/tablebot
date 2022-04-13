@@ -38,7 +38,6 @@ import Tablebot.Plugins.Netrunner.Utility.BanList (activeBanList, isBanned, isRe
 import Tablebot.Plugins.Netrunner.Utility.Misc (formatNr)
 import Tablebot.Utility
 import Tablebot.Utility.Types ()
-import Tablebot.Utility.Utils (intToText, maybeEmptyPrepend)
 
 -- | @toLink@ takes a card and generates a link to its NetrunnerDB page.
 toLink :: Card -> Text
