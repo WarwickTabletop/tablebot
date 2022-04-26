@@ -68,6 +68,7 @@ dependencies:
   - split
   - regex-pcre
   - distribution
+  - MonadRandom
 
 
 library:

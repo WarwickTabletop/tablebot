@@ -11,7 +11,8 @@
 module Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalProgram, evalList, evalInteger, evaluationException, propagateException, maximumRNG, maximumListLength) where
 
 import Control.Monad.Exception (MonadException)
-import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify, when)
+import Control.Monad.Random.Class (MonadRandom (getRandomR))
+import Control.Monad.State (StateT, evalStateT, gets, modify, when)
 import Data.List (foldl', genericDrop, genericReplicate, genericTake, sortBy)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), head, tail, (<|))
 import Data.Map (Map, empty)
@@ -20,7 +21,6 @@ import Data.Maybe (fromMaybe, isNothing)
 import Data.String (IsString (fromString))
 import Data.Text (Text, intercalate, pack, unpack)
 import qualified Data.Text as T
-import System.Random (randomRIO)
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
 import Tablebot.Utility.Discord (Format (..), formatInput, formatText)
@@ -41,10 +41,16 @@ data ProgramState = ProgramState
 startState :: ProgramState
 startState = ProgramState 0 empty
 
-type ProgramStateM = StateT ProgramState IO
+-- | Minor typeclass to make it easier to get both random and exception
+-- functionality.
+class (MonadRandom m, MonadException m) => MonadRandomException m
 
--- | Add the given variable to the `ProgramState`
-addVariable :: Text -> Either ListValues Expr -> ProgramStateM ()
+instance (MonadRandom m, MonadException m) => MonadRandomException m
+
+type ProgramStateM m = StateT ProgramState m
+
+-- | Add the given variable to the `ProgramState`.
+addVariable :: MonadRandom m => Text -> Either ListValues Expr -> ProgramStateM m ()
 addVariable t val = modify $ \s -> s {getVariables = M.insert t val (getVariables s)}
 
 -- | The maximum depth that should be permitted. Used to limit number of dice
@@ -56,23 +62,23 @@ maximumListLength :: Integer
 maximumListLength = 50
 
 -- | Increment the rngcount by 1.
-incRNGCount :: ProgramStateM ()
+incRNGCount :: MonadException m => ProgramStateM m ()
 incRNGCount = modify (\s -> s {getRNGCount = getRNGCount s + 1}) >> checkRNGCount
 
 -- | Check whether the RNG count has been exceeded by the integer given.
-checkRNGCount :: ProgramStateM ()
+checkRNGCount :: MonadException m => ProgramStateM m ()
 checkRNGCount = do
   rngCount <- gets getRNGCount
   when (rngCount > maximumRNG) $ evaluationException ("Maximum RNG count exceeded (" <> pack (show maximumRNG) <> ")") []
 
 -- | Utility function to throw an `EvaluationException` when using `Text`.
-evaluationException :: (MonadException m) => Text -> [Text] -> m a
+evaluationException :: MonadException m => Text -> [Text] -> m a
 evaluationException nm locs = throwBot $ EvaluationException (unpack nm) (unpack <$> locs)
 
---- Evaluating an expression. Uses IO because dice are random
+--- Evaluating an expression.
 
--- | Evaluating a full program
-evalProgram :: Program -> IO (Either [(Integer, Text)] Integer, Text)
+-- | Evaluating a full program.
+evalProgram :: MonadRandomException m => Program -> m (Either [(Integer, Text)] Integer, Text)
 evalProgram (Program ss elve) =
   evalStateT
     ( do
@@ -86,14 +92,14 @@ evalProgram (Program ss elve) =
 
 -- | Given a list expression, evaluate it, getting the pretty printed string and
 -- the value of the result.
-evalList :: (IOEvalList a, PrettyShow a) => a -> IO ([(Integer, Text)], Text)
+evalList :: (EvalList a, PrettyShow a, MonadRandomException m) => a -> m ([(Integer, Text)], Text)
 evalList a = do
   (is, ss) <- evalStateT (evalShowL a) startState
   return (is, fromMaybe (prettyShow a) ss)
 
 -- | Given an integer expression, evaluate it, getting the pretty printed string
 -- and the value of the result.
-evalInteger :: (IOEval a, PrettyShow a) => a -> IO (Integer, Text)
+evalInteger :: (Eval a, PrettyShow a, MonadRandomException m) => a -> m (Integer, Text)
 evalInteger a = do
   (is, ss) <- evalStateT (evalShow a) startState
   return (is, ss)
@@ -109,7 +115,7 @@ evalInteger a = do
 -- as normal. If the value is `Just False`, the value has been rerolled over,
 -- and is displayed crossed out. If the value is `Just True`, the value has been
 -- dropped, and the number is crossed out and underlined.
-dieShow :: (PrettyShow a, MonadException m) => Maybe (Integer, Integer) -> a -> [(Integer, Maybe Bool)] -> m Text
+dieShow :: (PrettyShow a, MonadRandomException m) => Maybe (Integer, Integer) -> a -> [(Integer, Maybe Bool)] -> m Text
 dieShow _ a [] = evaluationException "tried to show empty set of results" [prettyShow a]
 dieShow lchc d ls = return $ prettyShow d <> " [" <> intercalate ", " adjustList <> "]"
   where
@@ -129,19 +135,19 @@ dieShow lchc d ls = return $ prettyShow d <> " [" <> intercalate ", " adjustList
 
 -- | Evaluate a series of values, combining the text output into a comma
 -- separated list.
-evalShowList :: (IOEval a, PrettyShow a) => [a] -> ProgramStateM ([Integer], Text)
+evalShowList :: (Eval a, PrettyShow a, MonadRandomException m) => [a] -> ProgramStateM m ([Integer], Text)
 evalShowList as = do
   vs <- evalShowList' as
   let (is, ts) = unzip vs
   return (is, intercalate ", " ts)
 
 -- | Evaluate a series of values, combining the text output a list.
-evalShowList' :: (IOEval a, PrettyShow a) => [a] -> ProgramStateM [(Integer, Text)]
+evalShowList' :: (Eval a, PrettyShow a, MonadRandomException m) => [a] -> ProgramStateM m [(Integer, Text)]
 evalShowList' = evalShowList'' evalShow
 
 -- | Evaluate (using a custom evaluator function) a series of values, getting
 -- strings and values as a result.
-evalShowList'' :: (a -> ProgramStateM (i, Text)) -> [a] -> ProgramStateM [(i, Text)]
+evalShowList'' :: (MonadRandomException m) => (a -> ProgramStateM m (i, Text)) -> [a] -> ProgramStateM m [(i, Text)]
 evalShowList'' customEvalShow as = foldl' (flip foldF) (return []) as >>= \lst -> return (reverse lst)
   where
     foldF a sumrngcount = do
@@ -161,20 +167,20 @@ propagateException t a = catchBot a handleException
 
 -- | This type class evaluates an item and returns a list of integers (with
 -- their representations if valid).
-class IOEvalList a where
+class EvalList a where
   -- | Evaluate the given item into a list of integers and text,
   -- possibly a string representation of the value, and the number of RNG calls
   -- it took. If the `a` value is a dice value, the values of the dice should be
   -- displayed. This function adds the current location to the exception
   -- callstack.
-  evalShowL :: PrettyShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL :: (PrettyShow a, MonadRandomException m) => a -> ProgramStateM m ([(Integer, Text)], Maybe Text)
   evalShowL a = do
     (is, mt) <- propagateException (prettyShow a) (evalShowL' a)
     return (genericTake maximumListLength is, mt)
 
-  evalShowL' :: PrettyShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL' :: (PrettyShow a, MonadRandomException m) => a -> ProgramStateM m ([(Integer, Text)], Maybe Text)
 
-evalArgValue :: ArgValue -> ProgramStateM ListInteger
+evalArgValue :: (MonadRandomException m) => ArgValue -> ProgramStateM m ListInteger
 evalArgValue (AVExpr e) = do
   (i, _) <- evalShow e
   return $ LIInteger i
@@ -182,7 +188,7 @@ evalArgValue (AVListValues e) = do
   (i, _) <- evalShowL e
   return (LIList (fst <$> i))
 
-instance IOEvalList ListValues where
+instance EvalList ListValues where
   evalShowL' (MultipleValues nb b) = do
     (nb', _) <- evalShow nb
     vs <- evalShowList' (genericReplicate nb' b)
@@ -196,29 +202,29 @@ instance IOEvalList ListValues where
       _ -> evaluationException ("could not find list variable `" <> t <> "`") []
   evalShowL' (ListValuesMisc l) = evalShowL l
 
-instance IOEvalList ListValuesBase where
+instance EvalList ListValuesBase where
   evalShowL' (LVBList es) = do
     vs <- evalShowList' es
     return (vs, Nothing)
   evalShowL' (LVBParen (Paren lv)) = evalShowL lv
 
-instance IOEvalList ListValuesMisc where
+instance EvalList ListValuesMisc where
   evalShowL' (MiscVar l) = evalShowL l
   evalShowL' (MiscIf l) = evalShowL l
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
-class IOEval a where
+class Eval a where
   -- | Evaluate the given item to an integer, a string representation of the
   -- value, and the number of RNG calls it took. If the `a` value is a dice
   -- value, the values of the dice should be displayed. This function adds
   -- the current location to the exception callstack.
-  evalShow :: PrettyShow a => a -> ProgramStateM (Integer, Text)
+  evalShow :: (PrettyShow a, MonadRandomException m) => a -> ProgramStateM m (Integer, Text)
   evalShow a = propagateException (prettyShow a) (evalShow' a)
 
-  evalShow' :: PrettyShow a => a -> ProgramStateM (Integer, Text)
+  evalShow' :: (PrettyShow a, MonadRandomException m) => a -> ProgramStateM m (Integer, Text)
 
-instance IOEval Base where
+instance Eval Base where
   evalShow' (NBase nb) = evalShow nb
   evalShow' (DiceBase dice) = evalShow dice
   evalShow' (NumVar t) = do
@@ -227,20 +233,20 @@ instance IOEval Base where
       Just (Right e) -> evalShow e >>= \(i, _) -> return (i, t)
       _ -> evaluationException ("could not find integer variable `" <> t <> "`") []
 
-instance IOEval Die where
+instance Eval Die where
   evalShow' ld@(LazyDie d) = do
     (i, _) <- evalShow d
     ds <- dieShow Nothing ld [(i, Nothing)]
     return (i, ds)
   evalShow' d@(CustomDie (LVBList es)) = do
-    e <- liftIO $ chooseOne es
+    e <- chooseOne es
     (i, _) <- evalShow e
     ds <- dieShow Nothing d [(i, Nothing)]
     incRNGCount
     return (i, ds)
   evalShow' d@(CustomDie is) = do
     (is', _) <- evalShowL is
-    i <- liftIO $ chooseOne (fst <$> is')
+    i <- chooseOne (fst <$> is')
     ds <- dieShow Nothing d [(i, Nothing)]
     incRNGCount
     return (i, ds)
@@ -249,12 +255,12 @@ instance IOEval Die where
     if bound < 1
       then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (prettyShow b) <> ")") []
       else do
-        i <- randomRIO (1, bound)
+        i <- getRandomR (1, bound)
         ds <- dieShow Nothing d [(i, Nothing)]
         incRNGCount
         return (i, ds)
 
-instance IOEval Dice where
+instance Eval Dice where
   evalShow' dop = do
     (lst, mnmx) <- evalDieOp dop
     let vs = fromEvalDieOpList lst
@@ -275,7 +281,7 @@ fromEvalDieOpList = foldr foldF []
 --
 -- The function itself checks to make sure the number of dice being rolled is
 -- less than the maximum recursion and is non-negative.
-evalDieOp :: Dice -> ProgramStateM ([(NonEmpty Integer, Bool)], Maybe (Integer, Integer))
+evalDieOp :: MonadRandomException m => Dice -> ProgramStateM m ([(NonEmpty Integer, Bool)], Maybe (Integer, Integer))
 evalDieOp (Dice b ds dopo) = do
   (nbDice, _) <- evalShow b
   if nbDice > maximumRNG
@@ -303,7 +309,7 @@ evalDieOp (Dice b ds dopo) = do
 
 -- | Utility function that processes a `Maybe DieOpRecur`, when given a die, and
 -- dice that have already been processed.
-evalDieOp' :: Maybe DieOpRecur -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOp' :: MonadRandomException m => Maybe DieOpRecur -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM m [(NonEmpty Integer, Bool)]
 evalDieOp' Nothing _ is = return is
 evalDieOp' (Just (DieOpRecur doo mdor)) die is = do
   doo' <- processDOO doo
@@ -329,7 +335,7 @@ evalDieOp' (Just (DieOpRecur doo mdor)) die is = do
 
 -- | Utility function that processes a `DieOpOption`, when given a die, and dice
 -- that have already been processed.
-evalDieOp'' :: DieOpOption -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOp'' :: MonadRandomException m => DieOpOption -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM m [(NonEmpty Integer, Bool)]
 evalDieOp'' (DieOpOptionLazy doo) die is = evalDieOp'' doo die is
 evalDieOp'' (DieOpOptionKD kd lhw) _ is = evalDieOpHelpKD kd lhw is
 evalDieOp'' (Reroll once o i) die is = foldr rerollF (return []) is
@@ -359,7 +365,7 @@ setToDropped :: [(NonEmpty Integer, Bool)] -> [(NonEmpty Integer, Bool)]
 setToDropped = fmap (\(is, _) -> (is, False))
 
 -- | Helper function that executes the keep/drop commands on dice.
-evalDieOpHelpKD :: KeepDrop -> LowHighWhere -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOpHelpKD :: MonadRandomException m => KeepDrop -> LowHighWhere -> [(NonEmpty Integer, Bool)] -> ProgramStateM m [(NonEmpty Integer, Bool)]
 evalDieOpHelpKD kd (Where cmp i) is = foldr foldF (return []) is
   where
     isKeep = if kd == Keep then id else not
@@ -382,23 +388,23 @@ evalDieOpHelpKD kd lh is = do
 -- Was previously its own type class that wouldn't work for evaluating Base values.
 
 -- | Utility function to evaluate a binary operator.
-binOpHelp :: (IOEval a, IOEval b, PrettyShow a, PrettyShow b) => a -> b -> Text -> (Integer -> Integer -> Integer) -> ProgramStateM (Integer, Text)
+binOpHelp :: (Eval a, Eval b, PrettyShow a, PrettyShow b, MonadRandomException m) => a -> b -> Text -> (Integer -> Integer -> Integer) -> ProgramStateM m (Integer, Text)
 binOpHelp a b opS op = do
   (a', a's) <- evalShow a
   (b', b's) <- evalShow b
   return (op a' b', a's <> " " <> opS <> " " <> b's)
 
-instance IOEval ExprMisc where
+instance Eval ExprMisc where
   evalShow' (MiscVar l) = evalShow l
   evalShow' (MiscIf l) = evalShow l
 
-instance IOEval Expr where
+instance Eval Expr where
   evalShow' (NoExpr t) = evalShow t
   evalShow' (ExprMisc e) = evalShow e
   evalShow' (Add t e) = binOpHelp t e "+" (+)
   evalShow' (Sub t e) = binOpHelp t e "-" (-)
 
-instance IOEval Term where
+instance Eval Term where
   evalShow' (NoTerm f) = evalShow f
   evalShow' (Multi f t) = binOpHelp f t "*" (*)
   evalShow' (Div f t) = do
@@ -408,24 +414,24 @@ instance IOEval Term where
       then evaluationException "division by zero" [prettyShow t]
       else return (div f' t', f's <> " / " <> t's)
 
-instance IOEval Func where
+instance Eval Func where
   evalShow' (Func s exprs) = evaluateFunction s exprs
   evalShow' (NoFunc b) = evalShow b
 
 -- | Evaluate a function when given a list of parameters
-evaluateFunction :: FuncInfoBase j -> [ArgValue] -> ProgramStateM (j, Text)
+evaluateFunction :: MonadRandomException m => FuncInfoBase j -> [ArgValue] -> ProgramStateM m (j, Text)
 evaluateFunction fi exprs = do
   exprs' <- evalShowList'' (fmap (,"") . evalArgValue) exprs
   f <- funcInfoFunc fi (fst <$> exprs')
   return (f, funcInfoName fi <> "(" <> intercalate ", " (prettyShow <$> exprs) <> ")")
 
-instance IOEval Negation where
+instance Eval Negation where
   evalShow' (NoNeg expo) = evalShow expo
   evalShow' (Neg expo) = do
     (expo', expo's) <- evalShow expo
     return (negate expo', "-" <> expo's)
 
-instance IOEval Expo where
+instance Eval Expo where
   evalShow' (NoExpo b) = evalShow b
   evalShow' (Expo b expo) = do
     (expo', expo's) <- evalShow expo
@@ -435,13 +441,13 @@ instance IOEval Expo where
         (b', b's) <- evalShow b
         return (b' ^ expo', b's <> " ^ " <> expo's)
 
-instance IOEval NumBase where
+instance Eval NumBase where
   evalShow' (NBParen (Paren e)) = do
     (r, s) <- evalShow e
     return (r, "(" <> s <> ")")
   evalShow' (Value i) = return (i, pack (show i))
 
-instance IOEval (Var Expr) where
+instance Eval (Var Expr) where
   evalShow' (Var t a) = do
     (v, lt) <- evalShow a
     addVariable t (Right $ promote v)
@@ -451,7 +457,7 @@ instance IOEval (Var Expr) where
     addVariable t (Right a)
     return $ v `seq` (v, prettyShow l)
 
-instance IOEvalList (Var ListValues) where
+instance EvalList (Var ListValues) where
   evalShowL' l@(Var t a) = do
     (v, _) <- evalShowL a
     addVariable t (Left $ promote $ fst <$> v)
@@ -461,7 +467,7 @@ instance IOEvalList (Var ListValues) where
     addVariable t (Left a)
     return (v, Just (prettyShow l))
 
-evalStatement :: Statement -> ProgramStateM Text
+evalStatement :: MonadRandomException m => Statement -> ProgramStateM m Text
 evalStatement (StatementExpr l) = evalShowStatement l >>= \(_, t) -> return (t <> "; ")
   where
     evalShowStatement (ExprMisc (MiscVar l'@(VarLazy t a))) = addVariable t (Right a) >> return (0, prettyShow l')
@@ -471,7 +477,7 @@ evalStatement (StatementListValues l) = evalShowStatement l >>= \(_, t) -> retur
     evalShowStatement (ListValuesMisc (MiscVar l'@(VarLazy t a))) = addVariable t (Left a) >> return ([], Just (prettyShow l'))
     evalShowStatement l' = evalShowL l'
 
-instance IOEval (If Expr) where
+instance Eval (If Expr) where
   evalShow' if'@(If b t e) = do
     (i, _) <- evalShow b
     (i', _) <-
@@ -480,7 +486,7 @@ instance IOEval (If Expr) where
         else evalShow e
     return (i', prettyShow if')
 
-instance IOEvalList (If ListValues) where
+instance EvalList (If ListValues) where
   evalShowL' if'@(If b t e) = do
     (i, _) <- evalShow b
     (i', _) <-
