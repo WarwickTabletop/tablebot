@@ -29,7 +29,7 @@ The three Group settings are optional, but without them any commands that requir
 to be called when `DEBUG` is false. Users with the superuser group are able to run every command (including some dangerous
 ones), so caution should be used when setting these up.
 
-If you have any difficulties setting it up, see the [contributor's guide](CONTRIBUTING.md) for a walkthrough.
+If you have any difficulties setting it up, see the [setup guide](SETUP.md) for a walkthrough.
 
 ## Importing this bot and running it yourself.
 
