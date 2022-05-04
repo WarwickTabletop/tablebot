@@ -4,11 +4,11 @@ module Main where
 
 import Data.Text (Text)
 import Tablebot (BotConfig (..), runTablebotWithEnv)
-import Tablebot.Plugins (allPlugins)
+import Tablebot.Plugins (allPlugins, minusPl)
 
 -- @main@ runs forever. This allows bot reloading by fully shutting down the bot and letting it restart.
 main :: IO ()
-main = runTablebotWithEnv allPlugins $ BotConfig {gamePlaying = "with dice", rootHelpText = rootBody}
+main = runTablebotWithEnv (allPlugins `minusPl` ["ping"]) $ BotConfig {gamePlaying = "with dice", rootHelpText = rootBody}
 
 rootBody :: Text
 rootBody =
