@@ -51,6 +51,7 @@ module Tablebot.Utility.Discord
   )
 where
 
+import Control.Monad.Cont (liftIO)
 import Control.Monad.Exception (MonadException (throw))
 import Data.Char (isDigit)
 import Data.Default (Default (def))
@@ -67,6 +68,7 @@ import Discord.Interactions
 import qualified Discord.Requests as R
 import Discord.Types
 import GHC.Word (Word64)
+import System.Environment (lookupEnv)
 import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
 import Tablebot.Internal.Embed (Embeddable (..))
 import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
@@ -265,10 +267,18 @@ getGuildEmoji ename gid = do
 
 -- | search through all known guilds for an emoji with that name
 findEmoji :: Text -> EnvDatabaseDiscord s (Maybe Emoji)
-findEmoji ename = fmap msum (liftDiscord readCache >>= cacheToEmoji)
+findEmoji ename = fmap msum (emojiServers >>= cacheToEmoji)
   where
-    cacheToEmoji :: Cache -> EnvDatabaseDiscord s [Maybe Emoji]
-    cacheToEmoji cache = mapM (getGuildEmoji ename) (keys $ cacheGuilds cache)
+    cacheToEmoji :: [GuildId] -> EnvDatabaseDiscord s [Maybe Emoji]
+    cacheToEmoji ids = mapM (getGuildEmoji ename) ids
+    emojiServers :: EnvDatabaseDiscord s [GuildId]
+    emojiServers = do
+      maybeServers <- liftIO $ lookupEnv "EMOJI_SERVERS"
+      case maybeServers of
+        Just x -> pure (read x)
+        Nothing -> do
+          cache <- liftDiscord readCache
+          pure $ keys $ cacheGuilds cache
 
 -- | Render an Emoji
 formatEmoji :: Emoji -> Text
