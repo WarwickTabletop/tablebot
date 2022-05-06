@@ -12,6 +12,7 @@ module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 import Control.Monad.Writer (MonadIO (liftIO), void)
 import Data.Bifunctor (Bifunctor (first))
 import Data.ByteString.Lazy (toStrict)
+import Data.Default (Default (def))
 import Data.Distribution (isValid)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
@@ -21,7 +22,7 @@ import Discord.Interactions
   ( Interaction (..),
   )
 import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
-import Discord.Types (ComponentActionRow (..), ComponentButton (..), Emoji (..), Message (..), User (..), mkButton)
+import Discord.Types (ComponentActionRow (..), ComponentButton (..), Message (..), User (..), mkButton, mkEmoji)
 import System.Timeout (timeout)
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
@@ -70,8 +71,12 @@ rollDice' e t u@(ParseUserId uid) = do
         { messageDetailsComponents =
             Just
               [ ComponentActionRowButton
+                  -- we take the first 100 characters of the button customid
+                  --  because they're only allowed to be 100 characters long.
+                  -- the button is disabled if it's meant to be more than 100
+                  --  characters so we don't have to worry about this.
                   [ (mkButton buttonName (T.take 100 buttonCustomId))
-                      { componentButtonEmoji = Just (Emoji (Just 0) "🎲" Nothing Nothing Nothing (Just False)),
+                      { componentButtonEmoji = Just (mkEmoji "🎲"),
                         componentButtonDisabled = buttonDisabled
                       }
                   ]
@@ -231,7 +236,13 @@ statsCommand = Command "stats" statsCommandParser []
               liftDiscord $
                 void $
                   restCall
-                    ( CreateMessageDetailed (messageChannelId m) (MessageDetailedOpts (msg range') False Nothing (Just (T.unwords (snd <$> range') <> ".png", toStrict image)) Nothing Nothing Nothing Nothing)
+                    ( CreateMessageDetailed
+                        (messageChannelId m)
+                        ( def
+                            { messageDetailedContent = msg range',
+                              messageDetailedFile = Just (T.unwords (snd <$> range') <> ".png", toStrict image)
+                            }
+                        )
                     )
       where
         msg [(d, t)] =

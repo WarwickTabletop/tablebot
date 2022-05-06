@@ -172,6 +172,11 @@ type ReactionDel = EnvReactionDel ()
 
 -- | Handles the creation of an application command and of the action to be
 -- performed once that application command is received.
+--
+-- This handles things like chat input (slash commands), message commands, or
+-- user commands. The `applicationCommand` is the data structure that
+-- represents the application command, and the `applicationCommandRecv` is the
+-- action to be performed when this application command is received.
 data EnvApplicationCommandRecv d = ApplicationCommandRecv
   { -- | The application command to be created.
     applicationCommand :: CreateApplicationCommand,
@@ -181,9 +186,10 @@ data EnvApplicationCommandRecv d = ApplicationCommandRecv
 
 type ApplicationCommandRecv = EnvApplicationCommandRecv ()
 
--- | Handles recieving of interactions, such as for application commands (slash
--- commands, user commands, message commands), as well as components from
--- messages.
+-- | Handles recieving of components, such as buttons or select menus.
+--
+-- The name is the name of the component within a plugin. Choose something
+-- unique within the plugin.
 data EnvComponentRecv d = ComponentRecv
   { componentName :: Text,
     onComponentRecv :: Interaction -> EnvDatabaseDiscord d ()
@@ -302,6 +308,9 @@ messageDetailsBasic t = MessageDetails Nothing (Just t) Nothing Nothing Nothing 
 instance Default MessageDetails where
   def = MessageDetails Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
+-- | This data structure as a convenient way to make either interaction responses
+-- or just plain messages. It is used in cases that we're either gonna return
+-- an interaction or a message.
 data MessageDetails = MessageDetails
   { messageDetailsTTS :: Maybe Bool,
     messageDetailsContent :: Maybe Text,

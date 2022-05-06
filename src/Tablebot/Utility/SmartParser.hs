@@ -31,6 +31,10 @@ import Tablebot.Utility.Parser
 import Tablebot.Utility.Types
 import Text.Megaparsec (MonadParsec (eof, try), chunk, many, observing, optional, (<?>), (<|>))
 
+-- | The type class representing some data we can extract data from.
+-- Needed for things like getting a GuildMember, message id, guild id.
+--
+-- Only defined for Message and Interaction.
 class Context a where
   contextUserId :: a -> ParseUserId
   contextGuildId :: a -> EnvDatabaseDiscord s (Maybe GuildId)
@@ -83,6 +87,11 @@ instance Context Interaction where
 -- parser that reads in an @Int@, then some optional @Text@, and then uses
 -- those to run the provided function with the arguments parsed and the message
 -- itself.
+--
+-- The arguments to this class are the type of the function, the type of the
+-- environment, the type of the context (either Message or Interaction), and the
+-- type of the result of the function (which is either () or MessageDetails
+-- usually).
 class PComm commandty s context returns where
   parseComm :: (Context context) => commandty -> Parser (context -> EnvDatabaseDiscord s returns)
 
@@ -90,36 +99,45 @@ class PComm commandty s context returns where
 
 -- If there is the general case where we have just what we want to parse, then
 -- return it
+-- (1)
 instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s r) s t r where
   parseComm comm = skipSpace >> return comm
 
 -- If we have the specific case where we are returning `()`, parse eof as well.
 -- This should cover the base case for the rest of the program that doesn't use
 -- more complex stuff.
+-- (2)
 instance {-# OVERLAPPING #-} PComm (t -> EnvDatabaseDiscord s ()) s t () where
   parseComm comm = skipSpace >> eof >> return comm
 
 -- If an action takes a message and returns a message details and we want it to
 -- return unit, assume that it wants to be sent, and send it. eof this as well
+-- (3)
 instance {-# OVERLAPPING #-} PComm (Message -> EnvDatabaseDiscord s MessageDetails) s Message () where
   parseComm comm = skipSpace >> eof >> return (\m -> comm m >>= sendCustomMessage m)
 
--- Just the action. effectively the function hasn't interacted with the `t`.
--- don't parse eof cause we may wanna return
-instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s r) s t r where
+-- When there is no context to the function (eg no Message or Interaction),
+-- just run the action. don't parse eof cause we may wanna return.
+-- similar to (1)
+-- (4)
+instance PComm (EnvDatabaseDiscord s r) s t r where
   parseComm comm = skipSpace >> return (const comm)
 
--- Just the action. effectively the function hasn't interacted with the `t`.
--- parse eof because we have unit here
+-- When there is no context to the function (eg no Message or Interaction),
+-- just run the action. effectively the function hasn't interacted with the `t`.
+-- parse eof because we have unit here. similar to (2)
+-- (5)
 instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s ()) s t () where
   parseComm comm = skipSpace >> eof >> return (const comm)
 
 -- if we're in a message context and have a message details but want to return
--- unit, assume that we want to send it, and send it.
+-- unit, assume that we want to send it, and send it. similar to (3)
+-- (6)
 instance {-# OVERLAPPING #-} PComm (EnvDatabaseDiscord s MessageDetails) s Message () where
   parseComm comm = skipSpace >> eof >> return (\m -> comm >>= sendCustomMessage m)
 
 -- Recursive case is to parse the domain of the function type, then the rest.
+-- (7)
 instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t r) => PComm (a -> as) s t r where
   parseComm comm = do
     this <- parsThenMoveToNext @a
@@ -127,11 +145,13 @@ instance {-# OVERLAPPABLE #-} (CanParse a, PComm as s t r) => PComm (a -> as) s 
 
 -- if we have two contexts for some reason, collapse them if the resultant can
 -- be parsed
+-- (8)
 instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (t -> t -> as) s t r where
   parseComm comm = parseComm (\m -> comm m m)
 
 -- if we have a context and then some parseable value, effectively juggle the
 -- context so that parsing continues (and the context is passed on)
+-- (9)
 instance {-# OVERLAPPABLE #-} (Context t, CanParse a, PComm (t -> as) s t r) => PComm (t -> a -> as) s t r where
   parseComm comm = do
     this <- parsThenMoveToNext @a
@@ -139,6 +159,7 @@ instance {-# OVERLAPPABLE #-} (Context t, CanParse a, PComm (t -> as) s t r) => 
 
 -- special value case - if we get ParseUserId, we need to get the value from
 -- the context. so, get the value from the context, and then continue parsing.
+-- (10)
 instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (ParseUserId -> as) s t r where
   parseComm comm = parseComm $ \(m :: t) -> comm (contextUserId m)
 
@@ -257,18 +278,25 @@ newtype RestOfInput1 a = ROI1 a
 instance IsString a => CanParse (RestOfInput1 a) where
   pars = ROI1 . fromString <$> untilEnd1
 
+-- | Data type to represent parsing a user id from the context.
 newtype ParseUserId = ParseUserId {parseUserId :: UserId}
 
 -- | Labelled value for use with smart commands.
+--
+-- This is for use with slash commands, where there is a name and description
+-- required.
 newtype Labelled (name :: Symbol) (desc :: Symbol) a = Labelled a
 
 -- | Easily make a labelled value.
 labelValue :: forall n d a. a -> Labelled n d a
 labelValue = Labelled @n @d
 
+-- | Get the name and description of a labelled value.
 getLabelValues :: forall n d a. (KnownSymbol n, KnownSymbol d) => Proxy (Labelled n d a) -> (Text, Text)
 getLabelValues _ = (pack (symbolVal (Proxy :: Proxy n)), pack (symbolVal (Proxy :: Proxy d)))
 
+-- | Parse a labelled value, by parsing the base value and adding the label
+-- values.
 instance (CanParse a) => CanParse (Labelled n d a) where
   pars = labelValue <$> pars
 
@@ -281,11 +309,16 @@ noArguments = parseComm
 -- Interactions stuff
 ----
 
+-- | Creates both the slash command creation data structure and the parser for
+-- the command, and creates the EnvApplicationCommandRecv for the command by
+-- combining them.
 makeApplicationCommandPair :: forall t s. (MakeAppComm t, ProcessAppComm t s) => Text -> Text -> t -> Maybe (EnvApplicationCommandRecv s)
 makeApplicationCommandPair name desc f = do
   cac <- makeSlashCommand name desc (Proxy :: Proxy t)
   return $ ApplicationCommandRecv cac (processAppComm f)
 
+-- | Make the creation data structure for a slash command when given a proxy for
+-- a function's type.
 makeSlashCommand :: (MakeAppComm t) => Text -> Text -> Proxy t -> Maybe CreateApplicationCommand
 makeSlashCommand name desc p =
   createApplicationCommandChatInput name desc >>= \cac ->
@@ -294,6 +327,10 @@ makeSlashCommand name desc p =
         { createApplicationCommandOptions = Just $ ApplicationCommandOptionsValues $ makeAppComm p
         }
 
+-- | Create a series of command option values from the given types.
+--
+-- This is making the arguments for a text input/slash command from
+-- a proxy of the given function.
 class MakeAppComm commandty where
   makeAppComm :: Proxy commandty -> [ApplicationCommandOptionValue]
 
@@ -301,43 +338,54 @@ class MakeAppComm commandty where
 instance {-# OVERLAPPING #-} MakeAppComm (EnvDatabaseDiscord s MessageDetails) where
   makeAppComm _ = []
 
+-- If there is a way to get an argument from a `ty`, then get that arg and continue recursion.
 instance {-# OVERLAPPABLE #-} (MakeAppComm mac, MakeAppCommArg ty) => MakeAppComm (ty -> mac) where
   makeAppComm _ = makeAppCommArg (Proxy :: Proxy ty) : makeAppComm (Proxy :: Proxy mac)
 
 instance {-# OVERLAPPABLE #-} (MakeAppComm mac) => MakeAppComm (ParseUserId -> mac) where
   makeAppComm _ = makeAppComm (Proxy :: Proxy mac)
 
+-- | From a single value, make an argument for a slash command command.
 class MakeAppCommArg commandty where
   makeAppCommArg :: Proxy commandty -> ApplicationCommandOptionValue
 
+-- Create a labelled text argument. By default it is required and does not
+-- have autocompeletion.
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Text) where
   makeAppCommArg l = ApplicationCommandOptionValueString n d True (Left False)
     where
       (n, d) = getLabelValues l
 
+-- Create a labelled argument that is optional.
 instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Maybe t)) where
   makeAppCommArg _ =
     (makeAppCommArg (Proxy :: Proxy (Labelled name desc t)))
       { applicationCommandOptionValueRequired = False
       }
 
+-- When quoted text is required, just fake it and get a sub layer.
 instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Quoted t)) where
   makeAppCommArg _ = makeAppCommArg (Proxy :: Proxy (Labelled name desc t))
 
 -- As a base case, send the message produced
 
+-- | Process an application command when given a function/value.
 class ProcessAppComm commandty s where
   processAppComm :: commandty -> Interaction -> EnvDatabaseDiscord s ()
 
--- One base case
+-- When left with just a MessageDetails, just send the message as an
+-- interaction response.
 instance {-# OVERLAPPING #-} ProcessAppComm (EnvDatabaseDiscord s MessageDetails) s where
   processAppComm comm i = comm >>= interactionResponseCustomMessage i
 
--- One simple recursive case
+-- If there is already an interaction in this function call, apply it and
+-- recurse.
 instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (Interaction -> pac) s where
   processAppComm comm i = processAppComm (comm i) i
 
--- one overarching recursive case
+-- This is the main recursion case.
+--
+-- If the argument is a ProcessAppCommArg, then parse it and recurse.
 instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => ProcessAppComm (ty -> pac) s where
   processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = opts}} = do
     t <- processAppCommArg (getVs opts)
@@ -347,7 +395,7 @@ instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => 
       getVs _ = []
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
--- one specific implementation case
+-- one specific implementation case when we want to parse out a user id.
 instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (ParseUserId -> pac) s where
   processAppComm comm i@InteractionApplicationCommand {interactionUser = MemberOrUser u} =
     case getUser of
@@ -357,32 +405,58 @@ instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (ParseUse
       getUser = userId <$> either memberUser Just u
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
+-- | Process an argument for an application command.
+--
+-- Given a type `t`, parse a value of that type from the given list of option
+-- values.
 class ProcessAppCommArg t s where
   processAppCommArg :: [InteractionDataApplicationCommandOptionValue] -> EnvDatabaseDiscord s t
 
+-- | Given a string, find the first option value with that name in the list,
+-- returning Nothing if none is found.
 getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe InteractionDataApplicationCommandOptionValue
 getValue t = find ((== pack t) . interactionDataApplicationCommandOptionValueName)
 
+-- | Tries to extract an integer from a given option value.
 integerFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Integer
 integerFromOptionValue InteractionDataApplicationCommandOptionValueInteger {interactionDataApplicationCommandOptionValueIntegerValue = Right i} = Just i
 integerFromOptionValue _ = Nothing
 
+-- | Tries to extract a scientific number from a given option value.
 scientificFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Scientific
 scientificFromOptionValue InteractionDataApplicationCommandOptionValueNumber {interactionDataApplicationCommandOptionValueNumberValue = Right i} = Just i
 scientificFromOptionValue _ = Nothing
 
+-- | Tries to extract a string from a given option value.
 stringFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Text
 stringFromOptionValue InteractionDataApplicationCommandOptionValueString {interactionDataApplicationCommandOptionValueStringValue = Right i} = Just i
 stringFromOptionValue _ = Nothing
 
+-- there are a number of missing slash command argument types missing here, which I've not added yet.
+
+-- extract a string of the given type from the arguments
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
     Just (InteractionDataApplicationCommandOptionValueString _ (Right t)) -> return $ labelValue t
     _ -> throwBot $ InteractionException "could not find required parameter"
 
+-- extract an integer of the given type from the arguments
+instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Integer) s where
+  processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
+    Just (InteractionDataApplicationCommandOptionValueInteger _ (Right i)) -> return $ labelValue i
+    _ -> throwBot $ InteractionException "could not find required parameter"
+
+-- extract a scientific number of the given type from the arguments
+instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Scientific) s where
+  processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
+    Just (InteractionDataApplicationCommandOptionValueNumber _ (Right i)) -> return $ labelValue i
+    _ -> throwBot $ InteractionException "could not find required parameter"
+
+-- extract a quote of the given type from the arguments
 instance (KnownSymbol name, KnownSymbol desc, ProcessAppCommArg (Labelled name desc t) s) => ProcessAppCommArg (Labelled name desc (Quoted t)) s where
   processAppCommArg is = processAppCommArg @(Labelled name desc t) is >>= \(Labelled a) -> return (labelValue (Qu a))
 
+-- extract an optional data type from the arguments
 instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => ProcessAppCommArg (Labelled name desc (Maybe t)) s where
   processAppCommArg is = do
     let result = processAppCommArg is :: EnvDatabaseDiscord s (Labelled name desc t)
@@ -394,6 +468,9 @@ instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => Proce
 
 -- | Given a function that can be processed to create a parser, create an action
 -- for it using the helper. Uses `parseComm` to generate the required parser.
+--
+-- Components use a unique string as their identifier. We can use this to
+-- run the normal command parser on, hence the use of PComm.
 --
 -- For more information, check the helper `processComponentInteraction'`.
 processComponentInteraction :: (PComm f s Interaction MessageDetails) => f -> Bool -> Interaction -> EnvDatabaseDiscord s ()

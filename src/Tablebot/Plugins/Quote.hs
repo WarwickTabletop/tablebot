@@ -72,10 +72,10 @@ quoteReactionAdd = ReactionAdd quoteReaction
   where
     quoteReaction ri
       | emojiName (reactionEmoji ri) == "\x1F4AC" = do
-        m <- getMessage (reactionChannelId ri) (reactionMessageId ri)
-        case m of
-          Left _ -> pure ()
-          Right mes -> addMessageQuote (reactionUserId ri) mes mes >>= sendCustomMessage mes
+          m <- getMessage (reactionChannelId ri) (reactionMessageId ri)
+          case m of
+            Left _ -> pure ()
+            Right mes -> addMessageQuote (reactionUserId ri) mes mes >>= sendCustomMessage mes
       | otherwise = return ()
 
 -- | Our quote command, which combines various functions to create, display and update quotes.
@@ -379,86 +379,110 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
         ]
 
 quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
-quoteApplicationCommandRecv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
-  "random" -> randomQ i >>= interactionResponseCustomMessage i
-  "author" ->
-    handleNothing
-      (getValue "author" vals >>= stringFromOptionValue)
-      ( \author -> authorQ author i >>= interactionResponseCustomMessage i
-      )
-  "show" ->
-    handleNothing
-      (getValue "id" vals >>= integerFromOptionValue)
-      ( \showid -> showQ (fromIntegral showid) i >>= interactionResponseCustomMessage i
-      )
-  "add" ->
-    handleNothing
-      ((getValue "quote" vals >>= stringFromOptionValue) >>= \q -> (getValue "author" vals >>= stringFromOptionValue) <&> (q,))
-      ( \(qt, author) -> do
-          let requestor = toMention' $ parseUserId $ contextUserId i
-          (msg, qid) <- addQ' qt author requestor 0 0 i
-          interactionResponseCustomMessage i msg
-          -- to get the message to display as wanted, we have to do some trickery
-          -- we have already sent off the message above with the broken message id
-          -- and channel id, but now we have sent off this message we can refer
-          -- to it! We just have to get that message, overwrite the quote, and
-          -- hope no one cares about the edit message
-          v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
-          case v of
-            Left _ -> return ()
-            Right m -> do
-              now <- liftIO $ systemToUTCTime <$> getSystemTime
-              let new = Quote qt author requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
-              replace (toSqlKey qid) new
-              newMsg <- renderCustomQuoteMessage (messageContent m) new qid i
-              _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
-              return ()
-      )
-  "edit" ->
-    handleNothing
-      (getValue "quoteid" vals >>= integerFromOptionValue)
-      ( \qid' -> do
-          let qid = fromIntegral qid'
-              qt = getValue "quote" vals >>= stringFromOptionValue
-              author = getValue "author" vals >>= stringFromOptionValue
-          case (qt, author) of
-            (Nothing, Nothing) -> interactionResponseCustomMessage i (makeEphermeral (messageDetailsBasic "No edits made to quote."))
-            _ -> do
-              msg <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) 0 0 i
+quoteApplicationCommandRecv
+  i@InteractionApplicationCommand
+    { interactionDataApplicationCommand =
+        InteractionDataApplicationCommandChatInput
+          { interactionDataApplicationCommandOptions =
+              Just
+                ( InteractionDataApplicationCommandOptionsSubcommands
+                    [ InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc
+                      ]
+                  )
+          }
+    } =
+    case subcname of
+      "random" -> randomQ i >>= interactionResponseCustomMessage i
+      "author" ->
+        handleNothing
+          (getValue "author" vals >>= stringFromOptionValue)
+          ( \author -> authorQ author i >>= interactionResponseCustomMessage i
+          )
+      "show" ->
+        handleNothing
+          (getValue "id" vals >>= integerFromOptionValue)
+          ( \showid -> showQ (fromIntegral showid) i >>= interactionResponseCustomMessage i
+          )
+      "add" ->
+        handleNothing
+          ((getValue "quote" vals >>= stringFromOptionValue) >>= \q -> (getValue "author" vals >>= stringFromOptionValue) <&> (q,))
+          ( \(qt, author) -> do
+              let requestor = toMention' $ parseUserId $ contextUserId i
+              (msg, qid) <- addQ' qt author requestor 0 0 i
               interactionResponseCustomMessage i msg
+              -- to get the message to display as wanted, we have to do some trickery
+              -- we have already sent off the message above with the broken message id
+              -- and channel id, but now we have sent off this message we can refer
+              -- to it! We just have to get that message, overwrite the quote, and
+              -- hope no one cares about the edit message
               v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
               case v of
                 Left _ -> return ()
                 Right m -> do
-                  msg' <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
-                  _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction msg')
+                  now <- liftIO $ systemToUTCTime <$> getSystemTime
+                  let new = Quote qt author requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
+                  replace (toSqlKey qid) new
+                  newMsg <- renderCustomQuoteMessage (messageContent m) new qid i
+                  _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
                   return ()
-      )
-  _ -> throwBot $ InteractionException "unexpected quote interaction"
-  where
-    subcname = interactionDataApplicationCommandOptionSubcommandName subc
-    vals = interactionDataApplicationCommandOptionSubcommandOptions subc
-    handleNothing Nothing _ = return ()
-    handleNothing (Just a) f = f a
-quoteApplicationCommandRecv i@InteractionApplicationCommandAutocomplete {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = Just (InteractionDataApplicationCommandOptionsSubcommands [InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc])}} = case subcname of
-  "show" ->
-    handleNothing
-      (getValue "id" vals)
-      ( \case
-          InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
-          InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> do
-            allQ <- allQuotes ()
-            let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
-                options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
-            interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) (toInteger qid)) <$> options)
-          _ -> return ()
-      )
-  _ -> return ()
-  where
-    subcname = interactionDataApplicationCommandOptionSubcommandName subc
-    vals = interactionDataApplicationCommandOptionSubcommandOptions subc
-    handleNothing Nothing _ = return ()
-    handleNothing (Just a) f = f a
+          )
+      "edit" ->
+        handleNothing
+          (getValue "quoteid" vals >>= integerFromOptionValue)
+          ( \qid' -> do
+              let qid = fromIntegral qid'
+                  qt = getValue "quote" vals >>= stringFromOptionValue
+                  author = getValue "author" vals >>= stringFromOptionValue
+              case (qt, author) of
+                (Nothing, Nothing) -> interactionResponseCustomMessage i (makeEphermeral (messageDetailsBasic "No edits made to quote."))
+                _ -> do
+                  msg <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) 0 0 i
+                  interactionResponseCustomMessage i msg
+                  v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
+                  case v of
+                    Left _ -> return ()
+                    Right m -> do
+                      msg' <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
+                      _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction msg')
+                      return ()
+          )
+      _ -> throwBot $ InteractionException "unexpected quote interaction"
+    where
+      subcname = interactionDataApplicationCommandOptionSubcommandName subc
+      vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+      handleNothing Nothing _ = return ()
+      handleNothing (Just a) f = f a
+quoteApplicationCommandRecv
+  i@InteractionApplicationCommandAutocomplete
+    { interactionDataApplicationCommand =
+        InteractionDataApplicationCommandChatInput
+          { interactionDataApplicationCommandOptions =
+              Just
+                ( InteractionDataApplicationCommandOptionsSubcommands
+                    [ InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc
+                      ]
+                  )
+          }
+    } =
+    case subcname of
+      "show" ->
+        handleNothing
+          (getValue "id" vals)
+          ( \case
+              InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+              InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> do
+                allQ <- allQuotes ()
+                let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
+                    options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
+                interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) (toInteger qid)) <$> options)
+              _ -> return ()
+          )
+      _ -> return ()
+    where
+      subcname = interactionDataApplicationCommandOptionSubcommandName subc
+      vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+      handleNothing Nothing _ = return ()
+      handleNothing (Just a) f = f a
 quoteApplicationCommandRecv _ = return ()
 
 showQuoteHelp :: HelpPage
