@@ -191,10 +191,3 @@ Deletes a private alias.
       HelpPage "public" [] "deletes a public alias" "**Delete Public Alias**\nDeletes a public alias.\n\n*Usage:* `alias delete public <alias>`" [] publicAliasPerms
     ]
     None
-
-{-
-You can specify whether the alias to delete is public or private.
-Public aliases can only be deleted by moderators.
-
-, `alias delete private <alias>`, `alias delete public <alias>`
--}
