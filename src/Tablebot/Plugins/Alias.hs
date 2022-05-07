@@ -37,6 +37,9 @@ Alias
     deriving Eq
 |]
 
+publicAliasPerms :: RequiredPermission
+publicAliasPerms = Moderator
+
 getAliases :: UserId -> EnvDatabaseDiscord d (Maybe [Alias])
 getAliases uid =
   (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
@@ -65,7 +68,7 @@ aliasComm =
   Command
     "alias"
     (parseComm (\m -> aliasList (AliasPrivate (userId $ messageAuthor m)) m))
-    [aliasAddCommand, aliasListCommand, aliasDeleteCommand]
+    [aliasAddCommand, aliasListCommand, aliasDeleteCommand, commandAlias "remove" aliasDeleteCommand]
 
 aliasHelp :: HelpPage
 aliasHelp =
@@ -93,7 +96,7 @@ aliasAddCommand =
     aliasAddPrivateComm :: WithError "Need a single word" Text -> WithError "Need a quoted string" (Quoted Text) -> Message -> DatabaseDiscord ()
     aliasAddPrivateComm (WErr t) (WErr (Qu t')) m = aliasAdd t t' (AliasPrivate (userId $ messageAuthor m)) m
     aliasAddPublicComm :: WithError "Need a single word" Text -> WithError "Need a quoted string" (Quoted Text) -> Message -> DatabaseDiscord ()
-    aliasAddPublicComm (WErr t) (WErr (Qu t')) m = requirePermission Moderator m $ aliasAdd t t' AliasPublic m
+    aliasAddPublicComm (WErr t) (WErr (Qu t')) m = requirePermission publicAliasPerms m $ aliasAdd t t' AliasPublic m
 
 aliasAdd :: Text -> Text -> AliasType -> Message -> DatabaseDiscord ()
 aliasAdd a b at m = do
@@ -109,11 +112,11 @@ aliasAddHelp =
     "adds an alias"
     [r|**Add Alias**
 Adds an alias.
-You can specify whether the alias is public or private.
-Public aliases can only be added by moderators.
 
-*Usage:* `alias add <alias> "<command>"`, `alias add private <alias> "<command>"` , `alias add public <alias> "<command>"`|]
-    []
+*Usage:* `alias add <alias> "<command>"`|]
+    [ HelpPage "private" [] "adds a private alias" "**Add Private Alias**\nAdds a private alias.\n\n*Usage:* `alias add private <alias> \"<command>\"`" [] None,
+      HelpPage "public" [] "adds a public alias" "**Add Public Alias**\nAdds a public alias.\n\n*Usage:* `alias add public <alias> \"<command>\"`" [] publicAliasPerms
+    ]
     None
 
 aliasListCommand :: Command
@@ -164,7 +167,7 @@ aliasDeleteCommand =
     aliasDeletePrivateComm :: WithError "Need a single word" Text -> Message -> DatabaseDiscord ()
     aliasDeletePrivateComm (WErr t) m = aliasDelete t (AliasPrivate (userId $ messageAuthor m)) m
     aliasDeletePublicComm :: WithError "Need a single word" Text -> Message -> DatabaseDiscord ()
-    aliasDeletePublicComm (WErr t) m = requirePermission Moderator m $ aliasDelete t AliasPublic m
+    aliasDeletePublicComm (WErr t) m = requirePermission publicAliasPerms m $ aliasDelete t AliasPublic m
 
 aliasDelete :: Text -> AliasType -> Message -> DatabaseDiscord ()
 aliasDelete a at m = do
@@ -178,13 +181,20 @@ aliasDeleteHelp :: HelpPage
 aliasDeleteHelp =
   HelpPage
     "delete"
-    []
+    ["remove"]
     "deletes an alias"
     [r|**Delete Alias**
-Deletes an alias.
+Deletes a private alias.
+
+*Usage:* `alias delete <alias>`|]
+    [ HelpPage "private" [] "deletes a private alias" "**Delete Private Alias**\nDeletes a private alias.\n\n*Usage:* `alias delete private <alias>`" [] None,
+      HelpPage "public" [] "deletes a public alias" "**Delete Public Alias**\nDeletes a public alias.\n\n*Usage:* `alias delete public <alias>`" [] publicAliasPerms
+    ]
+    None
+
+{-
 You can specify whether the alias to delete is public or private.
 Public aliases can only be deleted by moderators.
 
-*Usage:* `alias delete <alias>`, `alias delete private <alias>`, `alias delete public <alias>`|]
-    []
-    None
+, `alias delete private <alias>`, `alias delete public <alias>`
+-}
