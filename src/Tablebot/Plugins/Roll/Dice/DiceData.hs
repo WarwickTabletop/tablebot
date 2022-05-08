@@ -17,11 +17,11 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
--- | Set the variable `letName` to the value `letValue`. This also returns the
--- evaluated `letValue`.
+-- | Set the variable `varName` to the value `varValue`. This also returns the
+-- evaluated `varValue`.
 --
 -- List variables have to be prefixed with `l_`. This really helps with parsing.
-data Var a = Var {letName :: Text, letValue :: a} | VarLazy {letName :: Text, letValue :: a} deriving (Show)
+data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show)
 
 -- | If the first value is truthy (non-zero or a non-empty list) then return
 -- the `thenValue`, else return the `elseValue`.

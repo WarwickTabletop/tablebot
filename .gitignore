@@ -6,3 +6,4 @@ database*
 *.cabal
 stack.yaml.lock
 .gitattributes
+.vscode

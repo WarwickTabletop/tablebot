@@ -39,6 +39,8 @@ rollDice' e' t m = do
   maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
   case maybemsss of
     Nothing -> throwBot (EvaluationException "Could not process expression in one second" [])
+    -- vs is either a list of integers and their textual representation, or
+    -- a single integer. ss is
     Just (vs, ss) -> do
       let msg = makeMsg vs ss
       if countFormatting msg < 199
@@ -118,7 +120,7 @@ This supports addition, subtraction, multiplication, integer division, exponenti
       ++ show maximumRNG
       ++ [r| RNG calls), dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum size of |]
       ++ show maximumListLength
-      ++ [r|), if statements, let statements, and using functions like |]
+      ++ [r|), if statements, var statements, and using functions like |]
       ++ unpack (intercalate ", " integerFunctionsList)
       ++ [r| (which return integers), or functions like |]
       ++ unpack (intercalate ", " listFunctionsList)
@@ -225,7 +227,7 @@ statsHelp =
     "stats"
     []
     "calculate and display statistics for expressions."
-    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\nDoes not work with statements.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
+    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\nDoes not work with \"programs\" ie multiple statements one after the other, or with accessing variables.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
     []
     None
 

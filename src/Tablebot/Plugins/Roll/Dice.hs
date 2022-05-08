@@ -18,7 +18,7 @@
 -- - DiceEval - methods for evaluating elements from DiceData
 -- - DiceStats - filling the type classes and function needed to generate
 --    statistics on dice
--- - DiceStatsBase - functions to process completed dice ranges
+-- - DiceStatsBase - functions to process dice value distributions
 --
 -- Below is the regex representing the parsing for the expressions, and
 -- explanations for each component. It's not 100% accurate to the actual data
@@ -28,6 +28,10 @@
 -- If there is a gap between terms, any number of spaces (including none) is
 -- valid, barring in lstv, dice, die, dopr, ords, funcBasics, misc; spaces are
 -- added manually in those.
+--
+-- TODO: it's usually safer to put these kinds of grammars in Backus-Naur form
+--  rather than regex due to the sheer number of regex standards and possible
+--  overloading of ?.
 --
 -- prog - stat* (lstv | expr)
 -- stat - (lstv | expr) ";"
@@ -56,7 +60,7 @@
 --
 -- prog (Program)                      - representing a complete program - a series of statements and a value to output at the end.
 -- stat (Statement)                    - representing a single statement - an expression or list value
--- misc (MiscData)                     - either an if or a let
+-- misc (MiscData)                     - either an if or a var
 -- ifst (If)                           - representing one of two values depending on the outcome of an expression
 -- vars (Var)                          - setting a variable to a certain value
 -- lstv (ListValues)                   - representing all possible list values (basic list values, functions that return lists, and values which are lists of length N that consist of `Base`s, as well as a MiscData value)

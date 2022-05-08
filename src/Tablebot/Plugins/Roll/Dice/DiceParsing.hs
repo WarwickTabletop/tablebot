@@ -37,14 +37,14 @@ import Text.Megaparsec.Error (ErrorItem (Tokens))
 failure' :: T.Text -> Set T.Text -> Parser a
 failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Tokens . NE.fromList . T.unpack) ss)
 
-varName :: Parser T.Text
-varName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
+variableName :: Parser T.Text
+variableName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
 
 instance CanParse a => CanParse (Var a) where
   pars = do
     _ <- try (string "var") <* skipSpace
     letCon <- try (char '!' $> VarLazy) <|> return Var
-    varName' <- varName
+    varName' <- variableName
     _ <- skipSpace >> char '=' >> skipSpace
     letCon varName' <$> pars
 
@@ -86,13 +86,13 @@ instance CanParse ListValues where
   pars =
     do
       functionParser listFunctions LVFunc
-      <|> (LVVar . ("l_" <>) <$> try (string "l_" *> varName))
+      <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
       <|> ListValuesMisc <$> (pars >>= checkVar)
       <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
       <|> LVBase <$> pars
     where
       checkVar (MiscVar l)
-        | T.isPrefixOf "l_" (letName l) = return (MiscVar l)
+        | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
         | otherwise = fail "list variables must be prepended with l_"
       checkVar l = return l
 
@@ -183,7 +183,7 @@ instance CanParse Base where
           <|> return (NBase nb)
     )
       <|> DiceBase <$> parseDice (Value 1)
-      <|> (NumVar <$> try varName)
+      <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do

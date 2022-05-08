@@ -97,7 +97,7 @@ rangeIfExpr func (If b t f) = do
   b' <- range b
   let mp = toMap $ run b'
       canBeFalse = M.member 0 mp
-      canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= 0) mp
+      canBeTrue = not $ M.null $ M.filterWithKey (\k _ -> k /= 0) mp
       emptyExp = from $ D.fromList @_ @Integer []
   t' <- if canBeTrue then func t else return emptyExp
   f' <- if canBeFalse then func f else return emptyExp
@@ -105,20 +105,6 @@ rangeIfExpr func (If b t f) = do
     do
       b'' <- b'
       if b'' /= 0 then t' else f'
-
--- rangeIfList :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If ListValues a -> m (D.Experiment b)
--- rangeIfList func (If b t f) = do
---   b' <- rangeList b
---   let mp = toMap $ run b'
---       canBeFalse = M.member [] mp
---       canBeTrue = M.null $ M.filterWithKey (\k _ -> k /= []) mp
---       emptyExp = from $ D.fromList @_ @Integer []
---   t' <- if canBeTrue then func t else return emptyExp
---   f' <- if canBeFalse then func f else return emptyExp
---   return $
---     do
---       b'' <- b'
---       if b'' /= [] then t' else f'
 
 instance (Range a) => Range (Var a) where
   range' (Var _ a) = range a

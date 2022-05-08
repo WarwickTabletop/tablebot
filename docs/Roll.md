@@ -72,13 +72,13 @@ There are two operators that are more complex and have specific organisational r
 
 If statements take an expression, and then two either integer values or list values. If the expression is non-zero, the first value is returned. If the expression is zero, the second value is returned. The syntax for it is `if expression then t else f`, where `expression` is an integer value, and `t` and `f` are both either integer values or list values. Only one of `t` or `f` is ever evaluated.
 
-Let statements take a name and either an integer value or a list, and set a variable with that name to that value. If the let statement is lazy (with an exclamation mark before the variable name) instead, the value is recalculated every time the variable is used. A let statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `let name = value`, `let !name = value`, or `let l_name = value`, or so on. These bound values can then be used in other calculations.
+Var statements take a name and either an integer value or a list, and set a variable with that name to that value. If the var statement is lazy (with an exclamation mark before the variable name) the value is recalculated every time the variable is used. A var statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `var name = value`, `var !name = value`, or `var l_name = value`, or so on. These bound values can then be used in other calculations. Variable names consist only have lower case letters and underscores.
 
-To fully utilise these expression types, statements have been made, which, when constructed together with a value, creates a program. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs (which are multiple statements followed by a single value). One quality of life feature is that a lazy let expression won't be evaluated until the variable is first used.
+To fully utilise these expression types, statements have been made, which, when constructed together with a value, creates a program. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs (which are multiple statements followed by a single value). One quality of life feature is that a lazy var expression won't be evaluated until the variable is first used.
 
-- `let l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
+- `var l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
     - Get the length, minimum, maximum, and average value of a random list.
-- `let !k = 1d20; let t = k; let !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t + 20 else t`
+- `var !k = 1d20; var t = k; var !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t + 20 else t`
     - Create a lazy variable `k`. Evaluate it into a variable `t`. Check whether `t` is even, and place in a variable. Depending on whether `t` is even or not, either output another random number times by `t` (and add 20 to distinguish it), or just output `t`.
 
 ## Functions

@@ -76,13 +76,20 @@ evalProgram :: Program -> IO (Either [(Integer, Text)] Integer, Text)
 evalProgram (Program ss elve) =
   evalStateT
     ( do
-        t <- foldl' (\b s -> b >>= \t -> evalStatement s >>= \st -> return (t <> st)) (return "") ss
+        -- evaluate all the statements
+        stmts <- foldl' folder (return "") ss
+        -- evaluate the expression
         r <- either ((Left <$>) . evalShowL) ((Right <$>) . evalShow) elve
         case r of
-          Left (is, mt) -> return (Left is, t <> fromMaybe (prettyShow elve) mt)
-          Right (is, mt) -> return (Right is, t <> mt)
+          Left (is, mtxt) -> return (Left is, stmts <> fromMaybe (prettyShow elve) mtxt)
+          Right (i, txt) -> return (Right i, stmts <> txt)
     )
     startState
+  where
+    folder b s = do
+      stmts <- b
+      st <- evalStatement s
+      return (stmts <> st)
 
 -- | Given a list expression, evaluate it, getting the pretty printed string and
 -- the value of the result.

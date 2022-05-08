@@ -89,6 +89,8 @@ listFunctions' =
     between i i' = let (mi, ma, rev) = (min i i', max i i', if i > i' then reverse else id) in rev [mi .. ma]
 
 -- | The `FuncInfo` of the function that indexes into a list.
+--
+-- Creates a function that takes an integer and a list and returns an integer.
 funcInfoIndex :: FuncInfo
 funcInfoIndex = FuncInfo "index" [ATInteger, ATIntegerList] ATInteger fiIndex
   where
@@ -97,6 +99,10 @@ funcInfoIndex = FuncInfo "index" [ATInteger, ATIntegerList] ATInteger fiIndex
       | otherwise = return (is !! fromInteger i)
     fiIndex is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 2, got " ++ show (length is)) []
 
+-- | The `FuncInfo` of the function that sets an element in a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
 funcInfoSet :: FuncInfoBase [Integer]
 funcInfoSet = FuncInfo "set" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
   where
@@ -105,6 +111,10 @@ funcInfoSet = FuncInfo "set" [ATInteger, ATInteger, ATIntegerList] ATIntegerList
       | otherwise = return $ genericTake i js ++ j : genericDrop (i + 1) js
     fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
 
+-- | The `FuncInfo` of the function that inserts an integer into a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
 funcInfoInsert :: FuncInfoBase [Integer]
 funcInfoInsert = FuncInfo "insert" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
   where
