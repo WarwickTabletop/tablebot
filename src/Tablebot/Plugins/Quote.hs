@@ -72,10 +72,10 @@ quoteReactionAdd = ReactionAdd quoteReaction
   where
     quoteReaction ri
       | emojiName (reactionEmoji ri) == "\x1F4AC" = do
-          m <- getMessage (reactionChannelId ri) (reactionMessageId ri)
-          case m of
-            Left _ -> pure ()
-            Right mes -> addMessageQuote (reactionUserId ri) mes mes >>= sendCustomMessage mes
+        m <- getMessage (reactionChannelId ri) (reactionMessageId ri)
+        case m of
+          Left _ -> pure ()
+          Right mes -> addMessageQuote (reactionUserId ri) mes mes >>= sendCustomMessage mes
       | otherwise = return ()
 
 -- | Our quote command, which combines various functions to create, display and update quotes.

@@ -267,7 +267,7 @@ instance CanParse Snowflake where
   pars = Snowflake . fromInteger <$> posInteger
 
 -- | @RestOfInput a@ parses the rest of the input, giving a value of type @a@.
-newtype RestOfInput a = ROI a
+newtype RestOfInput a = ROI {unROI :: a}
 
 instance IsString a => CanParse (RestOfInput a) where
   pars = ROI . fromString <$> untilEnd
@@ -285,7 +285,7 @@ newtype ParseUserId = ParseUserId {parseUserId :: UserId}
 --
 -- This is for use with slash commands, where there is a name and description
 -- required.
-newtype Labelled (name :: Symbol) (desc :: Symbol) a = Labelled a
+newtype Labelled (name :: Symbol) (desc :: Symbol) a = Labelled {unLabel :: a}
 
 -- | Easily make a labelled value.
 labelValue :: forall n d a. a -> Labelled n d a
@@ -312,6 +312,8 @@ noArguments = parseComm
 -- | Creates both the slash command creation data structure and the parser for
 -- the command, and creates the EnvApplicationCommandRecv for the command by
 -- combining them.
+--
+-- Takes the name and description for a slash command, and its function.
 makeApplicationCommandPair :: forall t s. (MakeAppComm t, ProcessAppComm t s) => Text -> Text -> t -> Maybe (EnvApplicationCommandRecv s)
 makeApplicationCommandPair name desc f = do
   cac <- makeSlashCommand name desc (Proxy :: Proxy t)
@@ -471,6 +473,9 @@ instance (KnownSymbol name, ProcessAppCommArg (Labelled name desc t) s) => Proce
 --
 -- Components use a unique string as their identifier. We can use this to
 -- run the normal command parser on, hence the use of PComm.
+--
+-- If the boolean is False, a reply is sent to the interaction message. If the
+-- boolean is True, the original message is updated.
 --
 -- For more information, check the helper `processComponentInteraction'`.
 processComponentInteraction :: (PComm f s Interaction MessageDetails) => f -> Bool -> Interaction -> EnvDatabaseDiscord s ()
