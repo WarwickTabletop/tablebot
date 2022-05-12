@@ -22,7 +22,7 @@ import Discord.Interactions
   ( Interaction (..),
   )
 import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
-import Discord.Types (ComponentActionRow (..), ComponentButton (..), Message (..), User (..), mkButton, mkEmoji)
+import Discord.Types (ActionRow (..), Button (..), Message (..), User (..), mkButton, mkEmoji)
 import System.Timeout (timeout)
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
@@ -70,14 +70,14 @@ rollDice' e t u@(ParseUserId uid) = do
     ( (messageDetailsBasic msg)
         { messageDetailsComponents =
             Just
-              [ ComponentActionRowButton
+              [ ActionRowButtons
                   -- we take the first 100 characters of the button customid
                   --  because they're only allowed to be 100 characters long.
                   -- the button is disabled if it's meant to be more than 100
                   --  characters so we don't have to worry about this.
                   [ (mkButton buttonName (T.take 100 buttonCustomId))
-                      { componentButtonEmoji = Just (mkEmoji "🎲"),
-                        componentButtonDisabled = buttonDisabled
+                      { buttonEmoji = Just (mkEmoji "🎲"),
+                        buttonDisabled = buttonDisabled
                       }
                   ]
               ]

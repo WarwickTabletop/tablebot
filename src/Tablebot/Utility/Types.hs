@@ -33,11 +33,11 @@ import Discord.Interactions
   )
 import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
 import Discord.Types
-  ( AllowedMentions,
+  ( ActionRow,
+    AllowedMentions,
     ApplicationCommandId,
     Attachment,
     ChannelId,
-    ComponentActionRow,
     CreateEmbed,
     Emoji,
     Event (..),
@@ -319,7 +319,7 @@ data MessageDetails = MessageDetails
     messageDetailsAllowedMentions :: Maybe AllowedMentions,
     messageDetailsFlags :: Maybe InteractionResponseMessageFlags,
     messageDetailsReference :: Maybe MessageReference,
-    messageDetailsComponents :: Maybe [ComponentActionRow],
+    messageDetailsComponents :: Maybe [ActionRow],
     messageDetailsAttachments :: Maybe [Attachment],
     messageDetailsStickerIds :: Maybe [StickerId]
   }

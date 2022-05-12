@@ -125,9 +125,9 @@ thisQuote = Command "this" (parseComm thisComm) []
 quoteMessageAppComm :: Maybe ApplicationCommandRecv
 quoteMessageAppComm = appcomm <&> (`ApplicationCommandRecv` recv)
   where
-    appcomm = createApplicationCommandMessage "quote"
-    recv i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandMessage {..}, ..} = do
-      let mid = interactionDataApplicationCommandTargetId
+    appcomm = createMessage "quote"
+    recv i@InteractionApplicationCommand {applicationCommandData = ApplicationCommandDataMessage {..}, ..} = do
+      let mid = applicationCommandDataTargetMessageId
       case interactionChannelId of
         Nothing -> throwBot $ InteractionException "no channel id in quote interaction"
         Just cid -> do
@@ -182,7 +182,7 @@ showQ qId m = do
 -- | @randomQuote@, which looks for a message of the form @!quote random@,
 -- selects a random quote from the database and responds with that quote.
 randomQ :: Context m => m -> DatabaseDiscord MessageDetails
-randomQ c = filteredRandomQuote [] "Couldn't find any quotes!" c >>= \m -> return (m {messageDetailsComponents = Just [ComponentActionRowButton [randomButton]]})
+randomQ c = filteredRandomQuote [] "Couldn't find any quotes!" c >>= \m -> return (m {messageDetailsComponents = Just [ActionRowButtons [randomButton]]})
   where
     randomButton = mkButton "Random quote" "quote random"
 
@@ -192,7 +192,7 @@ randomQuoteComponentRecv = ComponentRecv "random" (processComponentInteraction (
 -- | @authorQuote@, which looks for a message of the form @!quote author u@,
 -- selects a random quote from the database attributed to u and responds with that quote.
 authorQ :: Context m => Text -> m -> DatabaseDiscord MessageDetails
-authorQ t c = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!" c >>= \m -> return (m {messageDetailsComponents = Just [ComponentActionRowButton [authorButton]]})
+authorQ t c = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!" c >>= \m -> return (m {messageDetailsComponents = Just [ActionRowButtons [authorButton]]})
   where
     authorButton = mkButton "Random author quote" ("quote author " <> t)
 
@@ -338,8 +338,8 @@ quoteApplicationCommand :: CreateApplicationCommand
 quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and retrieve quotes" (Just opts) True
   where
     opts =
-      ApplicationCommandOptionsSubcommands $
-        ApplicationCommandOptionSubcommandOrGroupSubcommand
+      OptionsSubcommands $
+        OptionSubcommandOrGroupSubcommand
           <$> [ addQuoteAppComm,
                 showQuoteAppComm,
                 randomQuoteAppComm,
@@ -347,47 +347,46 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
                 editQuoteAppComm
               ]
     addQuoteAppComm =
-      ApplicationCommandOptionSubcommand
+      OptionSubcommand
         "add"
         "add a new quote"
-        [ ApplicationCommandOptionValueString "quote" "what the actual quote is" True (Left False),
-          ApplicationCommandOptionValueString "author" "who authored this quote" True (Left False)
+        [ OptionValueString "quote" "what the actual quote is" True (Left False),
+          OptionValueString "author" "who authored this quote" True (Left False)
         ]
     showQuoteAppComm =
-      ApplicationCommandOptionSubcommand
+      OptionSubcommand
         "show"
         "show a quote by number"
-        [ ApplicationCommandOptionValueInteger "id" "the quote's number" True (Left True) (Just 1) Nothing
+        [ OptionValueInteger "id" "the quote's number" True (Left True) (Just 1) Nothing
         ]
     randomQuoteAppComm =
-      ApplicationCommandOptionSubcommand
+      OptionSubcommand
         "random"
         "show a random quote"
         []
     authorQuoteAppComm =
-      ApplicationCommandOptionSubcommand
+      OptionSubcommand
         "author"
         "show a random quote by an author"
-        [ApplicationCommandOptionValueString "author" "whose quotes do you want to see" True (Left False)]
+        [OptionValueString "author" "whose quotes do you want to see" True (Left False)]
     editQuoteAppComm =
-      ApplicationCommandOptionSubcommand
+      OptionSubcommand
         "edit"
         "edit a quote"
-        [ ApplicationCommandOptionValueInteger "quoteid" "the id of the quote to edit" True (Left False) Nothing Nothing,
-          ApplicationCommandOptionValueString "quote" "what the actual quote is" False (Left False),
-          ApplicationCommandOptionValueString "author" "who authored this quote" False (Left False)
+        [ OptionValueInteger "quoteid" "the id of the quote to edit" True (Left False) Nothing Nothing,
+          OptionValueString "quote" "what the actual quote is" False (Left False),
+          OptionValueString "author" "who authored this quote" False (Left False)
         ]
 
 quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
 quoteApplicationCommandRecv
   i@InteractionApplicationCommand
-    { interactionDataApplicationCommand =
-        InteractionDataApplicationCommandChatInput
-          { interactionDataApplicationCommandOptions =
+    { applicationCommandData =
+        ApplicationCommandDataChatInput
+          { optionsData =
               Just
-                ( InteractionDataApplicationCommandOptionsSubcommands
-                    [ InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc
-                      ]
+                ( OptionsDataSubcommands
+                    [OptionDataSubcommandOrGroupSubcommand subc]
                   )
           }
     } =
@@ -448,19 +447,18 @@ quoteApplicationCommandRecv
           )
       _ -> throwBot $ InteractionException "unexpected quote interaction"
     where
-      subcname = interactionDataApplicationCommandOptionSubcommandName subc
-      vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+      subcname = optionDataSubcommandName subc
+      vals = optionDataSubcommandOptions subc
       handleNothing Nothing _ = return ()
       handleNothing (Just a) f = f a
 quoteApplicationCommandRecv
   i@InteractionApplicationCommandAutocomplete
-    { interactionDataApplicationCommand =
-        InteractionDataApplicationCommandChatInput
-          { interactionDataApplicationCommandOptions =
+    { applicationCommandData =
+        ApplicationCommandDataChatInput
+          { optionsData =
               Just
-                ( InteractionDataApplicationCommandOptionsSubcommands
-                    [ InteractionDataApplicationCommandOptionSubcommandOrGroupSubcommand subc
-                      ]
+                ( OptionsDataSubcommands
+                    [OptionDataSubcommandOrGroupSubcommand subc]
                   )
           }
     } =
@@ -469,8 +467,8 @@ quoteApplicationCommandRecv
         handleNothing
           (getValue "id" vals)
           ( \case
-              InteractionDataApplicationCommandOptionValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
-              InteractionDataApplicationCommandOptionValueInteger _ (Left showid') -> do
+              OptionDataValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+              OptionDataValueInteger _ (Left showid') -> do
                 allQ <- allQuotes ()
                 let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
                     options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
@@ -479,8 +477,8 @@ quoteApplicationCommandRecv
           )
       _ -> return ()
     where
-      subcname = interactionDataApplicationCommandOptionSubcommandName subc
-      vals = interactionDataApplicationCommandOptionSubcommandOptions subc
+      subcname = optionDataSubcommandName subc
+      vals = optionDataSubcommandOptions subc
       handleNothing Nothing _ = return ()
       handleNothing (Just a) f = f a
 quoteApplicationCommandRecv _ = return ()

@@ -64,7 +64,7 @@ instance Context Interaction where
     (MemberOrUser (Left m)) -> return m
     (MemberOrUser (Right _)) -> Nothing
   contextMessageId InteractionComponent {interactionMessage = m} = return $ messageId m
-  contextMessageId InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandMessage {..}} = return interactionDataApplicationCommandTargetId
+  contextMessageId InteractionApplicationCommand {applicationCommandData = ApplicationCommandDataMessage {..}} = return applicationCommandDataTargetMessageId
   contextMessageId _ = Nothing
 
 -- | Custom infix operator to replace the error of a failing parser (regardless
@@ -323,10 +323,10 @@ makeApplicationCommandPair name desc f = do
 -- a function's type.
 makeSlashCommand :: (MakeAppComm t) => Text -> Text -> Proxy t -> Maybe CreateApplicationCommand
 makeSlashCommand name desc p =
-  createApplicationCommandChatInput name desc >>= \cac ->
+  createChatInput name desc >>= \cac ->
     return $
       cac
-        { createApplicationCommandOptions = Just $ ApplicationCommandOptionsValues $ makeAppComm p
+        { createOptions = Just $ OptionsValues $ makeAppComm p
         }
 
 -- | Create a series of command option values from the given types.
@@ -334,7 +334,7 @@ makeSlashCommand name desc p =
 -- This is making the arguments for a text input/slash command from
 -- a proxy of the given function.
 class MakeAppComm commandty where
-  makeAppComm :: Proxy commandty -> [ApplicationCommandOptionValue]
+  makeAppComm :: Proxy commandty -> [OptionValue]
 
 -- As a base case, no more arguments
 instance {-# OVERLAPPING #-} MakeAppComm (EnvDatabaseDiscord s MessageDetails) where
@@ -349,12 +349,12 @@ instance {-# OVERLAPPABLE #-} (MakeAppComm mac) => MakeAppComm (ParseUserId -> m
 
 -- | From a single value, make an argument for a slash command command.
 class MakeAppCommArg commandty where
-  makeAppCommArg :: Proxy commandty -> ApplicationCommandOptionValue
+  makeAppCommArg :: Proxy commandty -> OptionValue
 
 -- Create a labelled text argument. By default it is required and does not
 -- have autocompeletion.
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Text) where
-  makeAppCommArg l = ApplicationCommandOptionValueString n d True (Left False)
+  makeAppCommArg l = OptionValueString n d True (Left False)
     where
       (n, d) = getLabelValues l
 
@@ -362,7 +362,7 @@ instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name d
 instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc t)) => MakeAppCommArg (Labelled name desc (Maybe t)) where
   makeAppCommArg _ =
     (makeAppCommArg (Proxy :: Proxy (Labelled name desc t)))
-      { applicationCommandOptionValueRequired = False
+      { optionValueRequired = False
       }
 
 -- When quoted text is required, just fake it and get a sub layer.
@@ -389,11 +389,11 @@ instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (Interact
 --
 -- If the argument is a ProcessAppCommArg, then parse it and recurse.
 instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => ProcessAppComm (ty -> pac) s where
-  processAppComm comm i@InteractionApplicationCommand {interactionDataApplicationCommand = InteractionDataApplicationCommandChatInput {interactionDataApplicationCommandOptions = opts}} = do
+  processAppComm comm i@InteractionApplicationCommand {applicationCommandData = ApplicationCommandDataChatInput {optionsData = opts}} = do
     t <- processAppCommArg (getVs opts)
     processAppComm (comm t) i
     where
-      getVs (Just (InteractionDataApplicationCommandOptionsValues vs)) = vs
+      getVs (Just (OptionsDataValues vs)) = vs
       getVs _ = []
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
@@ -412,26 +412,26 @@ instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (ParseUse
 -- Given a type `t`, parse a value of that type from the given list of option
 -- values.
 class ProcessAppCommArg t s where
-  processAppCommArg :: [InteractionDataApplicationCommandOptionValue] -> EnvDatabaseDiscord s t
+  processAppCommArg :: [OptionDataValue] -> EnvDatabaseDiscord s t
 
 -- | Given a string, find the first option value with that name in the list,
 -- returning Nothing if none is found.
-getValue :: String -> [InteractionDataApplicationCommandOptionValue] -> Maybe InteractionDataApplicationCommandOptionValue
-getValue t = find ((== pack t) . interactionDataApplicationCommandOptionValueName)
+getValue :: String -> [OptionDataValue] -> Maybe OptionDataValue
+getValue t = find ((== pack t) . optionDataValueName)
 
 -- | Tries to extract an integer from a given option value.
-integerFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Integer
-integerFromOptionValue InteractionDataApplicationCommandOptionValueInteger {interactionDataApplicationCommandOptionValueIntegerValue = Right i} = Just i
+integerFromOptionValue :: OptionDataValue -> Maybe Integer
+integerFromOptionValue OptionDataValueInteger {optionDataValueInteger = Right i} = Just i
 integerFromOptionValue _ = Nothing
 
 -- | Tries to extract a scientific number from a given option value.
-scientificFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Scientific
-scientificFromOptionValue InteractionDataApplicationCommandOptionValueNumber {interactionDataApplicationCommandOptionValueNumberValue = Right i} = Just i
+scientificFromOptionValue :: OptionDataValue -> Maybe Scientific
+scientificFromOptionValue OptionDataValueNumber {optionDataValueNumber = Right i} = Just i
 scientificFromOptionValue _ = Nothing
 
 -- | Tries to extract a string from a given option value.
-stringFromOptionValue :: InteractionDataApplicationCommandOptionValue -> Maybe Text
-stringFromOptionValue InteractionDataApplicationCommandOptionValueString {interactionDataApplicationCommandOptionValueStringValue = Right i} = Just i
+stringFromOptionValue :: OptionDataValue -> Maybe Text
+stringFromOptionValue OptionDataValueString {optionDataValueString = Right i} = Just i
 stringFromOptionValue _ = Nothing
 
 -- there are a number of missing slash command argument types missing here, which I've not added yet.
@@ -439,19 +439,19 @@ stringFromOptionValue _ = Nothing
 -- extract a string of the given type from the arguments
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
-    Just (InteractionDataApplicationCommandOptionValueString _ (Right t)) -> return $ labelValue t
+    Just (OptionDataValueString _ (Right t)) -> return $ labelValue t
     _ -> throwBot $ InteractionException "could not find required parameter"
 
 -- extract an integer of the given type from the arguments
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Integer) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
-    Just (InteractionDataApplicationCommandOptionValueInteger _ (Right i)) -> return $ labelValue i
+    Just (OptionDataValueInteger _ (Right i)) -> return $ labelValue i
     _ -> throwBot $ InteractionException "could not find required parameter"
 
 -- extract a scientific number of the given type from the arguments
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Scientific) s where
   processAppCommArg is = case getValue (symbolVal (Proxy :: Proxy name)) is of
-    Just (InteractionDataApplicationCommandOptionValueNumber _ (Right i)) -> return $ labelValue i
+    Just (OptionDataValueNumber _ (Right i)) -> return $ labelValue i
     _ -> throwBot $ InteractionException "could not find required parameter"
 
 -- extract a quote of the given type from the arguments
@@ -490,11 +490,11 @@ processComponentInteraction f = processComponentInteraction' (parseComm f)
 -- The format of the Text being given should be of space separated values,
 -- similar to the command structure.
 processComponentInteraction' :: Parser (Interaction -> EnvDatabaseDiscord s MessageDetails) -> Bool -> Interaction -> EnvDatabaseDiscord s ()
-processComponentInteraction' compParser updateOriginal i@InteractionComponent {interactionDataComponent = idc} = errorCatch $ do
+processComponentInteraction' compParser updateOriginal i@InteractionComponent {componentData = idc} = errorCatch $ do
   let componentSend
         | updateOriginal = interactionResponseComponentsUpdateMessage i
         | otherwise = interactionResponseCustomMessage i
-  action <- parseValue (skipSpace *> compParser) (interactionDataComponentCustomId idc) >>= ($ i)
+  action <- parseValue (skipSpace *> compParser) (componentDataCustomId idc) >>= ($ i)
   componentSend action
   where
     catchParserException e@(ParserException _ _) = interactionResponseCustomMessage i $ (messageDetailsBasic "something (likely) went wrong when processing a component interaction") {messageDetailsEmbeds = Just [embedError (e :: BotException)]}
