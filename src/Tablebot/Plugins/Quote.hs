@@ -134,7 +134,7 @@ quoteMessageAppComm = appcomm <&> (`ApplicationCommandRecv` recv)
           m <- getMessage cid mid
           case m of
             Left _ -> throwBot $ InteractionException "could not get message to quote"
-            Right msg -> interactionResponseCustomMessage i =<< addMessageQuote (parseUserId $ contextUserId i) msg i
+            Right msg -> interactionResponseCustomMessage i =<< addMessageQuote (contextUserId i) msg i
     recv _ = return def
 
 authorQuote :: Command
@@ -406,7 +406,7 @@ quoteApplicationCommandRecv
         handleNothing
           ((getValue "quote" vals >>= stringFromOptionValue) >>= \q -> (getValue "author" vals >>= stringFromOptionValue) <&> (q,))
           ( \(qt, author) -> do
-              let requestor = toMention' $ parseUserId $ contextUserId i
+              let requestor = toMention' $ contextUserId i
               (msg, qid) <- addQ' qt author requestor 0 0 i
               interactionResponseCustomMessage i msg
               -- to get the message to display as wanted, we have to do some trickery
@@ -435,13 +435,13 @@ quoteApplicationCommandRecv
               case (qt, author) of
                 (Nothing, Nothing) -> interactionResponseCustomMessage i (makeEphermeral (messageDetailsBasic "No edits made to quote."))
                 _ -> do
-                  msg <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) 0 0 i
+                  msg <- editQ' qid qt author (toMention' $ contextUserId i) 0 0 i
                   interactionResponseCustomMessage i msg
                   v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
                   case v of
                     Left _ -> return ()
                     Right m -> do
-                      msg' <- editQ' qid qt author (toMention' $ parseUserId $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
+                      msg' <- editQ' qid qt author (toMention' $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
                       _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction msg')
                       return ()
           )

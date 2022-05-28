@@ -36,13 +36,13 @@ import Text.Megaparsec (MonadParsec (eof, try), chunk, many, observing, optional
 --
 -- Only defined for Message and Interaction.
 class Context a where
-  contextUserId :: a -> ParseUserId
+  contextUserId :: a -> UserId
   contextGuildId :: a -> EnvDatabaseDiscord s (Maybe GuildId)
   contextMember :: a -> Maybe GuildMember
   contextMessageId :: a -> Maybe MessageId
 
 instance Context Message where
-  contextUserId = ParseUserId . userId . messageAuthor
+  contextUserId = userId . messageAuthor
   contextGuildId m = case messageGuildId m of
     Just a -> pure $ Just a
     Nothing -> do
@@ -56,7 +56,7 @@ instance Context Message where
 
 instance Context Interaction where
   -- this is safe to do because we are guaranteed to get either a user or a member
-  contextUserId i = ParseUserId $ maybe 0 userId (either memberUser Just mor)
+  contextUserId i = maybe 0 userId (either memberUser Just mor)
     where
       (MemberOrUser mor) = interactionUser i
   contextGuildId i = return $ interactionGuildId i
@@ -157,10 +157,10 @@ instance {-# OVERLAPPABLE #-} (Context t, CanParse a, PComm (t -> as) s t r) => 
     this <- parsThenMoveToNext @a
     parseComm (`comm` this)
 
--- special value case - if we get ParseUserId, we need to get the value from
+-- special value case - if we get UserId, we need to get the value from
 -- the context. so, get the value from the context, and then continue parsing.
 -- (10)
-instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (ParseUserId -> as) s t r where
+instance {-# OVERLAPPABLE #-} (PComm (t -> as) s t r) => PComm (UserId -> as) s t r where
   parseComm comm = parseComm $ \(m :: t) -> comm (contextUserId m)
 
 -- | @CanParse@ defines types from which we can generate parsers.
@@ -278,9 +278,6 @@ newtype RestOfInput1 a = ROI1 a
 instance IsString a => CanParse (RestOfInput1 a) where
   pars = ROI1 . fromString <$> untilEnd1
 
--- | Data type to represent parsing a user id from the context.
-newtype ParseUserId = ParseUserId {parseUserId :: UserId}
-
 -- | Labelled value for use with smart commands.
 --
 -- This is for use with slash commands, where there is a name and description
@@ -344,7 +341,8 @@ instance {-# OVERLAPPING #-} MakeAppComm (EnvDatabaseDiscord s MessageDetails) w
 instance {-# OVERLAPPABLE #-} (MakeAppComm mac, MakeAppCommArg ty) => MakeAppComm (ty -> mac) where
   makeAppComm _ = makeAppCommArg (Proxy :: Proxy ty) : makeAppComm (Proxy :: Proxy mac)
 
-instance {-# OVERLAPPABLE #-} (MakeAppComm mac) => MakeAppComm (ParseUserId -> mac) where
+-- we don't get the user id from the command itself, so ignore it
+instance {-# OVERLAPPABLE #-} (MakeAppComm mac) => MakeAppComm (UserId -> mac) where
   makeAppComm _ = makeAppComm (Proxy :: Proxy mac)
 
 -- | From a single value, make an argument for a slash command command.
@@ -372,6 +370,8 @@ instance (KnownSymbol name, KnownSymbol desc, MakeAppCommArg (Labelled name desc
 -- As a base case, send the message produced
 
 -- | Process an application command when given a function/value.
+--
+-- `s` is the context of the environment.
 class ProcessAppComm commandty s where
   processAppComm :: commandty -> Interaction -> EnvDatabaseDiscord s ()
 
@@ -398,11 +398,11 @@ instance {-# OVERLAPPABLE #-} (ProcessAppCommArg ty s, ProcessAppComm pac s) => 
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
 
 -- one specific implementation case when we want to parse out a user id.
-instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (ParseUserId -> pac) s where
+instance {-# OVERLAPPABLE #-} (ProcessAppComm pac s) => ProcessAppComm (UserId -> pac) s where
   processAppComm comm i@InteractionApplicationCommand {interactionUser = MemberOrUser u} =
     case getUser of
       Nothing -> throwBot $ InteractionException "could not process args to application command"
-      Just uid -> processAppComm (comm (ParseUserId uid)) i
+      Just uid -> processAppComm (comm uid) i
     where
       getUser = userId <$> either memberUser Just u
   processAppComm _ _ = throwBot $ InteractionException "could not process args to application command"
@@ -435,6 +435,7 @@ stringFromOptionValue OptionDataValueString {optionDataValueString = Right i} = 
 stringFromOptionValue _ = Nothing
 
 -- there are a number of missing slash command argument types missing here, which I've not added yet.
+-- we can add ids of various sorts
 
 -- extract a string of the given type from the arguments
 instance (KnownSymbol name) => ProcessAppCommArg (Labelled name desc Text) s where
@@ -534,8 +535,8 @@ onlyAllowRequestor' msg f = do
     )
     <* eof
   where
-    prefunc :: UserId -> ParseUserId -> Interaction -> DatabaseDiscord (Maybe MessageDetails)
-    prefunc uid (ParseUserId u) i =
+    prefunc :: UserId -> UserId -> Interaction -> DatabaseDiscord (Maybe MessageDetails)
+    prefunc uid u i =
       if uid == u
         then return Nothing
         else
