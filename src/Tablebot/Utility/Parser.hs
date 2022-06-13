@@ -82,6 +82,10 @@ word = some letter
 nonSpaceWord :: Parser String
 nonSpaceWord = some notSpace
 
+-- | @underscoreWord@ parses a single word of letters or underscores.
+underscoreWord :: Parser String
+underscoreWord = some (letter <|> single '_')
+
 -- | @untilEnd@ gets all of the characters up to the end of the input.
 untilEnd :: Parser String
 untilEnd = manyTill anySingle eof
@@ -109,7 +113,7 @@ keyValue = many $ try $ skipManyTill anySingle pair
   where
     pair :: Parser (String, String)
     pair = do
-      cat <- word
+      cat <- underscoreWord
       _ <- ":"
       content <- quoted <|> nonSpaceWord
       return (cat, content)
@@ -121,7 +125,7 @@ keyValueSepOn seps = many $ try $ skipManyTill anySingle pair
   where
     pair :: Parser (String, Char, String)
     pair = do
-      cat <- word
+      cat <- underscoreWord
       sep <- satisfy (`elem` seps)
       content <- quoted <|> nonSpaceWord
       return (cat, sep, content)
@@ -133,7 +137,7 @@ keyValuesSepOn seps ors = many $ try $ skipManyTill anySingle pair
   where
     pair :: Parser (String, Char, [String])
     pair = do
-      cat <- word
+      cat <- underscoreWord
       sep <- satisfy (`elem` seps)
       content <- (quotedWithout ors <|> nonSpaceWord') `sepBy` satisfy (`elem` ors)
       return (cat, sep, content)
@@ -144,11 +148,20 @@ keyValuesSepOn seps ors = many $ try $ skipManyTill anySingle pair
 sp :: Parser ()
 sp = space <|> pure ()
 
--- | @posInteger@ parses an integer with no "-".
+-- | @posInteger@ parses a non-zero integer with no "-".
 posInteger :: (Integral a, Read a) => Parser a
 posInteger = do
   digits <- some digit
-  return (read digits)
+  let ds :: Integer = read digits
+  if ds > 0
+    then return (fromInteger ds)
+    else fail "Zero is not positive"
+
+-- | @nonNegativeInteger@ parses an integer with no "-".
+nonNegativeInteger :: (Integral a, Read a) => Parser a
+nonNegativeInteger = do
+  digits <- some digit
+  return $ read digits
 
 -- | @integer@ parses any whole number.
 integer :: (Integral a, Read a) => Parser a
