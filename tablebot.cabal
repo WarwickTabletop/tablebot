@@ -40,7 +40,6 @@ library
       Tablebot.Plugins.Dogs
       Tablebot.Plugins.Flip
       Tablebot.Plugins.Fox
-      Tablebot.Plugins.MyPing
       Tablebot.Plugins.Netrunner
       Tablebot.Plugins.Netrunner.Command.BanList
       Tablebot.Plugins.Netrunner.Command.Custom
