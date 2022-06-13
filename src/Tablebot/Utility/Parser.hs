@@ -150,6 +150,12 @@ posInteger = do
   digits <- some digit
   return (read digits)
 
+-- | @nonNegativeInteger@ parses an integer with no "-".
+nonNegativeInteger :: (Integral a, Read a) => Parser a
+nonNegativeInteger = do
+  digits <- some digit
+  return $ read digits
+
 -- | @integer@ parses any whole number.
 integer :: (Integral a, Read a) => Parser a
 integer = do
