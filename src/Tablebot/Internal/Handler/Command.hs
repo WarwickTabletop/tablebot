@@ -17,7 +17,7 @@ module Tablebot.Internal.Handler.Command
 where
 
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (singleton, toList)
 import Data.Text (Text)
 import Data.Void (Void)
@@ -29,6 +29,8 @@ import Tablebot.Utility.Exception (BotException (ParserException), embedError)
 import Tablebot.Utility.Parser (skipSpace1, space, word)
 import Tablebot.Utility.Types (Parser)
 import Text.Megaparsec
+import Text.Read (readMaybe)
+import UnliftIO.Environment (lookupEnv)
 import qualified UnliftIO.Exception as UIOE (tryAny)
 
 -- | @parseNewMessage@ parses a new message, first by attempting to match the
@@ -58,17 +60,22 @@ parseNewMessage pl prefix m =
 -- If the parser errors, the last error (which is hopefully one created by
 -- '<?>') is sent to the user as a Discord message.
 parseCommands :: [CompiledCommand] -> Message -> Text -> CompiledDatabaseDiscord ()
-parseCommands cs m prefix = case parse (parser cs) "" (messageText m) of
-  Right p -> p m
-  Left e ->
-    let (errs, title) = makeBundleReadable e
-     in changeAction () . sendEmbedMessage m "" $ embedError $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"
+parseCommands cs m prefix = do
+  shouldError <- errorOnNoCommand
+  case parse (parser shouldError cs) "" (messageText m) of
+    Right p -> p m
+    Left e ->
+      let (errs, title) = makeBundleReadable e
+       in changeAction () . sendEmbedMessage m "" $ embedError $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"
   where
-    parser :: [CompiledCommand] -> Parser (Message -> CompiledDatabaseDiscord ())
-    parser cs' =
+    errorOnNoCommand :: CompiledDatabaseDiscord Bool = (== 0) . fromMaybe (0 :: Int) . (>>= readMaybe) <$> lookupEnv "VERBOSITY"
+    onError True = (<?> "No command with that name was found!")
+    onError False = (<|> pure (const (pure ())))
+    parser :: Bool -> [CompiledCommand] -> Parser (Message -> CompiledDatabaseDiscord ())
+    parser shouldError cs' =
       do
         _ <- chunk prefix
-        choice (map toErroringParser cs') <?> "No command with that name was found!"
+        onError shouldError $ choice (map toErroringParser cs')
     toErroringParser :: CompiledCommand -> Parser (Message -> CompiledDatabaseDiscord ())
     toErroringParser c = try (chunk $ commandName c) *> (skipSpace1 <|> eof) *> (try (choice $ map toErroringParser $ commandSubcommands c) <|> commandParser c)
 

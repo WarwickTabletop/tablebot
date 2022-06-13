@@ -12,10 +12,10 @@
 -- database and Discord operations within your features.
 module Tablebot.Utility.Types where
 
-import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.Char (toLower)
+import Data.Default (Default (..))
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -34,6 +34,7 @@ import Discord.Types
 import Safe.Exact (dropExactMay, takeExactMay)
 import Text.Megaparsec (Parsec)
 import Text.Read (readMaybe)
+import UnliftIO (TVar)
 
 -- * DatabaseDiscord
 
@@ -44,7 +45,7 @@ import Text.Read (readMaybe)
 --
 -- "Tablebot.Plugin.Discord" provides some helper functions for
 -- running Discord operations without excessive use of @lift@.
-type EnvDatabaseDiscord d = ReaderT d (ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler))
+type EnvDatabaseDiscord d = ReaderT d (ReaderT (TVar TablebotCache) (SqlPersistT DiscordHandler))
 
 type DatabaseDiscord = EnvDatabaseDiscord ()
 
@@ -54,7 +55,8 @@ type Database d = SqlPersistM d
 
 data TablebotCache = TCache
   { cacheKnownEmoji :: Map Text Emoji,
-    cacheVersionInfo :: VersionInfo
+    cacheVersionInfo :: VersionInfo,
+    cacheBotInfo :: BotConfig
   }
 
 data VersionInfo = VInfo
@@ -68,13 +70,13 @@ data VersionInfo = VInfo
 -- | A simple definition for parsers on Text.
 type Parser = Parsec Void Text
 
-liftCache :: ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler) a -> ReaderT d (ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler)) a
+liftCache :: ReaderT (TVar TablebotCache) (SqlPersistT DiscordHandler) a -> EnvDatabaseDiscord d a
 liftCache = lift
 
-liftSql :: SqlPersistT DiscordHandler a -> ReaderT d (ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler)) a
+liftSql :: SqlPersistT DiscordHandler a -> EnvDatabaseDiscord d a
 liftSql = lift . lift
 
-liftDiscord :: DiscordHandler a -> ReaderT d (ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler)) a
+liftDiscord :: DiscordHandler a -> EnvDatabaseDiscord d a
 liftDiscord = lift . lift . lift
 
 -- * Features
@@ -324,3 +326,21 @@ plug name' = Pl name' (StartUp (return ())) [] [] [] [] [] [] [] [] []
 
 envPlug :: Text -> StartUp d -> EnvPlugin d
 envPlug name' startup = Pl name' startup [] [] [] [] [] [] [] [] []
+
+-- * Configuration type
+
+-- Allows others to configure the bot.
+
+data BotConfig = BotConfig
+  { rootHelpText :: Text,
+    gamePlaying :: Text,
+    botName :: Text
+  }
+
+instance Default BotConfig where
+  def =
+    BotConfig
+      { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
+        gamePlaying = "Kirby: Planet Robobot",
+        botName = "Tablebot"
+      }

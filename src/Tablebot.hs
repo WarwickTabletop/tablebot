@@ -48,6 +48,7 @@ import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
 import Tablebot.Utility.Help
 import Text.Regex.PCRE ((=~))
+import UnliftIO (TVar, newTVarIO)
 
 -- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
 -- file with the @[CompiledPlugin]@ given. If you're looking to run the bot as
@@ -110,7 +111,7 @@ runTablebot vinfo dToken prefix dbpath plugins config =
     mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
     -- Create a var to kill any ongoing tasks.
     mvar <- newEmptyMVar :: IO (MVar [ThreadId])
-    cacheMVar <- newMVar (TCache M.empty vinfo) :: IO (MVar TablebotCache)
+    cacheMVar <- newTVarIO (TCache M.empty vinfo config) :: IO (TVar TablebotCache)
     userFacingError <-
       runDiscord $
         def

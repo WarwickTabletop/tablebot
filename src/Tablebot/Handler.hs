@@ -16,7 +16,6 @@ module Tablebot.Handler
   )
 where
 
-import Control.Concurrent (MVar)
 import Control.Monad (unless)
 import Control.Monad.Exception
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -40,6 +39,7 @@ import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (sendEmbedMessage)
 import Tablebot.Utility.Exception
 import Tablebot.Utility.Types (TablebotCache)
+import UnliftIO (TVar)
 import UnliftIO.Concurrent
   ( ThreadId,
     forkIO,
@@ -85,12 +85,12 @@ eventHandler pl prefix = \case
 runCron ::
   Pool SqlBackend ->
   CompiledCronJob ->
-  ReaderT (MVar TablebotCache) DiscordHandler ThreadId
+  ReaderT (TVar TablebotCache) DiscordHandler ThreadId
 runCron pool (CCronJob delay fn) = do
   cache <- ask
   lift . forkIO $ withDelay cache
   where
-    withDelay :: MVar TablebotCache -> DiscordHandler ()
+    withDelay :: TVar TablebotCache -> DiscordHandler ()
     withDelay cache = do
       catchAny (runSqlPool (runReaderT fn cache) pool) (liftIO . print)
       liftIO $ threadDelay delay

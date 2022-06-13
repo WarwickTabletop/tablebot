@@ -11,16 +11,15 @@
 -- allow homogeneous storage throughout the rest of the implementation.
 module Tablebot.Internal.Types where
 
-import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
-import Data.Default
 import Data.Text (Text)
 import Database.Persist.Sqlite (Migration, SqlPersistT)
 import Discord
 import Discord.Types
 import Tablebot.Utility.Types
+import UnliftIO (TVar)
 
-type CompiledDatabaseDiscord = ReaderT (MVar TablebotCache) (SqlPersistT DiscordHandler)
+type CompiledDatabaseDiscord = ReaderT (TVar TablebotCache) (SqlPersistT DiscordHandler)
 
 -- | @CompiledPlugin@ represents the internal format of the plugins.
 -- Its main job is to convert all the plugins into one type by collapsing
@@ -82,19 +81,3 @@ data CompiledCronJob = CCronJob
   { timeframe :: Int,
     onCron :: CompiledDatabaseDiscord ()
   }
-
--- * Configuration type
-
--- Allows others to configure the bot.
-
-data BotConfig = BotConfig
-  { rootHelpText :: Text,
-    gamePlaying :: Text
-  }
-
-instance Default BotConfig where
-  def =
-    BotConfig
-      { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
-        gamePlaying = "Kirby: Planet Robobot"
-      }
