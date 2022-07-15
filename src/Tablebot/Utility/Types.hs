@@ -323,6 +323,7 @@ data MessageDetails = MessageDetails
     messageDetailsAttachments :: Maybe [Attachment],
     messageDetailsStickerIds :: Maybe [StickerId]
   }
+  deriving (Show)
 
 makeEphermeral :: MessageDetails -> MessageDetails
 makeEphermeral m = m {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}

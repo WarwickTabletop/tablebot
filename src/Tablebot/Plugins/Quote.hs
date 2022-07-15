@@ -335,7 +335,7 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = 
     maybeAddFooter Nothing = ""
 
 quoteApplicationCommand :: CreateApplicationCommand
-quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and retrieve quotes" (Just opts) True
+quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and retrieve quotes" (Just opts) Nothing True
   where
     opts =
       OptionsSubcommands $

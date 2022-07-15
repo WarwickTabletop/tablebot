@@ -41,7 +41,7 @@ import Text.RawString.QQ (r)
 -- optional. If the expression is not given, then the default roll is used.
 -- The userid of the user that called this command is also given.
 rollDice'' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord Text
-rollDice'' e' t u = do
+rollDice'' e' t uid = do
   let e = fromMaybe (Right defaultRoll) e'
   (vs, ss) <- case e of
     (Left a) -> liftIO $ first Left <$> evalList a
@@ -52,7 +52,7 @@ rollDice'' e' t u = do
     else return (makeMsg (simplify vs) (parseShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
-    baseMsg = toMention' u <> " rolled" <> dsc
+    baseMsg = toMention' uid <> " rolled" <> dsc
     makeLine (i, s) = pack (show i) <> Data.Text.replicate (max 0 (6 - length (show i))) " " <> " ⟵ " <> s
     makeMsg (Right v) s = baseMsg <> s <> ".\nOutput: " <> pack (show v)
     makeMsg (Left []) _ = baseMsg <> "No output."
@@ -63,8 +63,9 @@ rollDice'' e' t u = do
     simplify li = li
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
 
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord MessageDetails
-rollDice' e t uid = do
+-- | A version of rollDice'' that is nicer to parse and has a constructed message.
+rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
+rollDice' e t (SenderUserId uid) = do
   msg <- rollDice'' e t uid
   return
     ( (messageDetailsBasic msg)
@@ -89,10 +90,10 @@ rollDice' e t uid = do
     buttonCustomId = (("roll reroll " <> pack (show uid)) `appendIf` e) `appendIf` t
     (buttonName, buttonDisabled) = if T.length buttonCustomId > 100 then ("Expr too long", True) else ("Reroll", False)
 
-rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> UserId -> DatabaseDiscord MessageDetails
-rollSlashCommandFunction (Labelled mt) (Labelled qt) uid = do
+rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> SenderUserId -> DatabaseDiscord MessageDetails
+rollSlashCommandFunction (Labelled mt) (Labelled qt) suid = do
   lve <- mapM (parseValue (pars <* eof)) mt
-  rollDice' lve qt uid
+  rollDice' lve qt suid
 
 rerollComponentRecv :: ComponentRecv
 rerollComponentRecv = ComponentRecv "reroll" (processComponentInteraction' rollDiceParserI True)
@@ -103,16 +104,16 @@ rollDiceParser :: Parser (Message -> DatabaseDiscord ())
 rollDiceParser = choice (try <$> options)
   where
     -- Just the value is given to the command, no quote.
-    justEither :: WithError "Incorrect expression/list value. Please check the expression" (Either ListValues Expr) -> UserId -> DatabaseDiscord MessageDetails
+    justEither :: WithError "Incorrect expression/list value. Please check the expression" (Either ListValues Expr) -> SenderUserId -> DatabaseDiscord MessageDetails
     justEither (WErr x) = rollDice' (Just x) Nothing
     -- Nothing is given to the command, a default case.
-    nothingAtAll :: WithError "Expected eof" () -> UserId -> DatabaseDiscord MessageDetails
+    nothingAtAll :: WithError "Expected eof" () -> SenderUserId -> DatabaseDiscord MessageDetails
     nothingAtAll (WErr _) = rollDice' Nothing Nothing
     -- Both the value and the quote are present.
-    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Either ListValues Expr, Quoted Text) -> UserId -> DatabaseDiscord MessageDetails
+    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Either ListValues Expr, Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
     bothVals (WErr (x, y)) = rollDice' (Just x) (Just y)
     -- Just the quote is given to the command.
-    justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> UserId -> DatabaseDiscord MessageDetails
+    justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
     justText (WErr x) = rollDice' Nothing (Just x)
     options =
       [ parseComm justEither,
@@ -130,8 +131,8 @@ rollDiceParserI = choice (try <$> options)
     options =
       [ onlyAllowRequestor (\lv -> rollDice' (Just lv) Nothing),
         onlyAllowRequestor (rollDice' Nothing Nothing),
-        try (onlyAllowRequestor (\lv qt -> rollDice' (Just lv) (Just qt))),
-        try (onlyAllowRequestor (rollDice' Nothing . Just))
+        onlyAllowRequestor (\lv qt -> rollDice' (Just lv) (Just qt)),
+        onlyAllowRequestor (rollDice' Nothing . Just)
       ]
 
 -- | Basic command for rolling dice.
@@ -147,7 +148,7 @@ rollDice = Command "roll" rollDiceParser [statsCommand]
 rollDiceInline :: InlineCommand
 rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> runFunc e m >>= sendCustomMessage m)
   where
-    runFunc e m = rollDice' (Just e) Nothing (userId $ messageAuthor m)
+    runFunc e m = rollDice' (Just e) Nothing (SenderUserId $ userId $ messageAuthor m)
 
 -- | Help page for rolling dice, with a link to the help page.
 rollHelp :: HelpPage
