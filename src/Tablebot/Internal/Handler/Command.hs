@@ -17,12 +17,15 @@ module Tablebot.Internal.Handler.Command
   )
 where
 
+import Data.List (find)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
 import Data.Set (singleton, toList)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Void (Void)
-import Discord.Types (Message (messageContent))
+import Discord.Types (Message (messageAuthor, messageContent), User (userId))
+import Tablebot.Internal.Alias
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (sendEmbedMessage)
@@ -50,6 +53,14 @@ parseNewMessage pl prefix m =
     checkCommand :: Parser ()
     checkCommand = chunk prefix *> word *> (space <|> eof)
 
+parseCommands :: [CompiledCommand] -> Message -> Text -> CompiledDatabaseDiscord ()
+parseCommands cs m prefix = do
+  as <- changeAction () $ getAliases (userId $ messageAuthor m)
+  res <- parseCommands' cs as m prefix
+  case res of
+    Right _ -> return ()
+    Left (title, e) -> changeAction () . sendEmbedMessage m "" $ embedError $ ParserException (T.unpack title) . T.unpack $ "```\n" <> e <> "```"
+
 -- | Given a list of 'Command' @cs@, the 'Message' that triggered the event
 -- @m@, and a command prefix @prefix@, construct a parser that parses commands.
 -- We look for the prefix, followed by trying out the name of each command,
@@ -58,13 +69,29 @@ parseNewMessage pl prefix m =
 --
 -- If the parser errors, the last error (which is hopefully one created by
 -- '<?>') is sent to the user as a Discord message.
-parseCommands :: [CompiledCommand] -> Message -> Text -> CompiledDatabaseDiscord ()
-parseCommands cs m prefix = case parse (parser cs) "" (messageContent m) of
-  Right p -> p m
-  Left e ->
-    let (errs, title) = makeBundleReadable e
-     in changeAction () . sendEmbedMessage m "" $ embedError $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"
+parseCommands' :: [CompiledCommand] -> Maybe [Alias] -> Message -> Text -> CompiledDatabaseDiscord (Either (Text, Text) ())
+parseCommands' cs as m prefix = case parse (parser cs) "" (messageContent m) of
+  Right p -> Right <$> p m
+  Left e -> case as of
+    (Just as'@(_ : _)) ->
+      case parse (aliasParser as') "" (messageContent m) of
+        -- if the alias parser fails, just give the outer error
+        Left _ -> mkTitleBody e
+        -- if we get a valid alias, run the command with the alias
+        -- the way we do this is by running this function again and edit the
+        -- message text to be the alias's command
+        -- we ensure no infinite loops by removing the alias we just used
+        Right (a', rest) -> do
+          recur <- parseCommands' cs (Just $ filter (/= a') as') (m {messageContent = prefix <> aliasCommand a' <> rest}) prefix
+          -- if successful, return the result. if not, edit the error we
+          -- obtained from running the alias to include the alias we tried to
+          -- use
+          case recur of
+            Right _ -> return recur
+            Left (title, err) -> return $ Left (title, aliasAlias a' <> " -> " <> aliasCommand a' <> "\n" <> err)
+    _ -> mkTitleBody e
   where
+    mkTitleBody e' = let (errs, title) = makeBundleReadable e' in return $ Left (T.pack title, T.pack $ errorBundlePretty errs)
     parser :: [CompiledCommand] -> Parser (Message -> CompiledDatabaseDiscord ())
     parser cs' =
       do
@@ -72,6 +99,14 @@ parseCommands cs m prefix = case parse (parser cs) "" (messageContent m) of
         choice (map toErroringParser cs') <?> "No command with that name was found!"
     toErroringParser :: CompiledCommand -> Parser (Message -> CompiledDatabaseDiscord ())
     toErroringParser c = try (chunk $ commandName c) *> (skipSpace1 <|> eof) *> (try (choice $ map toErroringParser $ commandSubcommands c) <|> commandParser c)
+    aliasParser :: [Alias] -> Parser (Alias, Text)
+    aliasParser as' = do
+      _ <- chunk prefix
+      a <- choice (map (chunk . aliasAlias) as') <?> "No command with that name was found!"
+      rst <- many anySingle
+      case find (\a' -> aliasAlias a' == a) as' of
+        Just a' -> return (a', T.pack rst)
+        Nothing -> fail "This should never happen! (aliasParser)"
 
 data ReadableError = UnknownError | KnownError String [String]
   deriving (Show, Eq, Ord)

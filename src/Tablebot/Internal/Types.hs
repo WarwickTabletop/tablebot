@@ -15,7 +15,7 @@ import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
 import Data.Default (Default)
 import Data.Text (Text)
-import Database.Persist.Sqlite (Migration, SqlPersistT)
+import Database.Persist.Sqlite
 import Discord
 import Discord.Interactions (CreateApplicationCommand, Interaction)
 import Discord.Types
@@ -118,3 +118,17 @@ instance Default BotConfig where
       { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
         gamePlaying = "Kirby: Planet Robobot"
       }
+
+data AliasType = AliasPublic | AliasPrivate UserId
+  deriving (Eq, Show, Ord)
+
+instance PersistField AliasType where
+  toPersistValue (AliasPrivate (DiscordId (Snowflake wd))) = PersistInt64 (fromIntegral wd)
+  toPersistValue AliasPublic = PersistInt64 (-1)
+  fromPersistValue = \case
+    PersistInt64 (-1) -> Right AliasPublic
+    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
+    _ -> Left "AliasType: fromPersistValue: Invalid value"
+
+instance PersistFieldSql AliasType where
+  sqlType _ = SqlInt64

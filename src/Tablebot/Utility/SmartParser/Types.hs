@@ -12,50 +12,12 @@ module Tablebot.Utility.SmartParser.Types where
 
 import Data.Proxy (Proxy (..))
 import Data.Text (Text, pack)
-import Discord.Interactions
 import Discord.Types
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
-import Tablebot.Utility.Discord (getChannel)
 import Tablebot.Utility.Types
 import Text.Megaparsec (observing)
 
--- | The type class representing some data we can extract data from.
--- Needed for things like getting a GuildMember, message id, guild id.
---
--- Only defined for Message and Interaction.
-class Context a where
-  contextUserId :: a -> UserId
-  contextGuildId :: a -> EnvDatabaseDiscord s (Maybe GuildId)
-  contextMember :: a -> Maybe GuildMember
-  contextMessageId :: a -> Maybe MessageId
-
 newtype SenderUserId = SenderUserId UserId deriving (Show, Eq)
-
-instance Context Message where
-  contextUserId = userId . messageAuthor
-  contextGuildId m = case messageGuildId m of
-    Just a -> pure $ Just a
-    Nothing -> do
-      let chanId = messageChannelId m
-      channel <- getChannel chanId
-      case fmap channelGuild channel of
-        Right a -> pure $ Just a
-        Left _ -> pure Nothing
-  contextMember = messageMember
-  contextMessageId = return . messageId
-
-instance Context Interaction where
-  -- this is safe to do because we are guaranteed to get either a user or a member
-  contextUserId i = maybe 0 userId (either memberUser Just mor)
-    where
-      (MemberOrUser mor) = interactionUser i
-  contextGuildId i = return $ interactionGuildId i
-  contextMember i = case interactionUser i of
-    (MemberOrUser (Left m)) -> return m
-    (MemberOrUser (Right _)) -> Nothing
-  contextMessageId InteractionComponent {interactionMessage = m} = return $ messageId m
-  contextMessageId InteractionApplicationCommand {applicationCommandData = ApplicationCommandDataMessage {..}} = return applicationCommandDataTargetMessageId
-  contextMessageId _ = Nothing
 
 -- | Custom infix operator to replace the error of a failing parser (regardless
 -- of parser position) with a user given error message.

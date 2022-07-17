@@ -12,7 +12,6 @@ module Tablebot.Internal.Permission where
 import Control.Monad.IO.Class (liftIO)
 import Discord.Types (GuildMember, RoleId, memberRoles)
 import System.Environment (lookupEnv)
-import Tablebot.Utility.SmartParser (Context (contextMember))
 import Tablebot.Utility.Types
 import Tablebot.Utility.Utils (isDebug)
 import Text.Read (readMaybe)

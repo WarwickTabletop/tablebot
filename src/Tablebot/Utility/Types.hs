@@ -23,30 +23,11 @@ import Data.Text (Text)
 import Data.Version.Extra (Version)
 import Data.Void (Void)
 import Database.Persist.Sqlite (Migration, SqlPersistM, SqlPersistT)
-import Discord (DiscordHandler)
+import Discord (DiscordHandler, restCall)
 import Discord.Interactions
-  ( CreateApplicationCommand,
-    Interaction,
-    InteractionResponseMessage (InteractionResponseMessage),
-    InteractionResponseMessageFlag (..),
-    InteractionResponseMessageFlags (..),
-  )
 import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
+import qualified Discord.Requests as R
 import Discord.Types
-  ( ActionRow,
-    AllowedMentions,
-    ApplicationCommandId,
-    Attachment,
-    ChannelId,
-    CreateEmbed,
-    Emoji,
-    Event (..),
-    Message,
-    MessageId,
-    MessageReference,
-    ReactionInfo,
-    StickerId,
-  )
 import Text.Megaparsec (Parsec)
 
 -- * DatabaseDiscord
@@ -350,3 +331,39 @@ convertMessageFormatBasic MessageDetails {..} =
     messageDetailsReference
     messageDetailsComponents
     messageDetailsStickerIds
+
+-- | The type class representing some data we can extract data from.
+-- Needed for things like getting a GuildMember, message id, guild id.
+--
+-- Only defined for Message and Interaction.
+class Context a where
+  contextUserId :: a -> UserId
+  contextGuildId :: a -> EnvDatabaseDiscord s (Maybe GuildId)
+  contextMember :: a -> Maybe GuildMember
+  contextMessageId :: a -> Maybe MessageId
+
+instance Context Message where
+  contextUserId = userId . messageAuthor
+  contextGuildId m = case messageGuildId m of
+    Just a -> pure $ Just a
+    Nothing -> do
+      let chanId = messageChannelId m
+      channel <- liftDiscord . restCall $ R.GetChannel chanId
+      case fmap channelGuild channel of
+        Right a -> pure $ Just a
+        Left _ -> pure Nothing
+  contextMember = messageMember
+  contextMessageId = return . messageId
+
+instance Context Interaction where
+  -- this is safe to do because we are guaranteed to get either a user or a member
+  contextUserId i = maybe 0 userId (either memberUser Just mor)
+    where
+      (MemberOrUser mor) = interactionUser i
+  contextGuildId i = return $ interactionGuildId i
+  contextMember i = case interactionUser i of
+    (MemberOrUser (Left m)) -> return m
+    (MemberOrUser (Right _)) -> Nothing
+  contextMessageId InteractionComponent {interactionMessage = m} = return $ messageId m
+  contextMessageId InteractionApplicationCommand {applicationCommandData = ApplicationCommandDataMessage {..}} = return applicationCommandDataTargetMessageId
+  contextMessageId _ = Nothing

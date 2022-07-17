@@ -11,7 +11,6 @@ module Tablebot.Utility.Permission where
 
 import Tablebot.Internal.Permission
 import Tablebot.Utility.Exception (BotException (PermissionException), throwBot)
-import Tablebot.Utility.SmartParser (Context)
 import Tablebot.Utility.Types
 
 -- | @requirePermission@ only runs the inputted effect if permissions are matched. Otherwise it returns an error.

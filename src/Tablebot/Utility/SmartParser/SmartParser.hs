@@ -25,7 +25,7 @@ import GHC.TypeLits (KnownSymbol, symbolVal)
 import Tablebot.Utility.Discord (sendCustomMessage)
 import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser.Types
-import Tablebot.Utility.Types (EnvDatabaseDiscord, MessageDetails, Parser)
+import Tablebot.Utility.Types (Context (..), EnvDatabaseDiscord, MessageDetails, Parser)
 import Text.Megaparsec (MonadParsec (eof, try), chunk, many, optional, (<?>), (<|>))
 
 -- | @PComm@ defines function types that we can automatically turn into parsers
