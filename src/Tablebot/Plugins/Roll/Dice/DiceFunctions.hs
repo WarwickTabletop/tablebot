@@ -21,7 +21,7 @@ module Tablebot.Plugins.Roll.Dice.DiceFunctions
 where
 
 import Control.Monad.Exception (MonadException)
-import Data.List (genericDrop, genericLength, genericTake, sort)
+import Data.List (genericDrop, genericLength, genericReplicate, genericTake, sort)
 import Data.Map as M (Map, fromList, keys)
 import Data.Maybe (fromJust)
 import Data.Text (Text, unpack)
@@ -76,6 +76,10 @@ listFunctionsList = M.keys listFunctions
 -- each function that returns an integer.
 listFunctions' :: [FuncInfoBase [Integer]]
 listFunctions' =
+  funcInfoInsert :
+  constructFuncInfo "prepend" (:) :
+  constructFuncInfo "replicate" (genericReplicate @Integer) :
+  funcInfoSet :
   constructFuncInfo "concat" (++) :
   constructFuncInfo "between" between :
   constructFuncInfo "drop" (genericDrop @Integer) :
@@ -85,13 +89,39 @@ listFunctions' =
     between i i' = let (mi, ma, rev) = (min i i', max i i', if i > i' then reverse else id) in rev [mi .. ma]
 
 -- | The `FuncInfo` of the function that indexes into a list.
+--
+-- Creates a function that takes an integer and a list and returns an integer.
 funcInfoIndex :: FuncInfo
 funcInfoIndex = FuncInfo "index" [ATInteger, ATIntegerList] ATInteger fiIndex
   where
     fiIndex (LIInteger i : [LIList is])
       | i < 0 || i >= genericLength is = throwBot $ EvaluationException ("index out of range: " ++ show i) []
       | otherwise = return (is !! fromInteger i)
-    fiIndex is = throwBot $ EvaluationException ("incorrect number of arguments. expected 2, got " ++ show (length is)) []
+    fiIndex is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 2, got " ++ show (length is)) []
+
+-- | The `FuncInfo` of the function that sets an element in a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
+funcInfoSet :: FuncInfoBase [Integer]
+funcInfoSet = FuncInfo "set" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
+  where
+    fiSet (LIInteger i : LIInteger j : [LIList js])
+      | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
+      | otherwise = return $ genericTake i js ++ j : genericDrop (i + 1) js
+    fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
+
+-- | The `FuncInfo` of the function that inserts an integer into a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
+funcInfoInsert :: FuncInfoBase [Integer]
+funcInfoInsert = FuncInfo "insert" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
+  where
+    fiSet (LIInteger i : LIInteger j : [LIList js])
+      | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
+      | otherwise = return $ genericTake i js ++ j : genericDrop i js
+    fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
 
 -- | A data structure to contain the information about a given function,
 -- including types, the function name, and the function itself.
