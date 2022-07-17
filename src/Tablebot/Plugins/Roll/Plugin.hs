@@ -10,7 +10,6 @@
 module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO), void)
-import Data.Bifunctor (Bifunctor (first))
 import Data.ByteString.Lazy (toStrict)
 import Data.Distribution (isValid)
 import Data.Maybe (fromMaybe)
@@ -34,16 +33,19 @@ import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
+rollDice' :: Maybe Program -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
 rollDice' e' t m = do
-  let e = fromMaybe (Right defaultRoll) e'
-  (vs, ss) <- case e of
-    (Left a) -> liftIO $ first Left <$> evalList a
-    (Right b) -> liftIO $ first Right <$> evalInteger b
-  let msg = makeMsg vs ss
-  if countFormatting msg < 199
-    then sendMessage m msg
-    else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
+  let e = fromMaybe (Program [] (Right defaultRoll)) e'
+  maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
+  case maybemsss of
+    Nothing -> throwBot (EvaluationException "Could not process expression in one second" [])
+    -- vs is either a list of integers and their textual representation, or
+    -- a single integer. ss is
+    Just (vs, ss) -> do
+      let msg = makeMsg vs ss
+      if countFormatting msg < 199
+        then sendMessage m msg
+        else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
     baseMsg = toMention (messageAuthor m) <> " rolled" <> dsc
@@ -63,13 +65,13 @@ rollDiceParser :: Parser (Message -> DatabaseDiscord ())
 rollDiceParser = choice (try <$> options)
   where
     -- Just the value is given to the command, no quote.
-    justEither :: WithError "Incorrect expression/list value. Please check the expression" (Either ListValues Expr) -> Message -> DatabaseDiscord ()
+    justEither :: WithError "Incorrect expression/list value. Please check the expression" Program -> Message -> DatabaseDiscord ()
     justEither (WErr x) = rollDice' (Just x) Nothing
     -- Nothing is given to the command, a default case.
     nothingAtAll :: WithError "Expected eof" () -> Message -> DatabaseDiscord ()
     nothingAtAll (WErr _) = rollDice' Nothing Nothing
     -- Both the value and the quote are present.
-    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Either ListValues Expr, Quoted Text) -> Message -> DatabaseDiscord ()
+    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Program, Quoted Text) -> Message -> DatabaseDiscord ()
     bothVals (WErr (x, y)) = rollDice' (Just x) (Just y)
     -- Just the quote is given to the command.
     justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> Message -> DatabaseDiscord ()
@@ -114,7 +116,11 @@ Given an expression, evaluate the expression. Can roll inline using |]
       ++ "`[|to roll|]`."
       ++ [r| Can use `r` instead of `roll`.
 
-This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, dice of arbitrary size, dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum, configurable size of 50), and using functions like |]
+This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, rolling dice of arbitrary size (up to |]
+      ++ show maximumRNG
+      ++ [r| RNG calls), dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum size of |]
+      ++ show maximumListLength
+      ++ [r|), if statements, var statements, and using functions like |]
       ++ unpack (intercalate ", " integerFunctionsList)
       ++ [r| (which return integers), or functions like |]
       ++ unpack (intercalate ", " listFunctionsList)
@@ -133,7 +139,7 @@ To see a full list of uses, options and limitations, please go to <https://githu
 genchar :: Command
 genchar = Command "genchar" (snd $ head rpgSystems') (toCommand <$> rpgSystems')
   where
-    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Left lv)) (Just (Qu ("genchar for " <> nm))))
+    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Program [] (Left lv))) (Just (Qu ("genchar for " <> nm))))
     rpgSystems' = doDiceRoll <$> rpgSystems
     toCommand (nm, ps) = Command nm ps []
 
@@ -221,7 +227,7 @@ statsHelp =
     "stats"
     []
     "calculate and display statistics for expressions."
-    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
+    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\nDoes not work with \"programs\" ie multiple statements one after the other, or with accessing variables.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
     []
     None
 

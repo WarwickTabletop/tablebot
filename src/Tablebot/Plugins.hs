@@ -17,6 +17,7 @@ import Tablebot.Internal.Administration (ShutdownReason)
 import Tablebot.Internal.Plugins (compilePlugin)
 import Tablebot.Internal.Types (CompiledPlugin (..))
 import Tablebot.Plugins.Administration (administrationPlugin)
+import Tablebot.Plugins.Alias (alias)
 import Tablebot.Plugins.Basic (basic)
 import Tablebot.Plugins.Cats (cat)
 import Tablebot.Plugins.Dogs (dog)
@@ -36,6 +37,7 @@ import Tablebot.Plugins.Welcome (welcome)
 allPlugins :: [CompiledPlugin]
 allPlugins =
   [ pingpong,
+    alias,
     basic,
     cat,
     dog,

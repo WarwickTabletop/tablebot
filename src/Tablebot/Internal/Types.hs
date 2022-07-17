@@ -15,7 +15,7 @@ import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
 import Data.Default
 import Data.Text (Text)
-import Database.Persist.Sqlite (Migration, SqlPersistT)
+import Database.Persist.Sqlite
 import Discord
 import Discord.Types
 import Tablebot.Utility.Types
