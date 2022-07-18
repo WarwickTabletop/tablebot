@@ -23,6 +23,8 @@ Create a `.env` file containing the following keys. Consult `.env.example` if yo
 * `EXEC_GROUP` (optional) - the group ID assigned to exec members.
 * `MODERATOR_GROUP` (optional) - the group ID assigned to moderator members.
 * `SUPERUSER_GROUP` (optional) - the group ID assigned to the superuser. Strongly recommended
+* `SERVER_ID` (optional) - either `global` or the id of the server the bot will mainly be deployed in. Application commands will be
+  registered here. If absent, application commands won't be registered.
 * `EMOJI_SERVERS` (optional) - a list of server IDs that the bot will search for emoji within.
 
 The three Group settings are optional, but without them any commands that require elevated permissions will not be able

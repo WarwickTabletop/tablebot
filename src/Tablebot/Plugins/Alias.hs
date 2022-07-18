@@ -11,39 +11,21 @@
 -- Allows users to add, list, and delete aliases.
 module Tablebot.Plugins.Alias (alias, Alias (..), getAliases) where
 
-import Control.Monad.Exception (MonadException (catch), SomeException)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Database.Persist.Sqlite as Sql
-import Database.Persist.TH
 import Discord.Types
 import Tablebot.Internal.Alias
+import Tablebot.Internal.Types (AliasType (..))
 import Tablebot.Utility
-import Tablebot.Utility.Database (deleteBy, exists, selectList)
+import Tablebot.Utility.Database (deleteBy, exists)
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (..), WithError (..))
 import Text.RawString.QQ (r)
 
-share
-  [mkPersist sqlSettings, mkMigrate "aliasMigration"]
-  [persistLowerCase|
-Alias
-    alias Text
-    command Text
-    type AliasType
-    UniqueAlias alias type
-    deriving Show
-    deriving Eq
-|]
-
 publicAliasPerms :: RequiredPermission
 publicAliasPerms = Moderator
-
-getAliases :: UserId -> EnvDatabaseDiscord d (Maybe [Alias])
-getAliases uid =
-  (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
-    `catch` (\(_ :: SomeException) -> return Nothing)
 
 alias :: CompiledPlugin
 alias = compilePlugin aliasPlugin

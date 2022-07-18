@@ -46,7 +46,7 @@ getStats d = (modalOrder, expectation d, standardDeviation d)
 
 -- | Convenience wrapper which gets the range of the given values then applies
 -- the function to the resultant distributions.
-combineRangesBinOp :: (MonadException m, Range a, Range b, PrettyShow a, PrettyShow b) => (Integer -> Integer -> Integer) -> a -> b -> m Experiment
+combineRangesBinOp :: (MonadException m, Range a, Range b, ParseShow a, ParseShow b) => (Integer -> Integer -> Integer) -> a -> b -> m Experiment
 combineRangesBinOp f a b = do
   d <- range a
   d' <- range b
@@ -76,13 +76,13 @@ rangeListValues lv = do
 -- has a variety of  functions that operate on them.
 --
 -- An `Data.Distribution.Experiment` is a monadic form of this.
-class PrettyShow a => Range a where
+class ParseShow a => Range a where
   -- | Try and get the `Experiment` of the given value, throwing a
   -- `MonadException` on failure.
-  range :: (MonadException m, PrettyShow a) => a -> m Experiment
-  range a = propagateException (prettyShow a) (range' a)
+  range :: (MonadException m, ParseShow a) => a -> m Experiment
+  range a = propagateException (parseShow a) (range' a)
 
-  range' :: (MonadException m, PrettyShow a) => a -> m Experiment
+  range' :: (MonadException m, ParseShow a) => a -> m Experiment
 
 instance (Range a) => Range (MiscData a) where
   range' (MiscVar l) = range l
@@ -152,7 +152,7 @@ instance Range NumBase where
 instance Range Base where
   range' (NBase nb) = range nb
   range' (DiceBase d) = range d
-  range' b@(NumVar _) = evaluationException "cannot find range of variable" [prettyShow b]
+  range' b@(NumVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
 instance Range Die where
   range' (LazyDie d) = range d
@@ -241,13 +241,13 @@ rangeDieOpExperimentKD kd lhw is = do
 --
 -- Only used within `DiceStats` as I have no interest in producing statistics on
 -- lists
-class PrettyShow a => RangeList a where
+class ParseShow a => RangeList a where
   -- | Try and get the `DistributionList` of the given value, throwing a
   -- `MonadException` on failure.
-  rangeList :: (MonadException m, PrettyShow a) => a -> m ExperimentList
-  rangeList a = propagateException (prettyShow a) (rangeList' a)
+  rangeList :: (MonadException m, ParseShow a) => a -> m ExperimentList
+  rangeList a = propagateException (parseShow a) (rangeList' a)
 
-  rangeList' :: (MonadException m, PrettyShow a) => a -> m ExperimentList
+  rangeList' :: (MonadException m, ParseShow a) => a -> m ExperimentList
 
 instance RangeList ListValuesBase where
   rangeList' (LVBList es) = do
@@ -266,7 +266,7 @@ instance RangeList ListValues where
         getDiceExperiment valNum (run bd)
   rangeList' (LVFunc fi avs) = rangeFunction fi avs
   rangeList' (ListValuesMisc m) = rangeList m
-  rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [prettyShow b]
+  rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
 rangeArgValue :: MonadException m => ArgValue -> m (D.Experiment ListInteger)
 rangeArgValue (AVExpr e) = (LIInteger <$>) <$> range e

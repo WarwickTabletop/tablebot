@@ -24,7 +24,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
-import qualified Data.Map as M
+import Data.Map as M (empty)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
 import Data.Text.Encoding (encodeUtf8)
@@ -40,13 +40,21 @@ import LoadEnv (loadEnv)
 import Paths_tablebot (version)
 import System.Environment (getEnv, lookupEnv)
 import System.Exit (die)
-import Tablebot.Handler (eventHandler, killCron, runCron)
+import Tablebot.Handler (eventHandler, killCron, runCron, submitApplicationCommands)
 import Tablebot.Internal.Administration
+  ( ShutdownReason (Reload),
+    adminMigration,
+    currentBlacklist,
+    gitVersion,
+    removeBlacklisted,
+    restartAction,
+    restartIsTerminal,
+  )
 import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
 import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
-import Tablebot.Utility.Help
+import Tablebot.Utility.Help (generateHelp)
 import Text.Regex.PCRE ((=~))
 
 -- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
@@ -110,7 +118,7 @@ runTablebot vinfo dToken prefix dbpath plugins config =
     mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
     -- Create a var to kill any ongoing tasks.
     mvar <- newEmptyMVar :: IO (MVar [ThreadId])
-    cacheMVar <- newMVar (TCache M.empty vinfo) :: IO (MVar TablebotCache)
+    cacheMVar <- newMVar (TCache M.empty M.empty vinfo) :: IO (MVar TablebotCache)
     userFacingError <-
       runDiscord $
         def
@@ -124,6 +132,9 @@ runTablebot vinfo dToken prefix dbpath plugins config =
               -- (which can just happen due to databases being unavailable
               -- sometimes).
               runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
+
+              submitApplicationCommands (compiledApplicationCommands actions) cacheMVar
+
               liftIO $ putStrLn "The bot lives!"
               sendCommand (UpdateStatus activityStatus),
             -- Kill every cron job in the mvar.
@@ -136,10 +147,9 @@ runTablebot vinfo dToken prefix dbpath plugins config =
         { updateStatusOptsSince = Nothing,
           updateStatusOptsGame =
             Just
-              ( Activity
+              ( def
                   { activityName = gamePlaying config prefix,
-                    activityType = ActivityTypeGame,
-                    activityUrl = Nothing
+                    activityType = ActivityTypeGame
                   }
               ),
           updateStatusOptsNewStatus = UpdateStatusOnline,
