@@ -13,10 +13,11 @@ module Tablebot.Internal.Types where
 
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Reader (ReaderT)
-import Data.Default
+import Data.Default (Default)
 import Data.Text (Text)
 import Database.Persist.Sqlite
 import Discord
+import Discord.Interactions (CreateApplicationCommand, Interaction)
 import Discord.Types
 import Tablebot.Utility.Types
 
@@ -33,14 +34,19 @@ data CompiledPlugin = CPl
   }
 
 data PluginActions = PA
-  { compiledCommands :: [CompiledCommand],
+  { compiledApplicationCommands :: [CompiledApplicationCommand],
+    compiledCommands :: [CompiledCommand],
     compiledInlineCommands :: [CompiledInlineCommand],
     compiledOnMessageChanges :: [CompiledMessageChange],
     compiledOnReactionAdds :: [CompiledReactionAdd],
     compiledOnReactionDeletes :: [CompiledReactionDel],
+    compiledOnComponentRecvs :: [CompiledComponentRecv],
     compiledOtherEvents :: [CompiledOther],
     compiledCronJobs :: [CompiledCronJob]
   }
+
+instance Default PluginActions where
+  def = PA [] [] [] [] [] [] [] [] []
 
 data CombinedPlugin = CmPl
   { combinedSetupAction :: [Database PluginActions],
@@ -48,9 +54,17 @@ data CombinedPlugin = CmPl
     combinedMigrations :: [Migration]
   }
 
+instance Default CombinedPlugin where
+  def = CmPl [] [] []
+
 -- * Compiled Items
 
 -- These are compiled forms of the actions from the public types that remove the reader.
+
+data CompiledApplicationCommand = CApplicationCommand
+  { applicationCommand :: CreateApplicationCommand,
+    applicationCommandAction :: Interaction -> CompiledDatabaseDiscord ()
+  }
 
 data CompiledCommand = CCommand
   { commandName :: Text,
@@ -72,6 +86,12 @@ newtype CompiledReactionAdd = CReactionAdd
 
 newtype CompiledReactionDel = CReactionDel
   { onReactionDelete :: ReactionInfo -> CompiledDatabaseDiscord ()
+  }
+
+data CompiledComponentRecv = CComponentRecv
+  { componentPluginName :: Text,
+    componentName :: Text,
+    onComponentRecv :: Interaction -> CompiledDatabaseDiscord ()
   }
 
 newtype CompiledOther = COther
@@ -98,3 +118,17 @@ instance Default BotConfig where
       { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
         gamePlaying = "Kirby: Planet Robobot"
       }
+
+data AliasType = AliasPublic | AliasPrivate UserId
+  deriving (Eq, Show, Ord)
+
+instance PersistField AliasType where
+  toPersistValue (AliasPrivate (DiscordId (Snowflake wd))) = PersistInt64 (fromIntegral wd)
+  toPersistValue AliasPublic = PersistInt64 (-1)
+  fromPersistValue = \case
+    PersistInt64 (-1) -> Right AliasPublic
+    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
+    _ -> Left "AliasType: fromPersistValue: Invalid value"
+
+instance PersistFieldSql AliasType where
+  sqlType _ = SqlInt64

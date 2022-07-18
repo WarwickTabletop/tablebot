@@ -10,6 +10,7 @@
 module Tablebot.Utility.Utils where
 
 import Control.Monad (when)
+import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, filter, toLower)
 import Data.Text.ICU.Char (Bool_ (Diacritic), property)
 import Data.Text.ICU.Normalize (NormalizationMode (NFD), normalize)
@@ -47,6 +48,9 @@ standardise x = filter (not . property Diacritic) normalizedText
 -- the empty Text.
 maybeEmptyPrepend :: Text -> Maybe Text -> Text
 maybeEmptyPrepend s = maybe "" (s <>)
+
+mkProxy :: forall a. a -> Proxy a
+mkProxy _ = Proxy :: Proxy a
 
 newtype DebugString = DStr String
 

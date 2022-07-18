@@ -13,33 +13,40 @@ module Tablebot.Handler
   ( eventHandler,
     runCron,
     killCron,
+    submitApplicationCommands,
   )
 where
 
-import Control.Concurrent (MVar)
-import Control.Monad (unless)
-import Control.Monad.Exception
+import Control.Concurrent (MVar, putMVar, takeMVar)
+import Control.Monad (unless, void)
+import Control.Monad.Exception (MonadException (catch))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
+import Data.Bifunctor (Bifunctor (second))
+import Data.Map as M (fromList)
 import Data.Pool (Pool)
 import Data.Text (Text)
 import Database.Persist.Sqlite (SqlBackend, runSqlPool)
-import Discord (DiscordHandler)
+import Discord (Cache (cacheApplication), DiscordHandler, readCache, restCall)
+import Discord.Interactions (ApplicationCommand (..), Interaction (..))
+import Discord.Requests (ChannelRequest (JoinThread))
 import Discord.Types
-import Tablebot.Internal.Handler.Command
-  ( parseNewMessage,
-  )
+import System.Environment (lookupEnv)
+import Tablebot.Internal.Handler.Command (parseNewMessage)
 import Tablebot.Internal.Handler.Event
-  ( parseMessageChange,
+  ( parseApplicationCommandRecv,
+    parseComponentRecv,
+    parseMessageChange,
     parseOther,
     parseReactionAdd,
     parseReactionDel,
   )
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Discord (sendEmbedMessage)
-import Tablebot.Utility.Exception
-import Tablebot.Utility.Types (TablebotCache)
+import Tablebot.Utility.Discord (createApplicationCommand, interactionResponseCustomMessage, removeApplicationCommandsNotInList, sendChannelEmbedMessage)
+import Tablebot.Utility.Exception (BotException, embedError)
+import Tablebot.Utility.Types (MessageDetails (messageDetailsEmbeds), TablebotCache (cacheApplicationCommands), liftDiscord, messageDetailsBasic)
+import Text.Read (readMaybe)
 import UnliftIO.Concurrent
   ( ThreadId,
     forkIO,
@@ -55,7 +62,7 @@ import UnliftIO.Exception (catchAny)
 eventHandler :: PluginActions -> Text -> Event -> CompiledDatabaseDiscord ()
 eventHandler pl prefix = \case
   MessageCreate m ->
-    ifNotBot m $ parseNewMessage pl prefix m `catch` \e -> changeAction () . sendEmbedMessage m "" $ embedError (e :: BotException)
+    ifNotBot m $ catchErrors (messageChannelId m) $ parseNewMessage pl prefix m
   MessageUpdate cid mid ->
     parseMessageChange (compiledOnMessageChanges pl) True cid mid
   MessageDelete cid mid ->
@@ -69,9 +76,16 @@ eventHandler pl prefix = \case
   -- Similar with MessageReactionRemoveEmoji (removes all of one type).
   MessageReactionRemoveAll _cid _mid -> pure ()
   MessageReactionRemoveEmoji _rri -> pure ()
+  InteractionCreate i@InteractionComponent {} -> parseComponentRecv (compiledOnComponentRecvs pl) i `interactionErrorCatch` i
+  InteractionCreate i@InteractionApplicationCommand {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
+  InteractionCreate i@InteractionApplicationCommandAutocomplete {} -> parseApplicationCommandRecv i `interactionErrorCatch` i
+  -- TODO: add application command autocomplete as an option
+  ThreadCreate c -> changeAction () $ void $ liftDiscord $ restCall $ JoinThread (channelId c)
   e -> parseOther (compiledOtherEvents pl) e
   where
     ifNotBot m = unless (userIsBot (messageAuthor m))
+    interactionErrorCatch action i = action `catch` (\e -> changeAction () . interactionResponseCustomMessage i $ (messageDetailsBasic "") {messageDetailsEmbeds = Just [embedError (e :: BotException)]})
+    catchErrors m = (`catch` (\e -> changeAction () . sendChannelEmbedMessage m "" $ embedError (e :: BotException)))
 
 -- | @runCron@ takes an individual @CronJob@ and runs it in a separate thread.
 -- The @ThreadId@ is returned so it can be killed later.
@@ -99,3 +113,33 @@ runCron pool (CCronJob delay fn) = do
 -- | @killCron@ takes a list of @ThreadId@ and kills each thread.
 killCron :: [ThreadId] -> IO ()
 killCron = mapM_ killThread
+
+-- | Given a list of compiled application commands and a pointer to the
+-- tablebot cache, create the given application commands, purge ones that
+-- weren't created by us, and place the application command id's and their
+-- actions in the cache.
+submitApplicationCommands :: [CompiledApplicationCommand] -> MVar TablebotCache -> DiscordHandler ()
+submitApplicationCommands compiledAppComms cacheMVar =
+  ( do
+      -- generate the application commands, cleaning up any application commands we don't like
+      serverIdStr' <- liftIO $ lookupEnv "SERVER_ID"
+      case serverIdStr' of
+        Nothing -> pure ()
+        Just serverIdStr -> do
+          serverId <- readServerStr serverIdStr
+          aid <- partialApplicationID . cacheApplication <$> readCache
+          applicationCommands <-
+            mapM
+              ( \(CApplicationCommand cac action) -> do
+                  ac <- createApplicationCommand aid serverId cac
+                  return (applicationCommandId ac, action)
+              )
+              compiledAppComms
+          removeApplicationCommandsNotInList aid serverId (fst <$> applicationCommands)
+          liftIO $ takeMVar cacheMVar >>= \tcache -> putMVar cacheMVar $ tcache {cacheApplicationCommands = M.fromList (second (lift .) <$> applicationCommands)}
+  )
+    `catch` \(e :: IOError) -> liftIO $ putStrLn $ "There was an error of some sort when submitting the application commands - verify that `SERVER_ID` is set properly. (" <> show e <> ")"
+  where
+    readServerStr :: String -> DiscordHandler (Maybe GuildId)
+    readServerStr "global" = return Nothing
+    readServerStr s = maybe (fail $ "could not read server id: " <> show s) (return . Just) (readMaybe s)

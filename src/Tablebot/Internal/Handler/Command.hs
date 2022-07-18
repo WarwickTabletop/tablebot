@@ -13,6 +13,7 @@ module Tablebot.Internal.Handler.Command
   ( parseNewMessage,
     parseCommands,
     parseInlineCommands,
+    parseValue,
   )
 where
 
@@ -23,14 +24,14 @@ import Data.Set (singleton, toList)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void (Void)
-import Discord.Types (Message (messageAuthor, messageText), User (userId))
+import Discord.Types (Message (messageAuthor, messageContent), User (userId))
+import Tablebot.Internal.Alias
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
-import Tablebot.Plugins.Alias (Alias (aliasAlias, aliasCommand), getAliases)
 import Tablebot.Utility.Discord (sendEmbedMessage)
-import Tablebot.Utility.Exception (BotException (ParserException), embedError)
+import Tablebot.Utility.Exception (BotException (ParserException), embedError, throwBot)
 import Tablebot.Utility.Parser (skipSpace1, space, word)
-import Tablebot.Utility.Types (Parser)
+import Tablebot.Utility.Types (EnvDatabaseDiscord, Parser)
 import Text.Megaparsec
 import qualified UnliftIO.Exception as UIOE (tryAny)
 
@@ -39,7 +40,7 @@ import qualified UnliftIO.Exception as UIOE (tryAny)
 -- to find inline commands.
 parseNewMessage :: PluginActions -> Text -> Message -> CompiledDatabaseDiscord ()
 parseNewMessage pl prefix m =
-  if isCommandCall $ messageText m
+  if isCommandCall $ messageContent m
     then parseCommands (compiledCommands pl) m prefix
     else parseInlineCommands (compiledInlineCommands pl) m
   where
@@ -69,11 +70,11 @@ parseCommands cs m prefix = do
 -- If the parser errors, the last error (which is hopefully one created by
 -- '<?>') is sent to the user as a Discord message.
 parseCommands' :: [CompiledCommand] -> Maybe [Alias] -> Message -> Text -> CompiledDatabaseDiscord (Either (Text, Text) ())
-parseCommands' cs as m prefix = case parse (parser cs) "" (messageText m) of
+parseCommands' cs as m prefix = case parse (parser cs) "" (messageContent m) of
   Right p -> Right <$> p m
   Left e -> case as of
     (Just as'@(_ : _)) ->
-      case parse (aliasParser as') "" (messageText m) of
+      case parse (aliasParser as') "" (messageContent m) of
         -- if the alias parser fails, just give the outer error
         Left _ -> mkTitleBody e
         -- if we get a valid alias, run the command with the alias
@@ -81,7 +82,7 @@ parseCommands' cs as m prefix = case parse (parser cs) "" (messageText m) of
         -- message text to be the alias's command
         -- we ensure no infinite loops by removing the alias we just used
         Right (a', rest) -> do
-          recur <- parseCommands' cs (Just $ filter (/= a') as') (m {messageText = prefix <> aliasCommand a' <> rest}) prefix
+          recur <- parseCommands' cs (Just $ filter (/= a') as') (m {messageContent = prefix <> aliasCommand a' <> rest}) prefix
           -- if successful, return the result. if not, edit the error we
           -- obtained from running the alias to include the alias we tried to
           -- use
@@ -158,7 +159,15 @@ makeReadable e = (mapParseError (const UnknownError) e, Nothing)
 -- command's parser on the message text. Errors are not sent to the user, and do
 -- not halt command attempts (achieved using 'tryAny').
 parseInlineCommands :: [CompiledInlineCommand] -> Message -> CompiledDatabaseDiscord ()
-parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandParser cic) "" (messageText m))) cs
+parseInlineCommands cs m = mapM_ (fromResult . (\cic -> parse (inlineCommandParser cic) "" (messageContent m))) cs
   where
     fromResult (Right p) = UIOE.tryAny (p m)
     fromResult _ = return $ return ()
+
+-- | Turn the parsing of a value into an exception when given text to parse.
+parseValue :: Parser a -> Text -> EnvDatabaseDiscord s a
+parseValue par t = case parse par "" t of
+  Right p -> return p
+  Left e ->
+    let (errs, title) = makeBundleReadable e
+     in throwBot $ ParserException title $ "```\n" ++ errorBundlePretty errs ++ "```"

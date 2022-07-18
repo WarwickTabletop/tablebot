@@ -79,7 +79,7 @@
 -- ords (AdvancedOrdering and NumBase) - representing a more complex ordering operation than a basic `Ordering`, when compared to a `NumBase`
 -- argv (ArgValue)                     - representing an argument to a function
 -- funcBasics                          - a generic regex representation for a general function parser
-module Tablebot.Plugins.Roll.Dice (evalProgram, evalInteger, evalList, ListValues (..), defaultRoll, PrettyShow (prettyShow), integerFunctionsList, listFunctionsList, maximumListLength, maximumRNG, Converter (promote)) where
+module Tablebot.Plugins.Roll.Dice (evalProgram, evalInteger, evalList, ListValues (..), defaultRoll, ParseShow (parseShow), integerFunctionsList, listFunctionsList, maximumListLength, maximumRNG, Converter (promote)) where
 
 import Tablebot.Plugins.Roll.Dice.DiceData
   ( Converter (promote),
@@ -88,7 +88,7 @@ import Tablebot.Plugins.Roll.Dice.DiceData
     ListValues (..),
     NumBase (Value),
   )
-import Tablebot.Plugins.Roll.Dice.DiceEval (PrettyShow (prettyShow), evalInteger, evalList, evalProgram, maximumListLength, maximumRNG)
+import Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalInteger, evalList, evalProgram, maximumListLength, maximumRNG)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (integerFunctionsList, listFunctionsList)
 import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 

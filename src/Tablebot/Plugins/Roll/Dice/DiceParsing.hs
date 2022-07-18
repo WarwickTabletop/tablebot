@@ -26,7 +26,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
     integerFunctions,
     listFunctions,
   )
-import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace, skipSpace1)
+import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser (CanParse (..), (<??>))
 import Tablebot.Utility.Types (Parser)
 import Text.Megaparsec (MonadParsec (try), choice, failure, optional, some, (<?>), (<|>))
@@ -264,3 +264,94 @@ parseArgValues :: [ArgType] -> Parser [ArgValue]
 parseArgValues [] = return []
 parseArgValues [at] = (: []) <$> parseArgValue at
 parseArgValues (at : ats) = parseArgValue at >>= \av -> skipSpace *> (try (char ',') <?> "expected " ++ show (length ats) ++ " more arguments") *> skipSpace *> ((av :) <$> parseArgValues ats)
+
+--- Pretty printing the AST
+
+instance ParseShow ArgValue where
+  parseShow (AVExpr e) = parseShow e
+  parseShow (AVListValues lv) = parseShow lv
+
+instance ParseShow ListValues where
+  parseShow (LVBase e) = parseShow e
+  parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
+  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (LVVar t) = t
+  parseShow (ListValuesMisc l) = parseShow l
+
+instance ParseShow ListValuesBase where
+  parseShow (LVBList es) = "{" <> T.intercalate ", " (parseShow <$> es) <> "}"
+  parseShow (LVBParen p) = parseShow p
+
+instance ParseShow a => ParseShow (MiscData a) where
+  parseShow (MiscVar l) = parseShow l
+  parseShow (MiscIf l) = parseShow l
+
+instance ParseShow Expr where
+  parseShow (Add t e) = parseShow t <> " + " <> parseShow e
+  parseShow (Sub t e) = parseShow t <> " - " <> parseShow e
+  parseShow (NoExpr t) = parseShow t
+  parseShow (ExprMisc e) = parseShow e
+
+instance ParseShow Term where
+  parseShow (Multi f t) = parseShow f <> " * " <> parseShow t
+  parseShow (Div f t) = parseShow f <> " / " <> parseShow t
+  parseShow (NoTerm f) = parseShow f
+
+instance ParseShow Func where
+  parseShow (Func s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (NoFunc b) = parseShow b
+
+instance ParseShow Negation where
+  parseShow (Neg expo) = "-" <> parseShow expo
+  parseShow (NoNeg expo) = parseShow expo
+
+instance ParseShow Expo where
+  parseShow (NoExpo b) = parseShow b
+  parseShow (Expo b expo) = parseShow b <> " ^ " <> parseShow expo
+
+instance ParseShow NumBase where
+  parseShow (NBParen p) = parseShow p
+  parseShow (Value i) = T.pack $ show i
+
+instance (ParseShow a) => ParseShow (Paren a) where
+  parseShow (Paren a) = "(" <> parseShow a <> ")"
+
+instance ParseShow Base where
+  parseShow (NBase nb) = parseShow nb
+  parseShow (DiceBase dop) = parseShow dop
+  parseShow (NumVar t) = t
+
+instance ParseShow Die where
+  parseShow (Die b) = "d" <> parseShow b
+  parseShow (CustomDie lv) = "d" <> parseShow lv
+  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
+  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
+
+instance ParseShow Dice where
+  parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
+    where
+      fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
+      fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
+      fromLHW (Low i) = "l" <> parseShow i
+      fromLHW (High i) = "h" <> parseShow i
+      helper' Nothing = ""
+      helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
+      helper (DieOpOptionLazy doo) = "!" <> helper doo
+      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
+      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
+      helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
+      helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw
+
+instance (ParseShow a) => ParseShow (Var a) where
+  parseShow (Var t a) = "var " <> t <> " = " <> parseShow a
+  parseShow (VarLazy t a) = "var !" <> t <> " = " <> parseShow a
+
+instance (ParseShow b) => ParseShow (If b) where
+  parseShow (If b t e) = "if " <> parseShow b <> " then " <> parseShow t <> " else " <> parseShow e
+
+instance ParseShow Statement where
+  parseShow (StatementExpr l) = parseShow l <> "; "
+  parseShow (StatementListValues l) = parseShow l <> "; "
+
+instance ParseShow Program where
+  parseShow (Program ss a) = foldr ((<>) . parseShow) (parseShow a) ss
