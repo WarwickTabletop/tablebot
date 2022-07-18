@@ -109,14 +109,14 @@ data CompiledCronJob = CCronJob
 
 data BotConfig = BotConfig
   { rootHelpText :: Text,
-    gamePlaying :: Text
+    gamePlaying :: Text -> Text
   }
 
 instance Default BotConfig where
   def =
     BotConfig
       { rootHelpText = "This bot is built off the Tablebot framework (<https://github.com/WarwickTabletop/tablebot>).",
-        gamePlaying = "Kirby: Planet Robobot"
+        gamePlaying = const "Kirby: Planet Robobot"
       }
 
 data AliasType = AliasPublic | AliasPrivate UserId

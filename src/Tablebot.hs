@@ -71,7 +71,7 @@ runTablebotWithEnv plugins config = do
     _ <- swapMVar rFlag Reload
     loadEnv
     dToken <- pack <$> getEnv "DISCORD_TOKEN"
-    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{27}$" :: String)) $
+    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{38}$" :: String)) $
       die "Invalid token format. Please check it is a bot token"
     prefix <- pack . fromMaybe "!" <$> lookupEnv "PREFIX"
     dbpath <- getEnv "SQLITE_FILENAME"
@@ -148,7 +148,7 @@ runTablebot vinfo dToken prefix dbpath plugins config =
           updateStatusOptsGame =
             Just
               ( def
-                  { activityName = gamePlaying config <> ". Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help",
+                  { activityName = gamePlaying config prefix,
                     activityType = ActivityTypeGame
                   }
               ),

@@ -8,7 +8,15 @@ import Tablebot.Plugins (allPlugins)
 
 -- @main@ runs forever. This allows bot reloading by fully shutting down the bot and letting it restart.
 main :: IO ()
-main = runTablebotWithEnv allPlugins $ BotConfig {gamePlaying = "with dice", rootHelpText = rootBody}
+main =
+  runTablebotWithEnv allPlugins $
+    BotConfig
+      { gamePlaying = game,
+        rootHelpText = rootBody
+      }
+
+game :: Text -> Text
+game prefix = "with dice. Prefix is `" <> prefix <> "`. Call `" <> prefix <> "help` for help"
 
 rootBody :: Text
 rootBody =

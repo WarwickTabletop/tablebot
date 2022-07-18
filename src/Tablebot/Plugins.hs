@@ -12,9 +12,10 @@
 module Tablebot.Plugins where
 
 import Control.Concurrent.MVar (MVar)
+import Data.Text (Text)
 import Tablebot.Internal.Administration (ShutdownReason)
 import Tablebot.Internal.Plugins (compilePlugin)
-import Tablebot.Internal.Types (CompiledPlugin)
+import Tablebot.Internal.Types (CompiledPlugin (..))
 import Tablebot.Plugins.Administration (administrationPlugin)
 import Tablebot.Plugins.Alias (alias)
 import Tablebot.Plugins.Basic (basic)
@@ -55,3 +56,7 @@ allPlugins =
 -- | @addAdministrationPlugin@ is needed to allow the administration plugin to be aware of the list of current plugins
 addAdministrationPlugin :: MVar ShutdownReason -> [CompiledPlugin] -> [CompiledPlugin]
 addAdministrationPlugin rFlag cps = compilePlugin (administrationPlugin rFlag cps) : cps
+
+-- | @plugs `minusPl` names@ removes all plugins with the given names.
+minusPl :: [CompiledPlugin] -> [Text] -> [CompiledPlugin]
+minusPl = foldr (\n plugs -> filter ((/= n) . compiledName) plugs)

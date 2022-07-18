@@ -4,7 +4,7 @@
 
 An extendable Discord bot framework written on top of [`discord-haskell`](https://github.com/aquarial/discord-haskell).
 
-If you're new to this project, or completely new to git, and Haskell, you might be interested in looking at the [Setup from Scratch](CONTRIBUTING.md#setup-from-scratch) section in the [contributor's guide](CONTRIBUTING.md). If you want tutorials on making your first plugin or how exceptions work, checkout the tutorials in the [tutorials](tutorials) folder.
+If you're new to this project, or completely new to git, and Haskell, you might be interested in looking at the [Setup from Scratch](SETUP.md) guide. If you want to contribute, please consult the [contributor's guide](CONTRIBUTING.md). If you want tutorials on making your first plugin or how exceptions work, checkout the tutorials in the [tutorials](tutorials) folder.
 
 ## Environment file setup
 
@@ -31,7 +31,7 @@ The three Group settings are optional, but without them any commands that requir
 to be called when `DEBUG` is false. Users with the superuser group are able to run every command (including some dangerous
 ones), so caution should be used when setting these up.
 
-If you have any difficulties setting it up, see the [contributor's guide](CONTRIBUTING.md) for a walkthrough.
+If you have any difficulties setting it up, see the [setup guide](SETUP.md) for a walkthrough.
 
 ## Importing this bot and running it yourself.
 

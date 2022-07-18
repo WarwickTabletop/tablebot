@@ -96,9 +96,9 @@ parseCommands' cs as m prefix = case parse (parser cs) "" (messageContent m) of
     parser cs' =
       do
         _ <- chunk prefix
-        choice (map toErroringParser cs') <?> "No command with that name was found!"
-    toErroringParser :: CompiledCommand -> Parser (Message -> CompiledDatabaseDiscord ())
-    toErroringParser c = try (chunk $ commandName c) *> (skipSpace1 <|> eof) *> (try (choice $ map toErroringParser $ commandSubcommands c) <|> commandParser c)
+        choice (map commandToParser cs') <?> "No command with that name was found!"
+    commandToParser :: CompiledCommand -> Parser (Message -> CompiledDatabaseDiscord ())
+    commandToParser c = try (chunk $ commandName c) *> (skipSpace1 <|> eof) *> (try (choice $ map commandToParser $ commandSubcommands c) <|> commandParser c)
     aliasParser :: [Alias] -> Parser (Alias, Text)
     aliasParser as' = do
       _ <- chunk prefix
