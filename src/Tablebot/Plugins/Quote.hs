@@ -176,13 +176,13 @@ showQ :: Context m => Int64 -> m -> DatabaseDiscord MessageDetails
 showQ qId m = do
   qu <- get $ toSqlKey qId
   case qu of
-    Just q -> renderQuoteMessage q qId m
+    Just q -> renderQuoteMessage q qId Nothing m
     Nothing -> return $ messageDetailsBasic "Couldn't get that quote!"
 
 -- | @randomQuote@, which looks for a message of the form @!quote random@,
 -- selects a random quote from the database and responds with that quote.
 randomQ :: Context m => m -> DatabaseDiscord MessageDetails
-randomQ c = filteredRandomQuote [] "Couldn't find any quotes!" c >>= \m -> return (m {messageDetailsComponents = Just [ActionRowButtons [randomButton]]})
+randomQ = filteredRandomQuote [] "Couldn't find any quotes!" (Just randomButton)
   where
     randomButton = mkButton "Random quote" "quote random"
 
@@ -192,7 +192,7 @@ randomQuoteComponentRecv = ComponentRecv "random" (processComponentInteraction (
 -- | @authorQuote@, which looks for a message of the form @!quote author u@,
 -- selects a random quote from the database attributed to u and responds with that quote.
 authorQ :: Context m => Text -> m -> DatabaseDiscord MessageDetails
-authorQ t c = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!" c >>= \m -> return (m {messageDetailsComponents = Just [ActionRowButtons [authorButton]]})
+authorQ t = filteredRandomQuote [QuoteAuthor ==. t] "Couldn't find any quotes with that author!" (Just authorButton)
   where
     authorButton = mkButton "Random author quote" ("quote author " <> t)
 
@@ -202,27 +202,29 @@ authorQuoteComponentRecv = ComponentRecv "author" (processComponentInteraction (
 -- | @filteredRandomQuote@ selects a random quote that meets a
 -- given criteria, and returns that as the response, sending the user a message if the
 -- quote cannot be found.
-filteredRandomQuote :: Context m => [Filter Quote] -> Text -> m -> DatabaseDiscord MessageDetails
-filteredRandomQuote quoteFilter errorMessage m = catchBot (filteredRandomQuote' quoteFilter errorMessage m) catchBot'
+filteredRandomQuote :: Context m => [Filter Quote] -> Text -> Maybe Button -> m -> DatabaseDiscord MessageDetails
+filteredRandomQuote quoteFilter errorMessage mb m = catchBot (filteredRandomQuote' quoteFilter errorMessage mb m) catchBot'
   where
-    catchBot' (GenericException "quote exception" _) = return $ messageDetailsBasic errorMessage
+    catchBot' (GenericException "quote exception" _) = return $ (messageDetailsBasic errorMessage) {messageDetailsEmbeds = Just []}
     catchBot' e = throwBot e
 
 -- | @filteredRandomQuote'@ selects a random quote that meets a
 -- given criteria, and returns that as the response, throwing an exception if something
 -- goes wrong.
-filteredRandomQuote' :: Context m => [Filter Quote] -> Text -> m -> DatabaseDiscord MessageDetails
-filteredRandomQuote' quoteFilter errorMessage m = do
+filteredRandomQuote' :: Context m => [Filter Quote] -> Text -> Maybe Button -> m -> DatabaseDiscord MessageDetails
+filteredRandomQuote' quoteFilter errorMessage mb m = do
   num <- count quoteFilter
-  if num == 0
+  if num == 0 -- we can't find any quotes meeting the filter
     then throwBot (GenericException "quote exception" (unpack errorMessage))
     else do
       rindex <- liftIO $ randomRIO (0, num - 1)
       key <- selectKeysList quoteFilter [OffsetBy rindex, LimitTo 1]
       qu <- get $ head key
       case qu of
-        Just q -> renderQuoteMessage q (fromSqlKey $ head key) m
+        Just q -> renderQuoteMessage q (fromSqlKey $ head key) mb m
         Nothing -> throwBot (GenericException "quote exception" (unpack errorMessage))
+
+-- we somehow can't get the quote we described
 
 -- | @addQuote@, which looks for a message of the form
 -- @!quote add "quoted text" - author@, and then stores said quote in the
@@ -236,7 +238,7 @@ addQ' qu author requestor sourceMsg sourceChannel m = do
   let new = Quote qu author requestor (fromIntegral sourceMsg) (fromIntegral sourceChannel) now
   added <- insert new
   let res = pack $ show $ fromSqlKey added
-  renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m <&> (,fromSqlKey added)
+  renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) Nothing m <&> (,fromSqlKey added)
 
 -- | @thisQuote@, which takes the replied message or the
 -- previous message and stores said message as a quote in the database,
@@ -271,7 +273,7 @@ addMessageQuote submitter q' m = do
                   now
           added <- insert new
           let res = pack $ show $ fromSqlKey added
-          renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) m
+          renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) Nothing m
         else return $ makeEphermeral (messageDetailsBasic "Can't quote a bot")
     else return $ makeEphermeral (messageDetailsBasic "Message already quoted")
 
@@ -292,7 +294,7 @@ editQ' qId qu author requestor mid cid m =
               now <- liftIO $ systemToUTCTime <$> getSystemTime
               let new = Quote (fromMaybe qu' qu) (fromMaybe author' author) requestor (fromIntegral mid) (fromIntegral cid) now
               replace k new
-              renderCustomQuoteMessage "Quote updated" new qId m
+              renderCustomQuoteMessage "Quote updated" new qId Nothing m
             Nothing -> return $ messageDetailsBasic "Couldn't update that quote!"
 
 -- | @deleteQuote@, which looks for a message of the form @!quote delete n@,
@@ -309,11 +311,11 @@ deleteQ qId m =
               sendMessage m "Quote deleted"
             Nothing -> sendMessage m "Couldn't delete that quote!"
 
-renderQuoteMessage :: Context m => Quote -> Int64 -> m -> DatabaseDiscord MessageDetails
+renderQuoteMessage :: Context m => Quote -> Int64 -> Maybe Button -> m -> DatabaseDiscord MessageDetails
 renderQuoteMessage = renderCustomQuoteMessage ""
 
-renderCustomQuoteMessage :: Context m => Text -> Quote -> Int64 -> m -> DatabaseDiscord MessageDetails
-renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = do
+renderCustomQuoteMessage :: Context m => Text -> Quote -> Int64 -> Maybe Button -> m -> DatabaseDiscord MessageDetails
+renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId mb m = do
   guild <- contextGuildId m
   let link = getLink guild
   return
@@ -324,7 +326,8 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId m = 
                   addTimestamp dtm $
                     addFooter (pack $ "Quote #" ++ show qId) $
                       simpleEmbed (txt <> "\n - " <> author <> maybeAddFooter link)
-              ]
+              ],
+          messageDetailsComponents = mb >>= \b -> Just [ActionRowButtons [b]]
         }
     )
   where
@@ -421,7 +424,7 @@ quoteApplicationCommandRecv
                   now <- liftIO $ systemToUTCTime <$> getSystemTime
                   let new = Quote qt author requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
                   replace (toSqlKey qid) new
-                  newMsg <- renderCustomQuoteMessage (messageContent m) new qid i
+                  newMsg <- renderCustomQuoteMessage (messageContent m) new qid Nothing i
                   _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
                   return ()
           )
