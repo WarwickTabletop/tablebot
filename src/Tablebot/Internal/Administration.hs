@@ -61,22 +61,26 @@ restartIsTerminal :: ShutdownReason -> Bool
 restartIsTerminal Reload = False
 restartIsTerminal _ = True
 
+gitUpdateEnabled :: IO Bool
+gitUpdateEnabled = do
+  maybeEnabled <- lookupEnv "ALLOW_GIT_UPDATE"
+  return $ maybe False ((== "true") . lower . trim) maybeEnabled
+
 updateGit :: IO ()
 updateGit = do
-  maybeEnabled <- lookupEnv "ALLOW_GIT_UPDATE"
-  let enabled = maybe False ((== "true") . lower . trim) maybeEnabled
+  enabled <- gitUpdateEnabled
   when enabled $ do
     status <- readProcess "git" ["status"] ""
     let pattern :: String
         pattern = "working tree clean"
         clean :: Bool
-        clean = isInfixOf pattern status
+        clean = pattern `isInfixOf` status
     if clean
       then do
         callProcess "git" ["pull", "--rebase"]
         pullStatus <- readProcess "git" ["status"] ""
         let pullClean :: Bool
-            pullClean = isInfixOf pattern pullStatus
+            pullClean = pattern `isInfixOf` pullStatus
         if pullClean
           then putStrLn "Git pulled successfully. Restarting"
           else do
@@ -85,4 +89,4 @@ updateGit = do
       else putStrLn "Git directory not clean. Not updating"
 
 gitVersion :: IO Text
-gitVersion = (pack . trim) <$> readProcess "git" ["rev-parse", "HEAD"] ""
+gitVersion = pack . trim <$> readProcess "git" ["rev-parse", "HEAD"] ""

@@ -133,8 +133,10 @@ aliasListHelp =
 Lists all aliases.
 You can specify whether the aliases are public or private.
 
-*Usage:* `alias list`, `alias list private`, `alias list public`|]
-    []
+*Usage:* `alias list`|]
+    [ HelpPage "private" [] "lists your private aliases" "**List Private Aliases**\nLists your private aliases.\n\n*Usage:* `alias list private`" [] None,
+      HelpPage "public" [] "lists the public aliases" "**List Public Aliases**\nLists the public aliases.\n\n*Usage:* `alias list public`" [] None
+    ]
     None
 
 aliasDeleteCommand :: Command

@@ -128,4 +128,4 @@ errorInfo (EvaluationException msg' locs) = ErrorInfo "EvaluationException" $ ms
 errorInfo (IOException msg') = ErrorInfo "IOException" msg'
 errorInfo (NetrunnerException msg') = ErrorInfo "NetrunnerException" msg'
 errorInfo (InteractionException msg') = ErrorInfo "InteractionException" msg'
-errorInfo (PermissionException msg') = ErrorInfo "InteractionException" msg'
+errorInfo (PermissionException msg') = ErrorInfo "PermissionException" msg'
