@@ -22,7 +22,7 @@ As well as the arithmetic operators above, dice can be rolled, hence the name of
 
 The basic format for this is `dX` where X is some number, meaning a single die of size X. Multiple dice can be rolled using `YdX`, meaning that Y dice are rolled of size X. Parentheses can be used for both Y and X in this case. If Y is greater than a number determined by the bot owner (150 by default), the roll will not be executed. This is the same number that governs the total amount of RNG calls allowed within a command's execution.
 
-In addition to the above, there is syntax for rolling dice with arbitrary sides - `d{4,7,19,-5}`. This results in a die that is equally likely to result in four, seven, nineteen, or minus five. These numbers could be any expression instead.
+In addition to the above, there is syntax for rolling dice with arbitrary sides - `d{4, 7, 19, -5}`. This results in a die that is equally likely to result in four, seven, nineteen, or minus five. These numbers could be any expression instead.
 
 There is support for stacking dice. This means that if you write `2d4d5d6`, it will be parsed and executed as `((2d4)d5)d6`. Operations can be applied to the dice in this stack.
 
@@ -60,15 +60,30 @@ With the introduction of this notation, it is worth noting that the normal (with
 
 ## Lists
 
-As well as simple expressions, basic list expressions can be formed. You can form a basic list using `{e,f,g}`, where `e`, `f`, and `g` are expressions as seen before. Additionally, by using `N#YdX` syntax, you can roll `N` amount of dice following `YdX`.
+As well as simple expressions, basic list expressions can be formed. You can form a basic list using `{e, f, g}`, where `e`, `f`, and `g` are expressions as seen before. Additionally, by using `N#YdX` syntax, you can roll `N` amount of dice following `YdX`.
 
 As an addendum to custom dice, if a list value is bracketed then it can be used in custom dice. For example, `5d(4#4d6)` rolls five dice, whose sides are determined by rolling 4d6 4 times. Do note that laziness still applies here, meaning that the RNG cap can be very quickly reached.
 
 Lists are limited to 50 items long currently (which is configurable).
 
+## Complex Operations
+
+There are two operators that are more complex and have specific organisational requirements, that allow for a great deal of control in the program. With them comes more complex structures for expressions as a whole.
+
+If statements take an expression, and then two either integer values or list values. If the expression is non-zero, the first value is returned. If the expression is zero, the second value is returned. The syntax for it is `if expression then t else f`, where `expression` is an integer value, and `t` and `f` are both either integer values or list values. Only one of `t` or `f` is ever evaluated.
+
+Var statements take a name and either an integer value or a list, and set a variable with that name to that value. If the var statement is lazy (with an exclamation mark before the variable name) the value is recalculated every time the variable is used. A var statement returns the value on the left side. To create and use list variables, they must be prepended with `l_`. The syntax can be something like `var name = value`, `var !name = value`, or `var l_name = value`, or so on. These bound values can then be used in other calculations. Variable names consist only have lower case letters and underscores.
+
+To fully utilise these expression types, statements have been made, which, when constructed together with a value, creates a program. A statement is an integer value or list value followed by a semicolon. Below are a couple example programs (which are multiple statements followed by a single value). One quality of life feature is that a lazy var expression won't be evaluated until the variable is first used.
+
+- `var l_list = (2d6)#3d6; {length(l_list), minimum(l_list), maximum(l_list), sum(l_list)/length(l_list)}`
+    - Get the length, minimum, maximum, and average value of a random list.
+- `var !k = 1d20; var t = k; var !t_iseven = if mod(t, 2) then 0 else 1; if t_iseven then k * t + 20 else t`
+    - Create a lazy variable `k`. Evaluate it into a variable `t`. Check whether `t` is even, and place in a variable. Depending on whether `t` is even or not, either output another random number times by `t` (and add 20 to distinguish it), or just output `t`.
+
 ## Functions
 
-Here are all the functions, what they take, and what they return.
+Here are all the functions, what they take, and what they return. They are called with `name(arg1, arg2)`.
 
 ### Returns an Integer
 - abs (integer) - the absolute value of an integer
@@ -91,12 +106,15 @@ Here are all the functions, what they take, and what they return.
 - take (integer, list) - take the first `n` values from a list, where `n` is the integer given
 - between (integer, integer) - generate a list between the two given integers (inclusive)
 - concat (list, list) - concatenate two lists together
+- replicate (integer, integer) - create a list of length the first integer, consisting of elements of only the second element
+- set (integer, integer, list) - set the item at the index of the first integer to the value of the second integer in the given list
+- insert (integer, integer, list) - insert the item at the index of the first integer to the value of the second integer in the given list
 
 # Statistics
 
 As well as generating values, statistics based off of expressions can be found. There is a total time limit of 10 seconds for this command, with 5 seconds given to calculations and 5 seconds given to generating the bar chart.
 
-To get these statistics, calling the `roll` command with the `stats` subcommand will generate the requested statistics. The expression given has to return an integer.
+To get these statistics, calling the `roll` command with the `stats` subcommand will generate the requested statistics. The expression given has to return an integer. Stats can only be generated on single expressions and not programs.
 
 The bot will give the mean, the standard deviation, and the top ten most common values of the distribution, as well as graphing the entire distribution.
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE LiberalTypeSynonyms #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
@@ -25,10 +26,10 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
     integerFunctions,
     listFunctions,
   )
-import Tablebot.Utility.Parser (integer, parseCommaSeparated1, skipSpace)
+import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser (CanParse (..), (<??>))
 import Tablebot.Utility.Types (Parser)
-import Text.Megaparsec (MonadParsec (try), choice, failure, optional, (<?>), (<|>))
+import Text.Megaparsec (MonadParsec (try), choice, failure, optional, some, (<?>), (<|>))
 import Text.Megaparsec.Char (char, string)
 import Text.Megaparsec.Error (ErrorItem (Tokens))
 
@@ -36,15 +37,64 @@ import Text.Megaparsec.Error (ErrorItem (Tokens))
 failure' :: T.Text -> Set T.Text -> Parser a
 failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Tokens . NE.fromList . T.unpack) ss)
 
+variableName :: Parser T.Text
+variableName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
+
+instance CanParse a => CanParse (Var a) where
+  pars = do
+    _ <- try (string "var") <* skipSpace
+    letCon <- try (char '!' $> VarLazy) <|> return Var
+    varName' <- variableName
+    _ <- skipSpace >> char '=' >> skipSpace
+    letCon varName' <$> pars
+
+instance CanParse Statement where
+  pars = ((StatementListValues <$> try pars) <|> (StatementExpr <$> pars)) <* skipSpace <* char ';' <* skipSpace
+
+{-
+-- alternative method to the above.
+-- from https://canary.discord.com/channels/280033776820813825/280036215477239809/938154455612919838
+-- - Morrow#1157
+newtype VarCon = VarCon (forall a. a -> Var a)
+
+parseLet :: Parser VarCon
+parseLet = do
+  _ <- try (string "var") <* skipSpace
+  lazy <- try (char '!' $> True) <|> return False
+  varName' <- varName
+  _ <- skipSpace >> char '=' >> skipSpace
+  return $ VarCon (\a -> if lazy then VarLazy varName' a else Var varName' a)
+
+instance CanParse Statement where
+  pars = do
+    VarCon letP <- parseVar
+    val <- (Left <$> pars <|> Right <$> pars) <* skipSpace <* char ';' <* skipSpace
+    return $ either (VarList . letP) (VarExpr . letP) val
+-}
+
+parseStatements :: Parser [Statement]
+parseStatements = do
+  s <- optional $ try pars
+  case s of
+    Nothing -> return []
+    Just s' -> (s' :) <$> parseStatements
+
+instance CanParse Program where
+  pars = parseStatements >>= \ss -> Program ss <$> pars
+
 instance CanParse ListValues where
   pars =
     do
       functionParser listFunctions LVFunc
-      <|> ( do
-              nb <- try (pars <* char '#')
-              MultipleValues nb <$> pars
-          )
+      <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
+      <|> ListValuesMisc <$> (pars >>= checkVar)
+      <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
       <|> LVBase <$> pars
+    where
+      checkVar (MiscVar l)
+        | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
+        | otherwise = fail "list variables must be prepended with l_"
+      checkVar l = return l
 
 instance CanParse ListValuesBase where
   pars = do
@@ -64,10 +114,23 @@ instance CanParse ListValuesBase where
 binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
 binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
-instance CanParse Expr where
+instance (CanParse b) => CanParse (If b) where
   pars = do
-    t <- pars
-    binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
+    a <- string "if" *> skipSpace1 *> pars <* skipSpace1
+    t <- string "then" *> skipSpace1 *> pars <* skipSpace1
+    e <- string "else" *> skipSpace1 *> pars
+    return $ If a t e
+
+instance CanParse a => CanParse (MiscData a) where
+  pars = (MiscVar <$> pars) <|> (MiscIf <$> pars)
+
+instance CanParse Expr where
+  pars =
+    (ExprMisc <$> pars)
+      <|> ( do
+              t <- pars
+              binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
+          )
 
 instance CanParse Term where
   pars = do
@@ -115,11 +178,12 @@ instance (CanParse a) => CanParse (Paren a) where
 instance CanParse Base where
   pars =
     ( do
-        nb <- try pars
+        nb <- try pars <?> "could not parse numbase in base"
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
     )
       <|> DiceBase <$> parseDice (Value 1)
+      <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do
@@ -200,3 +264,94 @@ parseArgValues :: [ArgType] -> Parser [ArgValue]
 parseArgValues [] = return []
 parseArgValues [at] = (: []) <$> parseArgValue at
 parseArgValues (at : ats) = parseArgValue at >>= \av -> skipSpace *> (try (char ',') <?> "expected " ++ show (length ats) ++ " more arguments") *> skipSpace *> ((av :) <$> parseArgValues ats)
+
+--- Pretty printing the AST
+
+instance ParseShow ArgValue where
+  parseShow (AVExpr e) = parseShow e
+  parseShow (AVListValues lv) = parseShow lv
+
+instance ParseShow ListValues where
+  parseShow (LVBase e) = parseShow e
+  parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
+  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (LVVar t) = t
+  parseShow (ListValuesMisc l) = parseShow l
+
+instance ParseShow ListValuesBase where
+  parseShow (LVBList es) = "{" <> T.intercalate ", " (parseShow <$> es) <> "}"
+  parseShow (LVBParen p) = parseShow p
+
+instance ParseShow a => ParseShow (MiscData a) where
+  parseShow (MiscVar l) = parseShow l
+  parseShow (MiscIf l) = parseShow l
+
+instance ParseShow Expr where
+  parseShow (Add t e) = parseShow t <> " + " <> parseShow e
+  parseShow (Sub t e) = parseShow t <> " - " <> parseShow e
+  parseShow (NoExpr t) = parseShow t
+  parseShow (ExprMisc e) = parseShow e
+
+instance ParseShow Term where
+  parseShow (Multi f t) = parseShow f <> " * " <> parseShow t
+  parseShow (Div f t) = parseShow f <> " / " <> parseShow t
+  parseShow (NoTerm f) = parseShow f
+
+instance ParseShow Func where
+  parseShow (Func s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (NoFunc b) = parseShow b
+
+instance ParseShow Negation where
+  parseShow (Neg expo) = "-" <> parseShow expo
+  parseShow (NoNeg expo) = parseShow expo
+
+instance ParseShow Expo where
+  parseShow (NoExpo b) = parseShow b
+  parseShow (Expo b expo) = parseShow b <> " ^ " <> parseShow expo
+
+instance ParseShow NumBase where
+  parseShow (NBParen p) = parseShow p
+  parseShow (Value i) = T.pack $ show i
+
+instance (ParseShow a) => ParseShow (Paren a) where
+  parseShow (Paren a) = "(" <> parseShow a <> ")"
+
+instance ParseShow Base where
+  parseShow (NBase nb) = parseShow nb
+  parseShow (DiceBase dop) = parseShow dop
+  parseShow (NumVar t) = t
+
+instance ParseShow Die where
+  parseShow (Die b) = "d" <> parseShow b
+  parseShow (CustomDie lv) = "d" <> parseShow lv
+  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
+  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
+
+instance ParseShow Dice where
+  parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
+    where
+      fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
+      fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
+      fromLHW (Low i) = "l" <> parseShow i
+      fromLHW (High i) = "h" <> parseShow i
+      helper' Nothing = ""
+      helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
+      helper (DieOpOptionLazy doo) = "!" <> helper doo
+      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
+      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
+      helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
+      helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw
+
+instance (ParseShow a) => ParseShow (Var a) where
+  parseShow (Var t a) = "var " <> t <> " = " <> parseShow a
+  parseShow (VarLazy t a) = "var !" <> t <> " = " <> parseShow a
+
+instance (ParseShow b) => ParseShow (If b) where
+  parseShow (If b t e) = "if " <> parseShow b <> " then " <> parseShow t <> " else " <> parseShow e
+
+instance ParseShow Statement where
+  parseShow (StatementExpr l) = parseShow l <> "; "
+  parseShow (StatementListValues l) = parseShow l <> "; "
+
+instance ParseShow Program where
+  parseShow (Program ss a) = foldr ((<>) . parseShow) (parseShow a) ss

@@ -7,6 +7,10 @@
 -- Portability : POSIX
 --
 -- A command that outputs the result of rolling the input dice.
-module Tablebot.Plugins.Roll (rollPlugin) where
+module Tablebot.Plugins.Roll (roll) where
 
 import Tablebot.Plugins.Roll.Plugin (rollPlugin)
+import Tablebot.Utility
+
+roll :: CompiledPlugin
+roll = compilePlugin rollPlugin

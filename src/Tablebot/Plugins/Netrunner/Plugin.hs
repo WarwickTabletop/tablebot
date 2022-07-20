@@ -192,8 +192,8 @@ nrRules = Command "rules" (parseComm rulesComm) []
     rulesComm :: RestOfInput Text -> Message -> EnvDatabaseDiscord NrApi ()
     rulesComm (ROI q) m = do
       let (rTitle, rBody, colour) = case getRuling q of
-            Left (Ruling t b) -> (t, b, Red)
-            Right (Ruling t b) -> (t, b, Blue)
+            Left (Ruling t b) -> (t, b, DiscordColorRed)
+            Right (Ruling t b) -> (t, b, DiscordColorBlue)
       sendEmbedMessage m "" $ addColour colour $ embedText rTitle rBody
 
 -- | @embedCard@ takes a card and embeds it in a message.
@@ -234,9 +234,9 @@ embedBanHistory card m = do
   api <- ask
   embed <- cardToEmbedWithText api card $ listBanHistory api card
   let colour = case toMwlStatus api (activeBanList api) card of
-        Banned -> Red
-        Legal -> Green
-        _ -> Yellow
+        Banned -> DiscordColorRed
+        Legal -> DiscordColorGreen
+        _ -> DiscordColorYellow
   sendEmbedMessage m "" $ addColour colour embed
 
 -- | @embedBanLists@ embeds all banlists in Netrunner history.
@@ -244,7 +244,7 @@ embedBanLists :: Message -> EnvDatabaseDiscord NrApi ()
 embedBanLists m = do
   api <- ask
   let embed = embedTextWithUrl "Standard Banlists" "https://netrunnerdb.com/en/banlists" $ listBanLists api
-      colour = if latestBanListActive api then Red else Yellow
+      colour = if latestBanListActive api then DiscordColorRed else DiscordColorYellow
   sendEmbedMessage m "" $ addColour colour embed
 
 -- | @embedBanList@ embeds the list of cards affected by a given banlist.
@@ -253,7 +253,7 @@ embedBanList banList m = do
   api <- ask
   let (pre, cCards, rCards) = listAffectedCards api banList
       header = BanList.name banList <> if active banList then " (active)" else ""
-      colour = if active banList then Red else Yellow
+      colour = if active banList then DiscordColorRed else DiscordColorYellow
   sendEmbedMessage m "" $ addColour colour $ embedColumns header pre [("Corp Cards", cCards), ("Runner Cards", rCards)]
 
 beginnerText :: EnvDatabaseDiscord NrApi Text

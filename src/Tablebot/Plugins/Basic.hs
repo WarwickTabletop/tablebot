@@ -7,27 +7,16 @@
 -- Portability : POSIX
 --
 -- This is an example plugin which responds to certain calls with specific responses.
-module Tablebot.Plugins.Basic (basicPlugin) where
+module Tablebot.Plugins.Basic (basic) where
 
 import Data.Text as T (Text, toTitle)
-import Discord.Internal.Rest (Message)
+import Discord.Types (Message)
+import Tablebot.Utility
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.SmartParser (parseComm)
-import Tablebot.Utility.Types
-  ( Command,
-    DatabaseDiscord,
-    EnvCommand (Command),
-    EnvInlineCommand (InlineCommand),
-    EnvPlugin (commands, inlineCommands),
-    HelpPage (HelpPage),
-    InlineCommand,
-    Plugin,
-    RequiredPermission (None),
-    helpPages,
-    plug,
-  )
 import Text.Megaparsec (anySingle, skipManyTill)
 import Text.Megaparsec.Char (string')
+import Text.RawString.QQ (r)
 
 -- * Some types to help clarify what's going on
 
@@ -43,20 +32,12 @@ type BasicCommand = (Text, Text, MiniHelpPage)
 -- | The basic commands.
 basicCommands :: [BasicCommand]
 basicCommands =
-  [ ( "pr",
-      "You can make a pull request for that!",
-      Simple ("you know what to do", "You know what to do")
-    ),
-    ( "issue",
-      "You can submit an issue for that!",
-      Simple ("you know what you want someone else to do", "You know what you want someone else to do")
-    ),
-    ( "benji",
+  [ ( "benji",
       "<:benji_sit:920000993721196654>",
       Simple ("the almost mascot", "Though he may sit, when put to test, the gender cube proved it was best")
     ),
     ( "about",
-      "This bot was created by finnbar to replace a couple of other bots in Tabletop. It's written in Haskell, and you can find the github here: <https://github.com/WarwickTabletop/tablebot>. There are setup guides and a contributor's guide to help you get started.",
+      aboutStr,
       Simple ("some information about the bot", "Some information about the bot, including how you can get involved")
     ),
     ( "inventory",
@@ -64,6 +45,13 @@ basicCommands =
       Simple ("our board games inventory", "Our board games inventory, with a link to the actual inventory")
     )
   ]
+  where
+    aboutStr =
+      [r|This bot was created by finnbar to replace a couple of other bots in Tabletop.
+It's written in Haskell, and you can find the code here: <https://github.com/WarwickTabletop/tablebot>.
+If you would like to contribute, there are setup guides and a contributor's guide to help you get started!
+
+If you have found a bug, please report it on Github (<https://github.com/WarwickTabletop/tablebot/issues>) or inform one of the maintainers.|]
 
 -- | @echo@ pulled out to help resolve parser overlapping instances errors.
 -- Sends the provided text, regardless of received message.
@@ -100,3 +88,6 @@ basicPlugin =
       helpPages = map baseHelp basicCommands,
       inlineCommands = map baseInlineCommand basicInlineCommands
     }
+
+basic :: CompiledPlugin
+basic = compilePlugin basicPlugin

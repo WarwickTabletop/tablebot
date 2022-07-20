@@ -52,14 +52,14 @@ blacklistComm ::
   EnvDatabaseDiscord SS ()
 blacklistComm (WErr (Left (Left (_, pLabel)))) = addBlacklist pLabel
 blacklistComm (WErr (Left (Right (_, pLabel)))) = removeBlacklist pLabel
-blacklistComm (WErr (Right (_))) = listBlacklist
+blacklistComm (WErr (Right _)) = listBlacklist
 
 addBlacklist :: String -> Message -> EnvDatabaseDiscord SS ()
 addBlacklist pLabel m = requirePermission Superuser m $ do
   known <- ask
   -- It's not an error to add an unknown plugin (so that you can pre-disable a plugin you know you're about to add),
   -- but emmit a warning so people know if it wasn't deliberate
-  when ((pack pLabel) `notElem` known) $ sendMessage m "Warning, unknown plugin"
+  when (pack pLabel `notElem` known) $ sendMessage m "Warning, unknown plugin"
   extant <- exists [PluginBlacklistLabel ==. pLabel]
   if not extant
     then do
@@ -132,7 +132,7 @@ version = Command "version" noCommand []
       gVersion <- getVersionInfo
       sendMessage m $ formatVersions gVersion
     formatVersions :: VersionInfo -> Text
-    formatVersions vi = "Tablebot version " <> (pack $ showVersion $ procVersion vi) <> "\nGit Hash: `" <> (gitHash vi) <> "`"
+    formatVersions vi = "Tablebot version " <> pack (showVersion $ procVersion vi) <> "\nGit Hash: `" <> gitHash vi <> "`"
 
 -- | @botcontrol@ reloads the bot with any new configuration changes.
 botControl :: MVar ShutdownReason -> EnvCommand SS
@@ -144,13 +144,13 @@ botControl rFlag = Command "botcontrol" noCommand [reload rFlag, restart rFlag, 
 
 -- | @reload@ reloads the bot with any new configuration changes.
 reload :: MVar ShutdownReason -> EnvCommand SS
-reload rFlag = Command "reload" restartCommand []
+reload rFlag = Command "reload" reloadCommand []
   where
-    restartCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
-    restartCommand = noArguments $ \m -> requirePermission Superuser m $ do
+    reloadCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
+    reloadCommand = noArguments $ \m -> requirePermission Superuser m $ do
       sendMessage m "Reloading bot..."
       _ <- liftIO $ swapMVar rFlag Reload
-      liftDiscord $ stopDiscord
+      liftDiscord stopDiscord
 
 -- | @reload@ reloads the bot with any new configuration changes.
 restart :: MVar ShutdownReason -> EnvCommand SS
@@ -160,17 +160,17 @@ restart rFlag = Command "restart" restartCommand []
     restartCommand = noArguments $ \m -> requirePermission Superuser m $ do
       sendMessage m "Restarting bot... (this may take some time)"
       _ <- liftIO $ swapMVar rFlag Restart
-      liftDiscord $ stopDiscord
+      liftDiscord stopDiscord
 
 -- | @halt@ stops the bot.
 halt :: MVar ShutdownReason -> EnvCommand SS
-halt rFlag = Command "halt" restartCommand []
+halt rFlag = Command "halt" haltCommand []
   where
-    restartCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
-    restartCommand = noArguments $ \m -> requirePermission Superuser m $ do
+    haltCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
+    haltCommand = noArguments $ \m -> requirePermission Superuser m $ do
       sendMessage m "Halting bot! (Goodnight, cruel world)"
       _ <- liftIO $ swapMVar rFlag Halt
-      liftDiscord $ stopDiscord
+      liftDiscord stopDiscord
 
 -- | @gitupdate@ pulls the latest version from the git.
 gitprompt :: MVar ShutdownReason -> EnvCommand SS
@@ -181,13 +181,17 @@ gitprompt rFlag = Command "gitupdate" promptCommand [gitupdate rFlag]
       sendMessage m "Please confirm you want to do this by appending the following to your command:\n`yes I'm sure I want to do this and understand it's potentially dangerous`"
 
 gitupdate :: MVar ShutdownReason -> EnvCommand SS
-gitupdate rFlag = Command "yes I'm sure I want to do this and understand it's potentially dangerous" restartCommand []
+gitupdate rFlag = Command "yes I'm sure I want to do this and understand it's potentially dangerous" updateCommand []
   where
-    restartCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
-    restartCommand = noArguments $ \m -> requirePermission Superuser m $ do
-      sendMessage m "Attempting to update bot from the git. Please wait"
-      _ <- liftIO $ swapMVar rFlag GitUpdate
-      liftDiscord $ stopDiscord
+    updateCommand :: Parser (Message -> EnvDatabaseDiscord SS ())
+    updateCommand = noArguments $ \m -> requirePermission Superuser m $ do
+      enabled <- liftIO gitUpdateEnabled
+      if not enabled
+        then sendMessage m "Git update is not enabled; set `ALLOW_GIT_UPDATE` to `true`."
+        else do
+          sendMessage m "Attempting to update bot from the git. Please wait"
+          _ <- liftIO $ swapMVar rFlag GitUpdate
+          liftDiscord stopDiscord
 
 versionHelp :: HelpPage
 versionHelp =

@@ -10,10 +10,7 @@
 --
 -- This is an example plugin which allows user to ask the bot to remind them about
 -- something later in time.
-module Tablebot.Plugins.Reminder
-  ( reminderPlugin,
-  )
-where
+module Tablebot.Plugins.Reminder (reminder) where
 
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -93,9 +90,9 @@ reminderParser (WErr (Qu content, ROI rawString)) m = do
 -- currently ignores the user's timezone... (TODO fix)
 addReminder :: UTCTime -> String -> Message -> DatabaseDiscord ()
 addReminder time content m = do
-  let (Snowflake cid) = messageChannel m
-      (Snowflake mid) = messageId m
-      (Snowflake uid) = userId $ messageAuthor m
+  let (Snowflake cid) = unId $ messageChannelId m
+      (Snowflake mid) = unId $ messageId m
+      (Snowflake uid) = unId $ userId $ messageAuthor m
   added <- insert $ Reminder cid mid uid time content
   let res = pack $ show $ fromSqlKey added
   sendMessage m ("Reminder " <> res <> " set for " <> toTimestamp time <> " with message `" <> pack content <> "`")
@@ -134,13 +131,13 @@ reminderCron = do
     let (Reminder cid mid uid _time content) = entityVal re
      in do
           liftIO . print $ entityVal re
-          res <- getMessage (Snowflake cid) (Snowflake mid)
+          res <- getMessage (DiscordId $ Snowflake cid) (DiscordId $ Snowflake mid)
           case res of
             Left _ -> do
               sendChannelMessage (fromIntegral cid) (pack $ "Reminder to <@" ++ show uid ++ ">! " ++ content)
               delete (entityKey re)
             Right mess -> do
-              sendCustomReplyMessage mess (Snowflake mid) True $
+              sendCustomReplyMessage mess (DiscordId $ Snowflake mid) True $
                 pack $
                   "Reminder to <@" ++ show uid ++ ">! " ++ content
               delete (entityKey re)
@@ -185,3 +182,6 @@ reminderPlugin =
       migrations = [reminderMigration],
       helpPages = [reminderHelp]
     }
+
+reminder :: CompiledPlugin
+reminder = compilePlugin reminderPlugin

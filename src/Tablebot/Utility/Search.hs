@@ -11,8 +11,12 @@ module Tablebot.Utility.Search
   ( FuzzyCosts (..),
     closestMatch,
     closestMatchWithCosts,
+    closestMatches,
+    closestMatchesWithCosts,
     closestPair,
     closestPairWithCosts,
+    closestPairs,
+    closestPairsWithCosts,
     closestValue,
     closestValueWithCosts,
     shortestSuperString,
@@ -21,7 +25,8 @@ module Tablebot.Utility.Search
 where
 
 import Data.Char (toLower)
-import Data.List (minimumBy)
+import Data.Default
+import Data.List (minimumBy, sortBy)
 import Data.Text (Text, isInfixOf, length, take)
 import Text.EditDistance
 
@@ -37,6 +42,9 @@ data FuzzyCosts = FuzzyCosts
     substitution :: Int,
     transposition :: Int
   }
+
+instance Default FuzzyCosts where
+  def = defaultFuzzyCosts
 
 -- | @convertCosts@ turns the custom FuzzyCosts into Text.EditDistance's
 -- EditCosts.
@@ -72,6 +80,18 @@ closestMatchWithCosts editCosts strings query = minimumBy (compareOn score) stri
     score :: String -> Int
     score = levenshteinDistance (convertCosts editCosts) (map toLower query)
 
+-- | @closestMatches@ takes a list of strings and a query and orders the strings
+-- by which most closely matches the query (closest matches first).
+closestMatches :: [String] -> String -> [String]
+closestMatches = closestMatchesWithCosts defaultFuzzyCosts
+
+-- | @closestMatchesWithCosts@ is @closestMatches@ with customisable edit costs.
+closestMatchesWithCosts :: FuzzyCosts -> [String] -> String -> [String]
+closestMatchesWithCosts editCosts strings query = sortBy (compareOn score) strings
+  where
+    score :: String -> Int
+    score = levenshteinDistance (convertCosts editCosts) (map toLower query)
+
 -- | @closestPair@ takes a set of pairs and a query and finds the pair whose key
 -- most closely matches the query.
 closestPair :: [(String, a)] -> String -> (String, a)
@@ -80,6 +100,18 @@ closestPair = closestPairWithCosts defaultFuzzyCosts
 -- | @closestPairWithCosts@ is @closestPair@ with customisable edit costs.
 closestPairWithCosts :: FuzzyCosts -> [(String, a)] -> String -> (String, a)
 closestPairWithCosts editCosts pairs query = minimumBy (compareOn $ score . fst) pairs
+  where
+    score :: String -> Int
+    score = levenshteinDistance (convertCosts editCosts) (map toLower query)
+
+-- | @closestPairs@ takes a list of strings and a query and orders the strings
+-- by which most closely matches the query (closest matches first).
+closestPairs :: [(String, a)] -> String -> [(String, a)]
+closestPairs = closestPairsWithCosts defaultFuzzyCosts
+
+-- | @closestMatchesWithCosts@ is @closestMatches@ with customisable edit costs.
+closestPairsWithCosts :: FuzzyCosts -> [(String, a)] -> String -> [(String, a)]
+closestPairsWithCosts editCosts pairs query = sortBy (compareOn (score . fst)) pairs
   where
     score :: String -> Int
     score = levenshteinDistance (convertCosts editCosts) (map toLower query)

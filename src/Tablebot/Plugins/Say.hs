@@ -7,7 +7,7 @@
 -- Portability : POSIX
 --
 -- A command that outputs its input.
-module Tablebot.Plugins.Say (sayPlugin) where
+module Tablebot.Plugins.Say (says) where
 
 import Data.Text (pack)
 import Discord.Types (Message (messageAuthor), User (userId))
@@ -43,3 +43,6 @@ Repeat the input.
 -- | @sayPlugin@ assembles the command into a plugin.
 sayPlugin :: Plugin
 sayPlugin = (plug "say") {commands = [say], helpPages = [sayHelp]}
+
+says :: CompiledPlugin
+says = compilePlugin sayPlugin

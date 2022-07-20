@@ -17,9 +17,36 @@ import Data.Text (Text)
 import Data.Tuple (swap)
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 
+-- | Set the variable `varName` to the value `varValue`. This also returns the
+-- evaluated `varValue`.
+--
+-- List variables have to be prefixed with `l_`. This really helps with parsing.
+data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show)
+
+-- | If the first value is truthy (non-zero or a non-empty list) then return
+-- the `thenValue`, else return the `elseValue`.
+data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show)
+
+-- | Either an If or a Var that returns a `b`.
+data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show)
+
+-- | An expression is just an Expr or a ListValues with a semicolon on the end.
+--
+-- When evaluating, VarLazy expressions are handled with a special case - they
+-- are not evaluated until the value is first referenced. Otherwise, the value
+-- is evaluated as the statement is encountered
+data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
+
+-- | A program is a series of `Statement`s followed by either a `ListValues` or
+-- an Expr.
+data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
+
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
   deriving (Show)
+
+-- | Alias for `MiscData` that returns a `ListValues`.
+type ListValuesMisc = MiscData ListValues
 
 -- | The type for list values.
 data ListValues
@@ -29,6 +56,10 @@ data ListValues
     LVFunc (FuncInfoBase [Integer]) [ArgValue]
   | -- | A base ListValues value - parentheses or a list of expressions
     LVBase ListValuesBase
+  | -- | A variable that has been defined elsewhere.
+    LVVar Text
+  | -- | A misc list values expression.
+    ListValuesMisc ListValuesMisc
   deriving (Show)
 
 -- | The type for basic list values (that can be used as is for custom dice).
@@ -40,9 +71,12 @@ data ListValues
 data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
   deriving (Show)
 
+-- | Alias for `MiscData` that returns an `Expr`.
+type ExprMisc = MiscData Expr
+
 -- | The type of the top level expression. Represents one of addition,
--- subtraction, or a single term.
-data Expr = Add Term Expr | Sub Term Expr | NoExpr Term
+-- subtraction, or a single term; or some misc expression statement.
+data Expr = ExprMisc ExprMisc | Add Term Expr | Sub Term Expr | NoExpr Term
   deriving (Show)
 
 -- | The type representing multiplication, division, or a single negated term.
@@ -70,7 +104,7 @@ newtype Paren a = Paren a
   deriving (Show)
 
 -- | The type representing a numeric base value value or a dice value.
-data Base = NBase NumBase | DiceBase Dice
+data Base = NBase NumBase | DiceBase Dice | NumVar Text
   deriving (Show)
 
 -- Dice Operations after this point
@@ -176,3 +210,6 @@ instance Converter Dice Base where
 
 instance Converter Die Base where
   promote d = promote $ Dice (promote (1 :: Integer)) d Nothing
+
+instance Converter [Integer] ListValues where
+  promote = LVBase . LVBList . (promote <$>)

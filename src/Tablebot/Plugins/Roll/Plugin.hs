@@ -10,43 +10,51 @@
 module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
 import Control.Monad.Writer (MonadIO (liftIO), void)
-import Data.Bifunctor (Bifunctor (first))
 import Data.ByteString.Lazy (toStrict)
+import Data.Default (Default (def))
 import Data.Distribution (isValid)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
 import Discord (restCall)
-import Discord.Internal.Rest.Channel (ChannelRequest (CreateMessageDetailed), MessageDetailedOpts (MessageDetailedOpts))
-import Discord.Types (Message (messageAuthor, messageChannel))
+import Discord.Interactions
+  ( Interaction (..),
+  )
+import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
+import Discord.Types (ActionRow (..), Button (..), Message (..), User (..), UserId, mkButton, mkEmoji)
 import System.Timeout (timeout)
+import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceStats (getStats, rangeExpr)
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (distributionByteString)
 import Tablebot.Utility
-import Tablebot.Utility.Discord (Format (Code), formatText, sendMessage, toMention)
+import Tablebot.Utility.Discord (Format (Code), formatText, sendCustomMessage, sendMessage, toMention')
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
-import Tablebot.Utility.Parser (inlineCommandHelper, skipSpace)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), WithError (WErr), pars)
+import Tablebot.Utility.Parser
+import Tablebot.Utility.SmartParser
 import Text.Megaparsec
 import Text.RawString.QQ (r)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
-rollDice' :: Maybe (Either ListValues Expr) -> Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
-rollDice' e' t m = do
-  let e = fromMaybe (Right defaultRoll) e'
-  (vs, ss) <- case e of
-    (Left a) -> liftIO $ first Left <$> evalList a
-    (Right b) -> liftIO $ first Right <$> evalInteger b
-  let msg = makeMsg vs ss
-  if countFormatting msg < 199
-    then sendMessage m msg
-    else sendMessage m (makeMsg (simplify vs) (prettyShow e <> " `[could not display rolls]`"))
+-- The userid of the user that called this command is also given.
+rollDice'' :: Maybe Program -> Maybe (Quoted Text) -> UserId -> DatabaseDiscord Text
+rollDice'' e' t uid = do
+  let e = fromMaybe (Program [] (Right defaultRoll)) e'
+  maybemsss <- liftIO $ timeout 1000000 $ evalProgram e
+  case maybemsss of
+    Nothing -> throwBot (EvaluationException "Could not process expression in one second" [])
+    -- vs is either a list of integers and their textual representation, or
+    -- a single integer. ss is the message
+    Just (vs, ss) -> do
+      let msg = makeMsg vs ss
+      if countFormatting msg < 199
+        then return msg
+        else return (makeMsg (simplify vs) (parseShow e <> " `[could not display rolls]`"))
   where
     dsc = maybe ": " (\(Qu t') -> " \"" <> t' <> "\": ") t
-    baseMsg = toMention (messageAuthor m) <> " rolled" <> dsc
+    baseMsg = toMention' uid <> " rolled" <> dsc
     makeLine (i, s) = pack (show i) <> Data.Text.replicate (max 0 (6 - length (show i))) " " <> " ⟵ " <> s
     makeMsg (Right v) s = baseMsg <> s <> ".\nOutput: " <> pack (show v)
     makeMsg (Left []) _ = baseMsg <> "No output."
@@ -57,28 +65,76 @@ rollDice' e' t m = do
     simplify li = li
     countFormatting s = (`div` 4) $ T.foldr (\c cf -> cf + (2 * fromEnum (c == '`')) + fromEnum (c `elem` ['~', '_', '*'])) 0 s
 
+-- | A version of rollDice'' that is nicer to parse and has a constructed message.
+rollDice' :: Maybe Program -> Maybe (Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
+rollDice' e t (SenderUserId uid) = do
+  msg <- rollDice'' e t uid
+  return
+    ( (messageDetailsBasic msg)
+        { messageDetailsComponents =
+            Just
+              [ ActionRowButtons
+                  -- we take the first 100 characters of the button customid
+                  --  because they're only allowed to be 100 characters long.
+                  -- the button is disabled if it's meant to be more than 100
+                  --  characters so we don't have to worry about this.
+                  [ (mkButton buttonName (T.take 100 buttonCustomId))
+                      { buttonEmoji = Just (mkEmoji "🎲"),
+                        buttonDisabled = buttonDisabled
+                      }
+                  ]
+              ]
+        }
+    )
+  where
+    appendIf t' Nothing = t'
+    appendIf t' (Just e') = t' <> " " <> parseShow e'
+    buttonCustomId = (("roll reroll " <> pack (show uid)) `appendIf` e) `appendIf` t
+    (buttonName, buttonDisabled) = if T.length buttonCustomId > 100 then ("Expr too long", True) else ("Reroll", False)
+
+rollSlashCommandFunction :: Labelled "expression" "what's being evaluated" (Maybe Text) -> Labelled "quote" "associated message" (Maybe (Quoted Text)) -> SenderUserId -> DatabaseDiscord MessageDetails
+rollSlashCommandFunction (Labelled mt) (Labelled qt) suid = do
+  lve <- mapM (parseValue (pars <* eof)) mt
+  rollDice' lve qt suid
+
+rerollComponentRecv :: ComponentRecv
+rerollComponentRecv = ComponentRecv "reroll" (processComponentInteraction' rollDiceParserI True)
+
 -- | Manually creating parser for this command, since SmartCommand doesn't work fully for
 -- multiple Maybe values
 rollDiceParser :: Parser (Message -> DatabaseDiscord ())
 rollDiceParser = choice (try <$> options)
   where
     -- Just the value is given to the command, no quote.
-    justEither :: WithError "Incorrect expression/list value. Please check the expression" (Either ListValues Expr) -> Message -> DatabaseDiscord ()
+    justEither :: WithError "Incorrect expression/list value. Please check the expression" Program -> SenderUserId -> DatabaseDiscord MessageDetails
     justEither (WErr x) = rollDice' (Just x) Nothing
     -- Nothing is given to the command, a default case.
-    nothingAtAll :: WithError "Expected eof" () -> Message -> DatabaseDiscord ()
+    nothingAtAll :: WithError "Expected eof" () -> SenderUserId -> DatabaseDiscord MessageDetails
     nothingAtAll (WErr _) = rollDice' Nothing Nothing
     -- Both the value and the quote are present.
-    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Either ListValues Expr, Quoted Text) -> Message -> DatabaseDiscord ()
+    bothVals :: WithError "Incorrect format. Please check the expression and quote" (Program, Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
     bothVals (WErr (x, y)) = rollDice' (Just x) (Just y)
     -- Just the quote is given to the command.
-    justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> Message -> DatabaseDiscord ()
+    justText :: WithError "Incorrect quote. Please check the quote format" (Quoted Text) -> SenderUserId -> DatabaseDiscord MessageDetails
     justText (WErr x) = rollDice' Nothing (Just x)
     options =
       [ parseComm justEither,
         parseComm nothingAtAll,
         parseComm bothVals,
         parseComm justText
+      ]
+
+-- | Creating a parser for the component interactions stuff. Needs to be
+-- manually made since I think the maybe parser stuff doesn't work properly
+-- still?
+rollDiceParserI :: Parser (Interaction -> DatabaseDiscord MessageDetails)
+rollDiceParserI = choice (try <$> options)
+  where
+    options =
+      [ onlyAllowRequestor (\lv -> rollDice' (Just lv) Nothing),
+        onlyAllowRequestor (rollDice' Nothing Nothing),
+        onlyAllowRequestor (\lv qt -> rollDice' (Just lv) (Just qt)),
+        onlyAllowRequestor (rollDice' Nothing . Just)
       ]
 
 -- | Basic command for rolling dice.
@@ -92,7 +148,9 @@ rollDice = Command "roll" rollDiceParser [statsCommand]
 
 -- | Rolling dice inline.
 rollDiceInline :: InlineCommand
-rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> rollDice' (Just e) Nothing m)
+rollDiceInline = inlineCommandHelper "[|" "|]" pars (\e m -> runFunc e m >>= sendCustomMessage m)
+  where
+    runFunc e m = rollDice' (Just e) Nothing (SenderUserId $ userId $ messageAuthor m)
 
 -- | Help page for rolling dice, with a link to the help page.
 rollHelp :: HelpPage
@@ -114,13 +172,17 @@ Given an expression, evaluate the expression. Can roll inline using |]
       ++ "`[|to roll|]`."
       ++ [r| Can use `r` instead of `roll`.
 
-This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, dice of arbitrary size, dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum, configurable size of 50), and using functions like |]
+This supports addition, subtraction, multiplication, integer division, exponentiation, parentheses, rolling dice of arbitrary size (up to |]
+      ++ show maximumRNG
+      ++ [r| RNG calls), dice with custom sides, rerolling dice once on a condition, rerolling dice indefinitely on a condition, keeping or dropping the highest or lowest dice, keeping or dropping dice based on a condition, operating on lists (which have a maximum size of |]
+      ++ show maximumListLength
+      ++ [r|), if statements, var statements, and using functions like |]
       ++ unpack (intercalate ", " integerFunctionsList)
       ++ [r| (which return integers), or functions like |]
       ++ unpack (intercalate ", " listFunctionsList)
       ++ [r| (which return lists).
 
-To see a full list of uses, options and limitations, please go to <https://github.com/WarwickTabletop/tablebot/blob/main/docs/Roll.md>.
+To see a full list of uses, options and limitations, please go to <https://github.com/WarwickTabletop/tablebot/blob/stable/docs/Roll.md>.
 
 *Usage:*
   - `roll 1d20` -> rolls a twenty sided die and returns the outcome
@@ -133,7 +195,7 @@ To see a full list of uses, options and limitations, please go to <https://githu
 genchar :: Command
 genchar = Command "genchar" (snd $ head rpgSystems') (toCommand <$> rpgSystems')
   where
-    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Left lv)) (Just (Qu ("genchar for " <> nm))))
+    doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Program [] (Left lv))) (Just (Qu ("genchar for " <> nm))))
     rpgSystems' = doDiceRoll <$> rpgSystems
     toCommand (nm, ps) = Command nm ps []
 
@@ -168,7 +230,7 @@ statsCommand = Command "stats" statsCommandParser []
       return $ statsCommand' (firstE : restEs)
     statsCommand' :: [Expr] -> Message -> DatabaseDiscord ()
     statsCommand' es m = do
-      mrange' <- liftIO $ timeout (oneSecond * 5) $ mapM (\e -> rangeExpr e >>= \re -> re `seq` return (re, prettyShow e)) es
+      mrange' <- liftIO $ timeout (oneSecond * 5) $ mapM (\e -> rangeExpr e >>= \re -> re `seq` return (re, parseShow e)) es
       case mrange' of
         Nothing -> throwBot (EvaluationException "Timed out calculating statistics" [])
         (Just range') -> do
@@ -181,7 +243,13 @@ statsCommand = Command "stats" statsCommandParser []
               liftDiscord $
                 void $
                   restCall
-                    ( CreateMessageDetailed (messageChannel m) (MessageDetailedOpts (msg range') False Nothing (Just (T.unwords (snd <$> range') <> ".png", toStrict image)) Nothing Nothing)
+                    ( CreateMessageDetailed
+                        (messageChannelId m)
+                        ( def
+                            { messageDetailedContent = msg range',
+                              messageDetailedFile = Just (T.unwords (snd <$> range') <> ".png", toStrict image)
+                            }
+                        )
                     )
       where
         msg [(d, t)] =
@@ -221,7 +289,7 @@ statsHelp =
     "stats"
     []
     "calculate and display statistics for expressions."
-    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
+    "**Roll Stats**\nCan be used to display statistics for expressions of dice.\nDoes not work with \"programs\" ie multiple statements one after the other, or with accessing variables.\n\n*Usage:* `roll stats 2d20kh1`, `roll stats 4d6rr=1dl1+5`, `roll stats 3d6dl1+6 4d6dl1`"
     []
     None
 
@@ -231,5 +299,7 @@ rollPlugin =
   (plug "roll")
     { commands = [rollDice, commandAlias "r" rollDice, genchar],
       helpPages = [rollHelp, gencharHelp],
-      inlineCommands = [rollDiceInline]
+      inlineCommands = [rollDiceInline],
+      onComponentRecvs = [rerollComponentRecv],
+      applicationCommands = catMaybes [makeApplicationCommandPair "roll" "roll some dice with a description" rollSlashCommandFunction]
     }
