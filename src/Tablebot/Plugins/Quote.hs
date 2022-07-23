@@ -205,7 +205,7 @@ authorQuoteComponentRecv = ComponentRecv "author" (processComponentInteraction (
 filteredRandomQuote :: Context m => [Filter Quote] -> Text -> Maybe Button -> m -> DatabaseDiscord MessageDetails
 filteredRandomQuote quoteFilter errorMessage mb m = catchBot (filteredRandomQuote' quoteFilter errorMessage mb m) catchBot'
   where
-    catchBot' (GenericException "quote exception" _) = return $ (messageDetailsBasic errorMessage) {messageDetailsEmbeds = Just []}
+    catchBot' (GenericException "quote exception" _) = return $ (messageDetailsBasic errorMessage) {messageDetailsEmbeds = Just [], messageDetailsComponents = Just []}
     catchBot' e = throwBot e
 
 -- | @filteredRandomQuote'@ selects a random quote that meets a
@@ -223,8 +223,6 @@ filteredRandomQuote' quoteFilter errorMessage mb m = do
       case qu of
         Just q -> renderQuoteMessage q (fromSqlKey $ head key) mb m
         Nothing -> throwBot (GenericException "quote exception" (unpack errorMessage))
-
--- we somehow can't get the quote we described
 
 -- | @addQuote@, which looks for a message of the form
 -- @!quote add "quoted text" - author@, and then stores said quote in the
