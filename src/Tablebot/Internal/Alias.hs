@@ -15,8 +15,9 @@ import Database.Persist.Sqlite (BackendKey (SqlBackendKey))
 import qualified Database.Persist.Sqlite as Sql
 import Database.Persist.TH
 import Discord.Types
+import Tablebot.Internal.Administration (currentBlacklist)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Database (selectList)
+import Tablebot.Utility.Database (liftSql, selectList)
 import Tablebot.Utility.Types (EnvDatabaseDiscord)
 
 share
@@ -32,6 +33,10 @@ Alias
 |]
 
 getAliases :: UserId -> EnvDatabaseDiscord d (Maybe [Alias])
-getAliases uid =
-  (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
-    `catch` (\(_ :: SomeException) -> return Nothing)
+getAliases uid = do
+  blacklist <- liftSql currentBlacklist
+  if "alias" `elem` blacklist
+    then return Nothing
+    else
+      (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
+        `catch` (\(_ :: SomeException) -> return Nothing)
