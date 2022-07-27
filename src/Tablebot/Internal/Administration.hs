@@ -14,11 +14,11 @@ module Tablebot.Internal.Administration
   )
 where
 
-import Control.Monad.Cont (void, when)
+import Control.Monad.Cont (MonadIO, void, when)
 import Data.List.Extra (isInfixOf, lower, trim)
 import Data.Text (Text, pack)
 import Database.Persist
-import Database.Persist.Sqlite (SqlPersistM)
+import Database.Persist.Sqlite (SqlPersistT)
 import Database.Persist.TH
 import System.Environment (lookupEnv)
 import System.Process
@@ -32,7 +32,7 @@ PluginBlacklist
     deriving Show
 |]
 
-currentBlacklist :: SqlPersistM [Text]
+currentBlacklist :: MonadIO m => SqlPersistT m [Text]
 currentBlacklist = do
   bl <- selectList allBlacklisted []
   return $ fmap (pack . pluginBlacklistLabel . entityVal) bl
@@ -61,22 +61,26 @@ restartIsTerminal :: ShutdownReason -> Bool
 restartIsTerminal Reload = False
 restartIsTerminal _ = True
 
+gitUpdateEnabled :: IO Bool
+gitUpdateEnabled = do
+  maybeEnabled <- lookupEnv "ALLOW_GIT_UPDATE"
+  return $ maybe False ((== "true") . lower . trim) maybeEnabled
+
 updateGit :: IO ()
 updateGit = do
-  maybeEnabled <- lookupEnv "ALLOW_GIT_UPDATE"
-  let enabled = maybe False ((== "true") . lower . trim) maybeEnabled
+  enabled <- gitUpdateEnabled
   when enabled $ do
     status <- readProcess "git" ["status"] ""
     let pattern :: String
         pattern = "working tree clean"
         clean :: Bool
-        clean = isInfixOf pattern status
+        clean = pattern `isInfixOf` status
     if clean
       then do
         callProcess "git" ["pull", "--rebase"]
         pullStatus <- readProcess "git" ["status"] ""
         let pullClean :: Bool
-            pullClean = isInfixOf pattern pullStatus
+            pullClean = pattern `isInfixOf` pullStatus
         if pullClean
           then putStrLn "Git pulled successfully. Restarting"
           else do
@@ -85,4 +89,4 @@ updateGit = do
       else putStrLn "Git directory not clean. Not updating"
 
 gitVersion :: IO Text
-gitVersion = (pack . trim) <$> readProcess "git" ["rev-parse", "HEAD"] ""
+gitVersion = pack . trim <$> readProcess "git" ["rev-parse", "HEAD"] ""

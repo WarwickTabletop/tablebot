@@ -38,7 +38,6 @@ import Tablebot.Plugins.Netrunner.Utility.BanList (activeBanList, isBanned, isRe
 import Tablebot.Plugins.Netrunner.Utility.Misc (formatNr)
 import Tablebot.Utility
 import Tablebot.Utility.Types ()
-import Tablebot.Utility.Utils (intToText, maybeEmptyPrepend)
 
 -- | @toLink@ takes a card and generates a link to its NetrunnerDB page.
 toLink :: Card -> Text
@@ -174,8 +173,8 @@ toReleaseData api card = fromMaybe "" helper
       return $ faction <> " • " <> expansion <> pos
 
 -- | @toColour@ gets the factional colour of a card to use in its embed.
-toColour :: NrApi -> Card -> DiscordColour
-toColour api card = maybe Default (hexToDiscordColour . unpack . Faction.colour) (toFaction api card)
+toColour :: NrApi -> Card -> DiscordColor
+toColour api card = maybe DiscordColorDefault (hexToDiscordColor . unpack . Faction.colour) (toFaction api card)
 
 -- | @toFlavour@ gets a cards flavour text (and makes it italic).
 toFlavour :: Card -> EnvDatabaseDiscord NrApi (Maybe Text)

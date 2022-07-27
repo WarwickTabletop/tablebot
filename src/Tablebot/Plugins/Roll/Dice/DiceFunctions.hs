@@ -21,9 +21,10 @@ module Tablebot.Plugins.Roll.Dice.DiceFunctions
 where
 
 import Control.Monad.Exception (MonadException)
-import Data.List (genericDrop, genericLength, genericTake, sort)
+import Data.List (genericDrop, genericLength, genericReplicate, genericTake, sort)
 import Data.Map as M (Map, fromList, keys)
 import Data.Maybe (fromJust)
+import Data.Proxy (Proxy (..))
 import Data.Text (Text, unpack)
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
 
@@ -76,6 +77,10 @@ listFunctionsList = M.keys listFunctions
 -- each function that returns an integer.
 listFunctions' :: [FuncInfoBase [Integer]]
 listFunctions' =
+  funcInfoInsert :
+  constructFuncInfo "prepend" (:) :
+  constructFuncInfo "replicate" (genericReplicate @Integer) :
+  funcInfoSet :
   constructFuncInfo "concat" (++) :
   constructFuncInfo "between" between :
   constructFuncInfo "drop" (genericDrop @Integer) :
@@ -85,13 +90,39 @@ listFunctions' =
     between i i' = let (mi, ma, rev) = (min i i', max i i', if i > i' then reverse else id) in rev [mi .. ma]
 
 -- | The `FuncInfo` of the function that indexes into a list.
+--
+-- Creates a function that takes an integer and a list and returns an integer.
 funcInfoIndex :: FuncInfo
 funcInfoIndex = FuncInfo "index" [ATInteger, ATIntegerList] ATInteger fiIndex
   where
     fiIndex (LIInteger i : [LIList is])
       | i < 0 || i >= genericLength is = throwBot $ EvaluationException ("index out of range: " ++ show i) []
       | otherwise = return (is !! fromInteger i)
-    fiIndex is = throwBot $ EvaluationException ("incorrect number of arguments. expected 2, got " ++ show (length is)) []
+    fiIndex is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 2, got " ++ show (length is)) []
+
+-- | The `FuncInfo` of the function that sets an element in a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
+funcInfoSet :: FuncInfoBase [Integer]
+funcInfoSet = FuncInfo "set" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
+  where
+    fiSet (LIInteger i : LIInteger j : [LIList js])
+      | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
+      | otherwise = return $ genericTake i js ++ j : genericDrop (i + 1) js
+    fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
+
+-- | The `FuncInfo` of the function that inserts an integer into a list.
+--
+-- Creates a function that takes an index, an integer and a list and returns a
+-- list.
+funcInfoInsert :: FuncInfoBase [Integer]
+funcInfoInsert = FuncInfo "insert" [ATInteger, ATInteger, ATIntegerList] ATIntegerList fiSet
+  where
+    fiSet (LIInteger i : LIInteger j : [LIList js])
+      | i < 0 || i >= genericLength js = throwBot $ EvaluationException ("index out of range: " ++ show i) []
+      | otherwise = return $ genericTake i js ++ j : genericDrop i js
+    fiSet is = throwBot $ EvaluationException ("incorrect number/type of arguments. expected 3, got " ++ show (length is)) []
 
 -- | A data structure to contain the information about a given function,
 -- including types, the function name, and the function itself.
@@ -111,7 +142,7 @@ constructFuncInfo s f = constructFuncInfo' s f (Nothing, Nothing, const False)
 constructFuncInfo' :: forall j f. (ApplyFunc f, Returns f ~ j) => Text -> f -> (Maybe Integer, Maybe Integer, Integer -> Bool) -> FuncInfoBase j
 constructFuncInfo' s f bs = FuncInfo s params (last types) (applyFunc f (fromIntegral (length params)) bs)
   where
-    types = getTypes f
+    types = getTypes (Proxy :: Proxy f)
     params = init types
 
 -- | Some evaluated values, either an integer or a list of values with their
@@ -127,11 +158,11 @@ data ArgType = ATInteger | ATIntegerList
 -- types. Only supports integers and integer lists currently.
 class ArgCount f where
   -- | Get the number of arguments to a function.
-  getArgs :: f -> Integer
+  getArgs :: Proxy f -> Integer
   getArgs = (+ (-1)) . fromIntegral . length . getTypes
 
   -- | Get the types of arguments to a function.
-  getTypes :: f -> [ArgType]
+  getTypes :: Proxy f -> [ArgType]
 
 instance ArgCount Integer where
   getTypes _ = [ATInteger]
@@ -140,10 +171,10 @@ instance ArgCount [Integer] where
   getTypes _ = [ATIntegerList]
 
 instance ArgCount f => ArgCount (Integer -> f) where
-  getTypes f = ATInteger : getTypes (f 1)
+  getTypes _ = ATInteger : getTypes (Proxy :: Proxy f)
 
 instance ArgCount f => ArgCount ([Integer] -> f) where
-  getTypes f = ATIntegerList : getTypes (f [1])
+  getTypes _ = ATIntegerList : getTypes (Proxy :: Proxy f)
 
 -- | Type class which represents applying a function f to some inputs when given
 -- the bounds for the function and some number of inputs.
@@ -187,21 +218,21 @@ instance {-# OVERLAPPING #-} ApplyFunc [Integer] where
 -- argument value is an integer. If there are no arguments or the argument is
 -- of the wrong type, an exception is thrown.
 instance {-# OVERLAPPABLE #-} (ApplyFunc f) => ApplyFunc (Integer -> f) where
-  applyFunc f args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
+  applyFunc _ args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
     where
-      dif = args - getArgs f
+      dif = args - getArgs (Proxy :: Proxy f)
   applyFunc f args bs ((LIInteger x) : xs) = checkBounds x bs >>= \x' -> applyFunc (f x') args bs xs
-  applyFunc _ _ _ (_ : _) = throwBot $ EvaluationException "incorrect type given to function. expected an integer, got a list" []
+  applyFunc _ _ _ _ = throwBot $ EvaluationException "incorrect type given to function. expected an integer, got a list" []
 
 -- This is one of two recursive cases for applyFunc. This is the case where the
 -- argument value is a list of integers. If there are no arguments or the
 -- argument is of the wrong type, an exception is thrown.
 instance {-# OVERLAPPABLE #-} (ApplyFunc f) => ApplyFunc ([Integer] -> f) where
-  applyFunc f args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
+  applyFunc _ args _ [] = throwBot $ EvaluationException ("incorrect number of arguments to function. got " <> show dif <> ", expected " <> show args) []
     where
-      dif = args - getArgs f
+      dif = args - getArgs (Proxy :: Proxy f)
   applyFunc f args bs ((LIList x) : xs) = applyFunc (f x) args bs xs
-  applyFunc _ _ _ (_ : _) = throwBot $ EvaluationException "incorrect type given to function. expected a list, got an integer" []
+  applyFunc _ _ _ _ = throwBot $ EvaluationException "incorrect type given to function. expected a list, got an integer" []
 
 -- | Simple type family that gets the return type of whatever function or value
 -- is given
