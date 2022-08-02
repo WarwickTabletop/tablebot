@@ -285,7 +285,7 @@ instance ParseShow ArgValue where
 instance ParseShow ListValues where
   parseShow (LVBase e) = parseShow e
   parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
-  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate ", " (parseShow <$> n) <> ")"
   parseShow (LVVar t) = t
   parseShow (ListValuesMisc l) = parseShow l
 
