@@ -17,7 +17,7 @@ import Tablebot.Internal.Permission (getSenderPermission, userHasPermission)
 import Tablebot.Internal.Plugins (changeAction)
 import Tablebot.Internal.Types
 import Tablebot.Utility.Discord (Message, sendMessage)
-import Tablebot.Utility.Parser (skipSpace)
+import Tablebot.Utility.Parser (skipSpace, skipSpace1)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.Types hiding (helpPages)
 import Text.Megaparsec (choice, chunk, eof, try, (<?>), (<|>))
@@ -38,9 +38,12 @@ handleHelp rootText hp = parseHelpPage root
 
 parseHelpPage :: HelpPage -> Parser (Message -> CompiledDatabaseDiscord ())
 parseHelpPage hp = do
-  _ <- choice (map chunk (helpName hp : helpAliases hp))
-  skipSpace
-  (try eof $> displayHelp hp) <|> choice (map parseHelpPage $ helpSubpages hp) <?> "Unknown Subcommand"
+  t <- choice (map chunk (helpName hp : helpAliases hp))
+  let subcommands = choice (map parseHelpPage $ helpSubpages hp)
+
+  case t of -- if t is empty string, that means that we're in the base case
+    "" -> subcommands
+    _ -> (try (skipSpace >> eof) $> displayHelp hp) <|> (skipSpace1 *> subcommands) <?> "Unknown Subcommand"
 
 displayHelp :: HelpPage -> Message -> CompiledDatabaseDiscord ()
 displayHelp hp m = changeAction () . requirePermission (helpPermission hp) m $ do
