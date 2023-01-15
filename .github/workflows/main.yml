@@ -54,8 +54,7 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }} # dont push on a pull request
-          tags: |
-            "ghcr.io/${{ github.repository_owner }}/tablebot:latest"
-            "ghcr.io/${{ github.repository_owner }}/tablebot:${{ steps.hash.outputs.sha_short }}"
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
