@@ -33,7 +33,7 @@ jobs:
 
       - name: Log in to the Container registry
         uses: docker/login-action@v2
-        if: github.ref_name == 'main' && github.event_name == 'push' # don't need to login if we're not pushing
+        if: github.event_name != 'pull_request' # don't need to login if we're not pushing
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
