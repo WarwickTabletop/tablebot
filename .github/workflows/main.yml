@@ -46,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          push: github.ref_name == 'main' && github.event_name == 'push' # only actually publish on push to main
+          push: ${{ github.ref_name == 'main' && github.event_name == 'push' }} # only actually publish on push to main
           tags: |
             "ghcr.io/${{ github.repository_owner }}/tablebot:latest"
             "ghcr.io/${{ github.repository_owner }}/tablebot:${{ steps.hash.outputs.sha_short }}"
