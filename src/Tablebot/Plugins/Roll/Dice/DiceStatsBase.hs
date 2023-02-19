@@ -25,10 +25,11 @@ import qualified Data.Text as T
 import Diagrams (Diagram, dims2D, renderDia)
 import Diagrams.Backend.Rasterific
 import Graphics.Rendering.Chart.Axis.Int
-import Graphics.Rendering.Chart.Backend.Diagrams (defaultEnv, runBackendR)
+import Graphics.Rendering.Chart.Backend.Diagrams (runBackendR)
 import Graphics.Rendering.Chart.Backend.Types
 import Graphics.Rendering.Chart.Easy
 import Tablebot.Plugins.Roll.Dice.DiceEval (evaluationException)
+import Tablebot.Utility.Font (makeSansSerifvEnv)
 
 -- | A wrapper type for mapping values to their probabilities.
 type Distribution = D.Distribution Integer
@@ -51,7 +52,7 @@ distributionDiagram d = do
   if null d
     then evaluationException "empty distribution" []
     else do
-      defEnv <- defaultEnv (AlignmentFns id id) diagramX diagramY
+      defEnv <- makeSansSerifvEnv diagramX diagramY
       return . fst $ runBackendR defEnv r
   where
     r = distributionRenderable d
