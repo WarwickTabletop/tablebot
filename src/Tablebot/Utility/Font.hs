@@ -33,23 +33,24 @@ makeFontMap = mapM (liftIO . loadFont) localFonts
 
 -- thanks to https://stackoverflow.com/questions/21549082/how-do-i-deploy-an-executable-using-chart-diagrams-standard-fonts-without-cabal
 localFonts :: M.Map (String, FontSlant, FontWeight) FilePath
-localFonts = M.fromList
-        [ (("serif", FontSlantNormal, FontWeightNormal), "fonts/LinLibertine_R.svg"),
-          (("serif", FontSlantNormal, FontWeightBold), "fonts/LinLibertine_RB.svg"),
-          (("serif", FontSlantItalic, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
-          (("serif", FontSlantOblique, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
-          (("serif", FontSlantItalic, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
-          (("serif", FontSlantOblique, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
-          (("sans-serif", FontSlantNormal, FontWeightNormal), "fonts/SourceSansPro_R.svg"),
-          (("sans-serif", FontSlantNormal, FontWeightBold), "fonts/SourceSansPro_RB.svg"),
-          (("sans-serif", FontSlantItalic, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
-          (("sans-serif", FontSlantOblique, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
-          (("sans-serif", FontSlantItalic, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
-          (("sans-serif", FontSlantOblique, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
-          (("monospace", FontSlantNormal, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
-          (("monospace", FontSlantNormal, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
-          (("monospace", FontSlantItalic, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
-          (("monospace", FontSlantOblique, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
-          (("monospace", FontSlantItalic, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
-          (("monospace", FontSlantOblique, FontWeightBold), "fonts/SourceCodePro_RB.svg")
-        ]
+localFonts =
+  M.fromList
+    [ (("serif", FontSlantNormal, FontWeightNormal), "fonts/LinLibertine_R.svg"),
+      (("serif", FontSlantNormal, FontWeightBold), "fonts/LinLibertine_RB.svg"),
+      (("serif", FontSlantItalic, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
+      (("serif", FontSlantOblique, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
+      (("serif", FontSlantItalic, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
+      (("serif", FontSlantOblique, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
+      (("sans-serif", FontSlantNormal, FontWeightNormal), "fonts/SourceSansPro_R.svg"),
+      (("sans-serif", FontSlantNormal, FontWeightBold), "fonts/SourceSansPro_RB.svg"),
+      (("sans-serif", FontSlantItalic, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
+      (("sans-serif", FontSlantOblique, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
+      (("sans-serif", FontSlantItalic, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
+      (("sans-serif", FontSlantOblique, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
+      (("monospace", FontSlantNormal, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+      (("monospace", FontSlantNormal, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
+      (("monospace", FontSlantItalic, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+      (("monospace", FontSlantOblique, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+      (("monospace", FontSlantItalic, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
+      (("monospace", FontSlantOblique, FontWeightBold), "fonts/SourceCodePro_RB.svg")
+    ]
