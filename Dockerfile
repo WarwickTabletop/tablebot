@@ -19,7 +19,8 @@ RUN mv "$(stack path --local-install-root --system-ghc)/bin" /tablebot/build/bin
 FROM haskell:8.10.7-slim as app
 
 # system runtime deps
-RUN apt-get update -qq && \
+RUN sed -i s/deb.debian.org/archive.debian.org/g /etc/apt/sources.list && \ 
+  apt-get update -qq && \
   apt-get install -qq -y libpcre3 libicu63 --fix-missing --no-install-recommends && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
