@@ -3,11 +3,9 @@ FROM haskell:8.10.7 as build
 RUN mkdir -p /tablebot/build
 WORKDIR /tablebot/build
 
-# https://unix.stackexchange.com/a/743863
-RUN sed -i s/deb.debian.org/archive.debian.org/g /etc/apt/sources.list
-
 # system lib dependencies
-RUN apt-get update -qq && \
+RUN sed -i s/deb.debian.org/archive.debian.org/g /etc/apt/sources.list && \ 
+  apt-get update -qq && \
   apt-get install -qq -y libpcre3-dev build-essential pkg-config libicu-dev --fix-missing --no-install-recommends && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
