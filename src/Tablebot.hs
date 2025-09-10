@@ -55,7 +55,6 @@ import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
 import Tablebot.Utility.Font (makeFontMap)
 import Tablebot.Utility.Help (generateHelp)
-import Text.Regex.PCRE ((=~))
 import UnliftIO.Concurrent
 
 -- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
@@ -72,8 +71,6 @@ runTablebotWithEnv plugins config = do
     _ <- swapMVar rFlag Reload
     loadEnv
     dToken <- pack <$> getEnv "DISCORD_TOKEN"
-    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{38}$" :: String)) $
-      die "Invalid token format. Please check it is a bot token"
     prefix <- pack . fromMaybe "!" <$> lookupEnv "PREFIX"
     dbpath <- getEnv "SQLITE_FILENAME"
     runTablebot vInfo dToken prefix dbpath (addAdministrationPlugin rFlag plugins) config
