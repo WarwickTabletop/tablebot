@@ -29,44 +29,27 @@ makeSansSerifEnv diX diY fontMap = createEnv (AlignmentFns id id) diX diY fontSe
     fontSelector FontStyle {..} = localKeySimple M.! (_font_slant, _font_weight)
 
 makeFontMap :: (Read n, RealFloat n, MonadIO m, MonadException m) => m (FontMap n)
-makeFontMap = do
-  exec <- liftIO $ lookupEnv "FONT_PATH"
-  case exec of
-    Nothing -> liftIO $ putStrLn "could not find env var FONT_PATH" >> pure M.empty
-    Just exec' -> do
-      let local = localFonts exec'
-      mapM (liftIO . loadFont) local
+makeFontMap = mapM (liftIO . loadFont) localFonts
 
 -- thanks to https://stackoverflow.com/questions/21549082/how-do-i-deploy-an-executable-using-chart-diagrams-standard-fonts-without-cabal
-localFonts :: FilePath -> M.Map (String, FontSlant, FontWeight) FilePath
-localFonts exec =
-  let serifR = replaceFileName exec "fonts/LinLibertine_R.svg"
-      serifRB = replaceFileName exec "fonts/LinLibertine_RB.svg"
-      serifRBI = replaceFileName exec "fonts/LinLibertine_RBI.svg"
-      serifRI = replaceFileName exec "fonts/LinLibertine_RI.svg"
-      sansR = replaceFileName exec "fonts/SourceSansPro_R.svg"
-      sansRB = replaceFileName exec "fonts/SourceSansPro_RB.svg"
-      sansRBI = replaceFileName exec "fonts/SourceSansPro_RBI.svg"
-      sansRI = replaceFileName exec "fonts/SourceSansPro_RI.svg"
-      monoR = replaceFileName exec "fonts/SourceCodePro_R.svg"
-      monoRB = replaceFileName exec "fonts/SourceCodePro_RB.svg"
-   in M.fromList
-        [ (("serif", FontSlantNormal, FontWeightNormal), serifR),
-          (("serif", FontSlantNormal, FontWeightBold), serifRB),
-          (("serif", FontSlantItalic, FontWeightNormal), serifRI),
-          (("serif", FontSlantOblique, FontWeightNormal), serifRI),
-          (("serif", FontSlantItalic, FontWeightBold), serifRBI),
-          (("serif", FontSlantOblique, FontWeightBold), serifRBI),
-          (("sans-serif", FontSlantNormal, FontWeightNormal), sansR),
-          (("sans-serif", FontSlantNormal, FontWeightBold), sansRB),
-          (("sans-serif", FontSlantItalic, FontWeightNormal), sansRI),
-          (("sans-serif", FontSlantOblique, FontWeightNormal), sansRI),
-          (("sans-serif", FontSlantItalic, FontWeightBold), sansRBI),
-          (("sans-serif", FontSlantOblique, FontWeightBold), sansRBI),
-          (("monospace", FontSlantNormal, FontWeightNormal), monoR),
-          (("monospace", FontSlantNormal, FontWeightBold), monoRB),
-          (("monospace", FontSlantItalic, FontWeightNormal), monoR),
-          (("monospace", FontSlantOblique, FontWeightNormal), monoR),
-          (("monospace", FontSlantItalic, FontWeightBold), monoRB),
-          (("monospace", FontSlantOblique, FontWeightBold), monoRB)
+localFonts :: M.Map (String, FontSlant, FontWeight) FilePath
+localFonts = M.fromList
+        [ (("serif", FontSlantNormal, FontWeightNormal), "fonts/LinLibertine_R.svg"),
+          (("serif", FontSlantNormal, FontWeightBold), "fonts/LinLibertine_RB.svg"),
+          (("serif", FontSlantItalic, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
+          (("serif", FontSlantOblique, FontWeightNormal), "fonts/LinLibertine_RI.svg"),
+          (("serif", FontSlantItalic, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
+          (("serif", FontSlantOblique, FontWeightBold), "fonts/LinLibertine_RBI.svg"),
+          (("sans-serif", FontSlantNormal, FontWeightNormal), "fonts/SourceSansPro_R.svg"),
+          (("sans-serif", FontSlantNormal, FontWeightBold), "fonts/SourceSansPro_RB.svg"),
+          (("sans-serif", FontSlantItalic, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
+          (("sans-serif", FontSlantOblique, FontWeightNormal), "fonts/SourceSansPro_RI.svg"),
+          (("sans-serif", FontSlantItalic, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
+          (("sans-serif", FontSlantOblique, FontWeightBold), "fonts/SourceSansPro_RBI.svg"),
+          (("monospace", FontSlantNormal, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+          (("monospace", FontSlantNormal, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
+          (("monospace", FontSlantItalic, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+          (("monospace", FontSlantOblique, FontWeightNormal), "fonts/SourceCodePro_R.svg"),
+          (("monospace", FontSlantItalic, FontWeightBold), "fonts/SourceCodePro_RB.svg"),
+          (("monospace", FontSlantOblique, FontWeightBold), "fonts/SourceCodePro_RB.svg")
         ]
