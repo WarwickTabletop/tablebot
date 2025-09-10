@@ -127,7 +127,7 @@ data AdvancedOrdering = Not AdvancedOrdering | OrderingId Ordering | And [Advanc
   deriving (Show, Eq, Ord)
 
 -- | Compare two values according an advanced ordering.
-applyCompare :: Ord a => AdvancedOrdering -> a -> a -> Bool
+applyCompare :: (Ord a) => AdvancedOrdering -> a -> a -> Bool
 applyCompare (OrderingId o) a b = o == compare a b
 applyCompare (And os) a b = all (\o -> applyCompare o a b) os
 applyCompare (Or os) a b = any (\o -> applyCompare o a b) os

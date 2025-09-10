@@ -25,7 +25,8 @@ data Faction = Faction
 
 instance FromJSON Faction where
   parseJSON = withObject "Faction" $ \o ->
-    Faction <$> o .: "code"
+    Faction
+      <$> o .: "code"
       <*> o .: "color"
       <*> o .: "is_mini"
       <*> o .: "name"

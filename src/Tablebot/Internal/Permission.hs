@@ -63,7 +63,7 @@ permsFromGroups debug krls gps =
 --   debug <- liftIO isDebug
 --   return $ permsFromGroups debug knownroles $ getMemberGroups member
 
-getSenderPermission :: Context m => m -> EnvDatabaseDiscord s UserPermission
+getSenderPermission :: (Context m) => m -> EnvDatabaseDiscord s UserPermission
 getSenderPermission m = do
   let member = contextMember m
   knownroles <- liftIO getKnownRoles

@@ -252,8 +252,7 @@ processComponentInteraction' _ _ _ = throwBot $ InteractionException "could not 
 onlyAllowRequestor :: forall f. (PComm f () Interaction MessageDetails) => f -> Parser (Interaction -> DatabaseDiscord MessageDetails)
 onlyAllowRequestor =
   onlyAllowRequestor'
-    ( (messageDetailsBasic "You don't have permission to use this component.") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]}
-    )
+    ((messageDetailsBasic "You don't have permission to use this component.") {messageDetailsFlags = Just $ InteractionResponseMessageFlags [InteractionResponseMessageFlagEphermeral]})
 
 -- | Take a message to send when a user that is not the one that created a
 -- component, and then parse out a user id, and then get the interaction

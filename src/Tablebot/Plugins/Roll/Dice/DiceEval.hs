@@ -170,12 +170,12 @@ class IOEvalList a where
   -- it took. If the `a` value is a dice value, the values of the dice should be
   -- displayed. This function adds the current location to the exception
   -- callstack.
-  evalShowL :: ParseShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL :: (ParseShow a) => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
   evalShowL a = do
     (is, mt) <- propagateException (parseShow a) (evalShowL' a)
     return (genericTake maximumListLength is, mt)
 
-  evalShowL' :: ParseShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL' :: (ParseShow a) => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
 
 evalArgValue :: ArgValue -> ProgramStateM ListInteger
 evalArgValue (AVExpr e) = do
@@ -216,10 +216,10 @@ class IOEval a where
   -- value, and the number of RNG calls it took. If the `a` value is a dice
   -- value, the values of the dice should be displayed. This function adds
   -- the current location to the exception callstack.
-  evalShow :: ParseShow a => a -> ProgramStateM (Integer, Text)
+  evalShow :: (ParseShow a) => a -> ProgramStateM (Integer, Text)
   evalShow a = propagateException (parseShow a) (evalShow' a)
 
-  evalShow' :: ParseShow a => a -> ProgramStateM (Integer, Text)
+  evalShow' :: (ParseShow a) => a -> ProgramStateM (Integer, Text)
 
 instance IOEval Base where
   evalShow' (NBase nb) = evalShow nb

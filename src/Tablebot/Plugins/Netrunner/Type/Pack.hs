@@ -24,7 +24,8 @@ data Pack = Pack
 
 instance FromJSON Pack where
   parseJSON = withObject "Pack" $ \o ->
-    Pack <$> o .: "code"
+    Pack
+      <$> o .: "code"
       <*> o .: "cycle_code"
       <*> o .: "name"
       <*> o .: "position"

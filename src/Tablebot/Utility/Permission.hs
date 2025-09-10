@@ -14,7 +14,7 @@ import Tablebot.Utility.Exception (BotException (PermissionException), throwBot)
 import Tablebot.Utility.Types
 
 -- | @requirePermission@ only runs the inputted effect if permissions are matched. Otherwise it returns an error.
-requirePermission :: Context m => RequiredPermission -> m -> EnvDatabaseDiscord s a -> EnvDatabaseDiscord s a
+requirePermission :: (Context m) => RequiredPermission -> m -> EnvDatabaseDiscord s a -> EnvDatabaseDiscord s a
 requirePermission perm m a = do
   p <- getSenderPermission m
   if userHasPermission perm p

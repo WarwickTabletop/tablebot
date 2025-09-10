@@ -32,7 +32,7 @@ PluginBlacklist
     deriving Show
 |]
 
-currentBlacklist :: MonadIO m => SqlPersistT m [Text]
+currentBlacklist :: (MonadIO m) => SqlPersistT m [Text]
 currentBlacklist = do
   bl <- selectList allBlacklisted []
   return $ fmap (pack . pluginBlacklistLabel . entityVal) bl

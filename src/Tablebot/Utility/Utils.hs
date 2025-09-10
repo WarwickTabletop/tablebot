@@ -30,12 +30,12 @@ isDebug = do
     justDebug (Just "1") = True
     justDebug _ = False
 
-debugPrint :: Show a => a -> IO ()
+debugPrint :: (Show a) => a -> IO ()
 debugPrint a = do
   d <- isDebug
   when d $ print a
 
-intToText :: Integral a => a -> Text
+intToText :: (Integral a) => a -> Text
 intToText = toStrict . toLazyText . decimal
 
 -- | @standardise@ takes converts text to lowercase and removes diacritics

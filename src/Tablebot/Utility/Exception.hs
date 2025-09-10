@@ -45,20 +45,20 @@ data BotException
 instance Exception BotException
 
 -- | Aliases for throw and catch that enforce the exception type.
-throwBot :: MonadException m => BotException -> m a
+throwBot :: (MonadException m) => BotException -> m a
 throwBot = throw
 
-catchBot :: MonadException m => m a -> (BotException -> m a) -> m a
+catchBot :: (MonadException m) => m a -> (BotException -> m a) -> m a
 catchBot = catch
 
 -- | @transformException@ takes a computation m that may fail, catches any
 -- exception it throws, and transforms it into a new one with transformer.
-transformException :: MonadException m => m a -> (BotException -> BotException) -> m a
+transformException :: (MonadException m) => m a -> (BotException -> BotException) -> m a
 transformException m transformer = m `catchBot` (throwBot . transformer)
 
 -- | @transformExceptionConst@ takes a computation m that may fail and replaces
 -- any exception it throws with the constant exception e.
-transformExceptionConst :: MonadException m => m a -> BotException -> m a
+transformExceptionConst :: (MonadException m) => m a -> BotException -> m a
 transformExceptionConst m e = m `catchBot` \_ -> throwBot e
 
 -- | @errorEmoji@ defines a Discord emoji in plaintext for use in error outputs.
@@ -69,7 +69,12 @@ errorEmoji = ":warning:"
 -- Discord.
 formatUserError :: String -> String -> String
 formatUserError name' message =
-  errorEmoji ++ " **" ++ name' ++ "** " ++ errorEmoji ++ "\n"
+  errorEmoji
+    ++ " **"
+    ++ name'
+    ++ "** "
+    ++ errorEmoji
+    ++ "\n"
     ++ "An error was encountered while resolving your command:\n"
     ++ "> `"
     ++ message

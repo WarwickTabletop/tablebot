@@ -41,14 +41,14 @@ diagramX, diagramY :: Double
 
 -- | Get the ByteString representation of the given distribution, setting the
 -- string as its title.
-distributionByteString :: MonadException m => FontMap Double -> [(Distribution, T.Text)] -> m B.ByteString
+distributionByteString :: (MonadException m) => FontMap Double -> [(Distribution, T.Text)] -> m B.ByteString
 distributionByteString fontMap d = encodePng . renderDia Rasterific opts <$> distributionDiagram fontMap d
   where
     opts = RasterificOptions (dims2D diagramX diagramY)
 
 -- | Get the Diagram representation of the given distribution, setting the
 -- string as its title.
-distributionDiagram :: MonadException m => FontMap Double -> [(Distribution, T.Text)] -> m (Diagram B)
+distributionDiagram :: (MonadException m) => FontMap Double -> [(Distribution, T.Text)] -> m (Diagram B)
 distributionDiagram fontMap d = do
   if null d
     then evaluationException "empty distribution" []

@@ -152,7 +152,7 @@ sendCustomReplyMessage m mid fail' t = do
 -- If you suffer from nightmares, don't look in 'Tablebot.Handler.Embed'. Nothing good lives there.
 -- In the future, I may actually submit a PR to discord-haskell with a fix to allow colours properly.
 sendEmbedMessage ::
-  Embeddable e =>
+  (Embeddable e) =>
   Message ->
   Text ->
   e ->
@@ -160,7 +160,7 @@ sendEmbedMessage ::
 sendEmbedMessage m = sendChannelEmbedMessage (messageChannelId m)
 
 sendChannelEmbedMessage ::
-  Embeddable e =>
+  (Embeddable e) =>
   ChannelId ->
   Text ->
   e ->

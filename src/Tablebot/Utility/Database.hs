@@ -51,10 +51,10 @@ delete r = liftSql $ Sql.delete r
 deleteBy :: (Sql.PersistEntity record, Sql.PersistEntityBackend record ~ Sql.SqlBackend) => Sql.Unique record -> EnvDatabaseDiscord d ()
 deleteBy r = liftSql $ Sql.deleteBy r
 
-deleteCascade :: Sql.DeleteCascade record Sql.SqlBackend => Sql.Key record -> EnvDatabaseDiscord d ()
+deleteCascade :: (Sql.DeleteCascade record Sql.SqlBackend) => Sql.Key record -> EnvDatabaseDiscord d ()
 deleteCascade r = liftSql $ Sql.deleteCascade r
 
-deleteCascadeWhere :: Sql.DeleteCascade record Sql.SqlBackend => [Sql.Filter record] -> EnvDatabaseDiscord d ()
+deleteCascadeWhere :: (Sql.DeleteCascade record Sql.SqlBackend) => [Sql.Filter record] -> EnvDatabaseDiscord d ()
 deleteCascadeWhere r = liftSql $ Sql.deleteCascadeWhere r
 
 deleteWhereCount :: (Sql.PersistEntity val, Sql.PersistEntityBackend val ~ Sql.SqlBackend) => [Sql.Filter val] -> EnvDatabaseDiscord d Int64

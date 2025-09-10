@@ -167,7 +167,7 @@ double = do
         _ <- char '.'
         num <- some digit
         return $ '.' : num
-      )
+    )
       <|> return ""
   return (read (minus : digits ++ decimal))
 
