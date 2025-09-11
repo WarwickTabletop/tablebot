@@ -211,7 +211,7 @@ instance IOEvalList (MiscData ListValues) where
 
 -- | This type class gives a function which evaluates the value to an integer
 -- and a string.
-class ParseShow a => IOEval a where
+class (ParseShow a) => IOEval a where
   -- | Evaluate the given item to an integer, a string representation of the
   -- value, and the number of RNG calls it took. If the `a` value is a dice
   -- value, the values of the dice should be displayed. This function adds

@@ -72,7 +72,7 @@ data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
 
 -- | The type for a binary operator between one or more `sub` values
 data BinOp sub typ where
-  BinOp :: Operation typ => sub -> [(typ, sub)] -> BinOp sub typ
+  BinOp :: (Operation typ) => sub -> [(typ, sub)] -> BinOp sub typ
 
 deriving instance (Show sub, Show typ) => Show (BinOp sub typ)
 
@@ -85,7 +85,7 @@ pattern SingBinOp a <-
 
 -- | The type class that means we can get an operation on integers from a value.
 class Operation a where
-  getOperation :: a -> (forall n. Integral n => n -> n -> n)
+  getOperation :: a -> (forall n. (Integral n) => n -> n -> n)
 
 -- | The type of the top level expression.
 --
