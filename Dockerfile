@@ -33,4 +33,6 @@ COPY --from=build /tablebot/build/bin .
 COPY .git .git 
 # we need fonts for the roll stats
 COPY fonts fonts
+# resources folder
+COPY resources resources
 CMD /tablebot/tablebot-exe
