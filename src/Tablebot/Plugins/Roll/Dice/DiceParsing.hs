@@ -40,7 +40,7 @@ failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Token
 variableName :: Parser T.Text
 variableName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
 
-instance CanParse a => CanParse (Var a) where
+instance (CanParse a) => CanParse (Var a) where
   pars = do
     _ <- try (string "var") <* skipSpace
     letCon <- try (char '!' $> VarLazy) <|> return Var
@@ -87,9 +87,11 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
-      <|> ListValuesMisc <$> (pars >>= checkVar)
-      <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
-      <|> LVBase <$> pars
+      <|> ListValuesMisc
+      <$> (pars >>= checkVar)
+        <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
+        <|> LVBase
+      <$> pars
     where
       checkVar (MiscVar l)
         | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
@@ -104,7 +106,8 @@ instance CanParse ListValuesBase where
               <* skipSpace
               <* (char '}' <??> "could not find closing brace for list")
           )
-      <|> LVBParen . unnest
+        <|> LVBParen
+        . unnest
       <$> pars
     where
       unnest (Paren (LVBase (LVBParen e))) = e
@@ -121,7 +124,7 @@ instance (CanParse b) => CanParse (If b) where
     e <- string "else" *> skipSpace1 *> pars
     return $ If a t e
 
-instance CanParse a => CanParse (MiscData a) where
+instance (CanParse a) => CanParse (MiscData a) where
   pars = (MiscVar <$> pars) <|> (MiscIf <$> pars)
 
 instance (CanParse sub, CanParse typ, Operation typ) => CanParse (BinOp sub typ) where
@@ -167,8 +170,11 @@ functionParser m mainCons =
 
 instance CanParse Negation where
   pars =
-    try (char '-') *> skipSpace *> (Neg <$> pars)
-      <|> NoNeg <$> pars
+    try (char '-')
+      *> skipSpace
+      *> (Neg <$> pars)
+        <|> NoNeg
+      <$> pars
 
 instance CanParse Expo where
   pars = do
@@ -178,7 +184,8 @@ instance CanParse Expo where
 instance CanParse NumBase where
   pars =
     (NBParen . unnest <$> pars)
-      <|> Value <$> integer <??> "could not parse integer"
+      <|> Value
+      <$> integer <??> "could not parse integer"
     where
       unnest (Paren (Expr (SingBinOp (Term (SingBinOp (NoNeg (NoExpo (NoFunc (NBase (NBParen e)))))))))) = e
       unnest e = e
@@ -193,8 +200,9 @@ instance CanParse Base where
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
     )
-      <|> DiceBase <$> parseDice (Value 1)
-      <|> (NumVar <$> try variableName)
+      <|> DiceBase
+      <$> parseDice (Value 1)
+        <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do
@@ -293,7 +301,7 @@ instance ParseShow ListValuesBase where
   parseShow (LVBList es) = "{" <> T.intercalate ", " (parseShow <$> es) <> "}"
   parseShow (LVBParen p) = parseShow p
 
-instance ParseShow a => ParseShow (MiscData a) where
+instance (ParseShow a) => ParseShow (MiscData a) where
   parseShow (MiscVar l) = parseShow l
   parseShow (MiscIf l) = parseShow l
 

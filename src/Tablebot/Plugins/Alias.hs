@@ -119,7 +119,8 @@ aliasList :: AliasType -> Message -> DatabaseDiscord ()
 aliasList at m = do
   aliases <- fmap Sql.entityVal <$> liftSql (Sql.selectList [AliasType Sql.==. at] [])
   let msg =
-        aliasTypeToText at <> " aliases:\n"
+        aliasTypeToText at
+          <> " aliases:\n"
           <> T.unlines (map (\(Alias a b _) -> "\t`" <> a <> "` -> `" <> b <> "`") aliases)
   sendMessage m msg
 

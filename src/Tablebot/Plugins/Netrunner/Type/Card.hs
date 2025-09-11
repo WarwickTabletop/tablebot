@@ -46,7 +46,8 @@ data Card = Card
 
 instance FromJSON Card where
   parseJSON = withObject "Card" $ \o ->
-    Card <$> o .:? "advancement_cost"
+    Card
+      <$> o .:? "advancement_cost"
       <*> o .:? "agenda_points"
       <*> o .:? "base_link"
       <*> o .:? "code"

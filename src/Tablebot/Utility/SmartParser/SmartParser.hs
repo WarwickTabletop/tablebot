@@ -125,7 +125,7 @@ instance CanParse Text where
 instance {-# OVERLAPPING #-} CanParse String where
   pars = word
 
-instance IsString a => CanParse (Quoted a) where
+instance (IsString a) => CanParse (Quoted a) where
   pars = Qu . fromString <$> quoted
 
 instance (ParseShow a) => ParseShow (Quoted a) where
@@ -133,7 +133,7 @@ instance (ParseShow a) => ParseShow (Quoted a) where
 
 -- A parser for @Maybe a@ attempts to parse @a@, returning @Just x@ if
 -- correctly parsed, else @Nothing@.
-instance CanParse a => CanParse (Maybe a) where
+instance (CanParse a) => CanParse (Maybe a) where
   pars = optional $ try (pars @a)
 
   -- Note: we override @parsThenMoveToNext@:
@@ -144,7 +144,7 @@ instance CanParse a => CanParse (Maybe a) where
       Just val -> Just val <$ (eof <|> skipSpace1)
 
 -- A parser for @[a]@ parses any number of @a@s.
-instance {-# OVERLAPPABLE #-} CanParse a => CanParse [a] where
+instance {-# OVERLAPPABLE #-} (CanParse a) => CanParse [a] where
   pars = many pars
 
 -- A parser for @Either a b@ attempts to parse @a@, and if that fails then
@@ -183,7 +183,7 @@ instance (CanParse a, CanParse b, CanParse c, CanParse d, CanParse e) => CanPars
     v <- pars @e
     return (x, y, z, w, v)
 
-instance KnownSymbol s => CanParse (Exactly s) where
+instance (KnownSymbol s) => CanParse (Exactly s) where
   pars = chunk (pack $ symbolVal (Proxy :: Proxy s)) >> return Ex
 
 instance (KnownSymbol err, CanParse x) => CanParse (WithError err x) where
@@ -203,10 +203,10 @@ instance CanParse () where
 instance CanParse Snowflake where
   pars = Snowflake . fromInteger <$> posInteger
 
-instance IsString a => CanParse (RestOfInput a) where
+instance (IsString a) => CanParse (RestOfInput a) where
   pars = ROI . fromString <$> untilEnd
 
-instance IsString a => CanParse (RestOfInput1 a) where
+instance (IsString a) => CanParse (RestOfInput1 a) where
   pars = ROI1 . fromString <$> untilEnd1
 
 -- | Parse a labelled value, by parsing the base value and adding the label

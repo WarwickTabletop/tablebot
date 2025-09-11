@@ -25,7 +25,8 @@ data Cycle = Cycle
 
 instance FromJSON Cycle where
   parseJSON = withObject "Cycle" $ \o ->
-    Cycle <$> o .: "code"
+    Cycle
+      <$> o .: "code"
       <*> o .: "name"
       <*> o .: "position"
       <*> o .: "size"

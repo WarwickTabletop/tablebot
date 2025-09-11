@@ -23,7 +23,7 @@ import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfoBase (..), ListInteger (..))
 import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 import Tablebot.Utility.Discord (Format (..), formatInput, formatText)
-import Tablebot.Utility.Exception (BotException (EvaluationException), catchBot, throwBot)
+import Tablebot.Utility.Exception (BotException (EvaluationException), catchBot, evaluationException, throwBot)
 import Tablebot.Utility.Parser (ParseShow (parseShow))
 import Tablebot.Utility.Random (chooseOne)
 
@@ -64,10 +64,6 @@ checkRNGCount :: ProgramStateM ()
 checkRNGCount = do
   rngCount <- gets getRNGCount
   when (rngCount > maximumRNG) $ evaluationException ("Maximum RNG count exceeded (" <> pack (show maximumRNG) <> ")") []
-
--- | Utility function to throw an `EvaluationException` when using `Text`.
-evaluationException :: (MonadException m) => Text -> [Text] -> m a
-evaluationException nm locs = throwBot $ EvaluationException (unpack nm) (unpack <$> locs)
 
 --- Evaluating an expression. Uses IO because dice are random
 
@@ -174,12 +170,12 @@ class IOEvalList a where
   -- it took. If the `a` value is a dice value, the values of the dice should be
   -- displayed. This function adds the current location to the exception
   -- callstack.
-  evalShowL :: ParseShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL :: (ParseShow a) => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
   evalShowL a = do
     (is, mt) <- propagateException (parseShow a) (evalShowL' a)
     return (genericTake maximumListLength is, mt)
 
-  evalShowL' :: ParseShow a => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
+  evalShowL' :: (ParseShow a) => a -> ProgramStateM ([(Integer, Text)], Maybe Text)
 
 evalArgValue :: ArgValue -> ProgramStateM ListInteger
 evalArgValue (AVExpr e) = do

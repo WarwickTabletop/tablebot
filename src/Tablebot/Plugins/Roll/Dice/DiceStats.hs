@@ -68,7 +68,7 @@ rangeListValues lv = do
 -- has a variety of  functions that operate on them.
 --
 -- An `Data.Distribution.Experiment` is a monadic form of this.
-class ParseShow a => Range a where
+class (ParseShow a) => Range a where
   -- | Try and get the `Experiment` of the given value, throwing a
   -- `MonadException` on failure.
   range :: (MonadException m, ParseShow a) => a -> m Experiment
@@ -192,7 +192,7 @@ rangeDiceExperiment die (Just (DieOpRecur doo mdor)) is = rangeDieOpExperiment d
 
 -- | Perform one dice operation on the given `Experiment`, possibly returning
 -- a modified experiment representing the distribution of dice rolls.
-rangeDieOpExperiment :: MonadException m => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
+rangeDieOpExperiment :: (MonadException m) => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
 rangeDieOpExperiment die (DieOpOptionLazy o) is = rangeDieOpExperiment die o is
 rangeDieOpExperiment _ (DieOpOptionKD kd lhw) is = rangeDieOpExperimentKD kd lhw is
 rangeDieOpExperiment die (Reroll rro cond lim) is = do
@@ -243,7 +243,7 @@ rangeDieOpExperimentKD kd lhw is = do
 --
 -- Only used within `DiceStats` as I have no interest in producing statistics on
 -- lists
-class ParseShow a => RangeList a where
+class (ParseShow a) => RangeList a where
   -- | Try and get the `DistributionList` of the given value, throwing a
   -- `MonadException` on failure.
   rangeList :: (MonadException m, ParseShow a) => a -> m ExperimentList
@@ -270,7 +270,7 @@ instance RangeList ListValues where
   rangeList' (ListValuesMisc m) = rangeList m
   rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
-rangeArgValue :: MonadException m => ArgValue -> m (D.Experiment ListInteger)
+rangeArgValue :: (MonadException m) => ArgValue -> m (D.Experiment ListInteger)
 rangeArgValue (AVExpr e) = (LIInteger <$>) <$> range e
 rangeArgValue (AVListValues lv) = (LIList <$>) <$> rangeList lv
 

@@ -20,49 +20,49 @@ import Tablebot.Internal.Embed (Embeddable, asEmbed)
 simpleEmbed :: Text -> CreateEmbed
 simpleEmbed t = CreateEmbed "" "" Nothing "" "" Nothing t [] Nothing "" Nothing Nothing Nothing
 
-addTitle :: Embeddable e => Text -> e -> CreateEmbed
+addTitle :: (Embeddable e) => Text -> e -> CreateEmbed
 addTitle t e =
   (asEmbed e)
     { createEmbedTitle = t
     }
 
-addFooter :: Embeddable e => Text -> e -> CreateEmbed
+addFooter :: (Embeddable e) => Text -> e -> CreateEmbed
 addFooter t e =
   (asEmbed e)
     { createEmbedFooterText = t
     }
 
-addTimestamp :: Embeddable e => UTCTime -> e -> CreateEmbed
+addTimestamp :: (Embeddable e) => UTCTime -> e -> CreateEmbed
 addTimestamp t e =
   (asEmbed e)
     { createEmbedTimestamp = Just t
     }
 
-addAuthor :: Embeddable e => Text -> e -> CreateEmbed
+addAuthor :: (Embeddable e) => Text -> e -> CreateEmbed
 addAuthor t e =
   (asEmbed e)
     { createEmbedAuthorName = t
     }
 
-addLink :: Embeddable e => Text -> e -> CreateEmbed
+addLink :: (Embeddable e) => Text -> e -> CreateEmbed
 addLink t e =
   (asEmbed e)
     { createEmbedUrl = t
     }
 
-addColour :: Embeddable e => DiscordColor -> e -> CreateEmbed
+addColour :: (Embeddable e) => DiscordColor -> e -> CreateEmbed
 addColour c e =
   (asEmbed e)
     { createEmbedColor = Just c
     }
 
-addImage :: Embeddable e => Text -> e -> CreateEmbed
+addImage :: (Embeddable e) => Text -> e -> CreateEmbed
 addImage url e =
   (asEmbed e)
     { createEmbedImage = Just $ CreateEmbedImageUrl url
     }
 
-addThumbnail :: Embeddable e => Text -> e -> CreateEmbed
+addThumbnail :: (Embeddable e) => Text -> e -> CreateEmbed
 addThumbnail url e =
   (asEmbed e)
     { createEmbedThumbnail = Just $ CreateEmbedImageUrl url

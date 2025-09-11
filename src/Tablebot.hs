@@ -18,21 +18,20 @@ module Tablebot
   )
 where
 
-import Control.Concurrent
 import Control.Monad.Extra
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Logger (NoLoggingT (runNoLoggingT))
+import Control.Monad.Logger (NoLoggingT (..))
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.Trans.Resource (runResourceT)
 import Data.Map as M (empty)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
-import qualified Data.Text.IO as TIO (putStrLn)
 import Database.Persist.Sqlite
-  ( createSqlitePool,
-    runMigration,
+  ( runMigration,
     runSqlPool,
+    withSqlitePool,
   )
 import Discord
 import Discord.Internal.Rest
@@ -54,8 +53,9 @@ import Tablebot.Internal.Plugins
 import Tablebot.Internal.Types
 import Tablebot.Plugins (addAdministrationPlugin)
 import Tablebot.Utility
+import Tablebot.Utility.Font (makeFontMap)
 import Tablebot.Utility.Help (generateHelp)
-import Text.Regex.PCRE ((=~))
+import UnliftIO.Concurrent
 
 -- | runTablebotWithEnv @plugins@ runs the bot using data found in the .env
 -- file with the @[CompiledPlugin]@ given. If you're looking to run the bot as
@@ -71,8 +71,6 @@ runTablebotWithEnv plugins config = do
     _ <- swapMVar rFlag Reload
     loadEnv
     dToken <- pack <$> getEnv "DISCORD_TOKEN"
-    unless (encodeUtf8 dToken =~ ("^[A-Za-z0-9_-]{24}[.][A-Za-z0-9_-]{6}[.][A-Za-z0-9_-]{38}$" :: String)) $
-      die "Invalid token format. Please check it is a bot token"
     prefix <- pack . fromMaybe "!" <$> lookupEnv "PREFIX"
     dbpath <- getEnv "SQLITE_FILENAME"
     runTablebot vInfo dToken prefix dbpath (addAdministrationPlugin rFlag plugins) config
@@ -101,46 +99,47 @@ runTablebot vinfo dToken prefix dbpath plugins config =
   do
     debugPrint ("DEBUG enabled. This is strongly not recommended in production!" :: String)
     -- Create multiple database threads.
-    pool <- runNoLoggingT $ createSqlitePool (pack dbpath) 8
+    runNoLoggingT . withSqlitePool (pack dbpath) 8 $ \pool -> do
+      -- Setup and then apply plugin blacklist from the database
+      runSqlPool (runMigration adminMigration) pool
+      blacklist <- runResourceT $ runNoLoggingT $ runSqlPool currentBlacklist pool
+      let filteredPlugins = removeBlacklisted blacklist plugins
+      -- Combine the list of plugins into both a combined plugin
+      let !plugin = generateHelp (rootHelpText config) $ combinePlugins filteredPlugins
+      -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
+      allActions <- NoLoggingT $ mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
+      let !actions = combineActions allActions
 
-    -- Setup and then apply plugin blacklist from the database
-    runSqlPool (runMigration adminMigration) pool
-    blacklist <- runResourceT $ runNoLoggingT $ runSqlPool currentBlacklist pool
-    let filteredPlugins = removeBlacklisted blacklist plugins
-    -- Combine the list of plugins into both a combined plugin
-    let !plugin = generateHelp (rootHelpText config) $ combinePlugins filteredPlugins
-    -- Run the setup actions of each plugin and collect the plugin actions into a single @PluginActions@ instance
-    allActions <- mapM (runResourceT . runNoLoggingT . flip runSqlPool pool) (combinedSetupAction plugin)
-    let !actions = combineActions allActions
+      -- TODO: this might have issues with duplicates?
+      -- TODO: in production, this should probably run once and then never again.
+      mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
+      -- Create a var to kill any ongoing tasks.
+      mvar <- newEmptyMVar
+      fm <- NoLoggingT makeFontMap
+      cacheMVar <- newMVar (TCache M.empty M.empty vinfo fm)
+      userFacingError <-
+        NoLoggingT $
+          runDiscord $
+            def
+              { discordToken = dToken,
+                discordOnEvent =
+                  flip runSqlPool pool . flip runReaderT cacheMVar . eventHandler actions prefix,
+                discordOnStart = do
+                  -- Build list of cron jobs, saving them to the mvar.
+                  -- Note that we cannot just use @runSqlPool@ here - this creates
+                  -- a single transaction which is reverted in case of exception
+                  -- (which can just happen due to databases being unavailable
+                  -- sometimes).
+                  runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
 
-    -- TODO: this might have issues with duplicates?
-    -- TODO: in production, this should probably run once and then never again.
-    mapM_ (\migration -> runSqlPool (runMigration migration) pool) $ combinedMigrations plugin
-    -- Create a var to kill any ongoing tasks.
-    mvar <- newEmptyMVar :: IO (MVar [ThreadId])
-    cacheMVar <- newMVar (TCache M.empty M.empty vinfo) :: IO (MVar TablebotCache)
-    userFacingError <-
-      runDiscord $
-        def
-          { discordToken = dToken,
-            discordOnEvent =
-              flip runSqlPool pool . flip runReaderT cacheMVar . eventHandler actions prefix,
-            discordOnStart = do
-              -- Build list of cron jobs, saving them to the mvar.
-              -- Note that we cannot just use @runSqlPool@ here - this creates
-              -- a single transaction which is reverted in case of exception
-              -- (which can just happen due to databases being unavailable
-              -- sometimes).
-              runReaderT (mapM (runCron pool) (compiledCronJobs actions) >>= liftIO . putMVar mvar) cacheMVar
+                  submitApplicationCommands (compiledApplicationCommands actions) cacheMVar
 
-              submitApplicationCommands (compiledApplicationCommands actions) cacheMVar
-
-              liftIO $ putStrLn "The bot lives!"
-              sendCommand (UpdateStatus activityStatus),
-            -- Kill every cron job in the mvar.
-            discordOnEnd = takeMVar mvar >>= killCron
-          }
-    TIO.putStrLn userFacingError
+                  liftIO $ putStrLn "The bot lives!"
+                  sendCommand (UpdateStatus activityStatus),
+                -- Kill every cron job in the mvar.
+                discordOnEnd = takeMVar mvar >>= killCron
+              }
+      liftIO $ putStrLn $ T.unpack userFacingError
   where
     activityStatus =
       UpdateStatusOpts

@@ -48,16 +48,16 @@ integerFunctionsList = M.keys integerFunctions
 -- for each function that returns an integer.
 integerFunctions' :: [FuncInfo]
 integerFunctions' =
-  funcInfoIndex :
-  constructFuncInfo "length" (genericLength @Integer @Integer) :
-  constructFuncInfo "sum" (sum @[] @Integer) :
-  constructFuncInfo "max" (max @Integer) :
-  constructFuncInfo "min" (min @Integer) :
-  constructFuncInfo "maximum" (maximum @[] @Integer) :
-  constructFuncInfo "minimum" (minimum @[] @Integer) :
-  constructFuncInfo' "mod" (mod @Integer) (Nothing, Nothing, (== 0)) :
-  constructFuncInfo' "fact" fact (Nothing, Just factorialLimit, const False) :
-  (uncurry constructFuncInfo <$> [("abs", abs @Integer), ("id", id), ("neg", negate)])
+  funcInfoIndex
+    : constructFuncInfo "length" (genericLength @Integer @Integer)
+    : constructFuncInfo "sum" (sum @[] @Integer)
+    : constructFuncInfo "max" (max @Integer)
+    : constructFuncInfo "min" (min @Integer)
+    : constructFuncInfo "maximum" (maximum @[] @Integer)
+    : constructFuncInfo "minimum" (minimum @[] @Integer)
+    : constructFuncInfo' "mod" (mod @Integer) (Nothing, Nothing, (== 0))
+    : constructFuncInfo' "fact" fact (Nothing, Just factorialLimit, const False)
+    : (uncurry constructFuncInfo <$> [("abs", abs @Integer), ("id", id), ("neg", negate)])
   where
     fact n
       | n < 0 = 0
@@ -77,15 +77,15 @@ listFunctionsList = M.keys listFunctions
 -- each function that returns an integer.
 listFunctions' :: [FuncInfoBase [Integer]]
 listFunctions' =
-  funcInfoInsert :
-  constructFuncInfo "prepend" (:) :
-  constructFuncInfo "replicate" (genericReplicate @Integer) :
-  funcInfoSet :
-  constructFuncInfo "concat" (++) :
-  constructFuncInfo "between" between :
-  constructFuncInfo "drop" (genericDrop @Integer) :
-  constructFuncInfo "take" (genericTake @Integer) :
-  (uncurry constructFuncInfo <$> [("sort", sort), ("reverse", reverse)])
+  funcInfoInsert
+    : constructFuncInfo "prepend" (:)
+    : constructFuncInfo "replicate" (genericReplicate @Integer)
+    : funcInfoSet
+    : constructFuncInfo "concat" (++)
+    : constructFuncInfo "between" between
+    : constructFuncInfo "drop" (genericDrop @Integer)
+    : constructFuncInfo "take" (genericTake @Integer)
+    : (uncurry constructFuncInfo <$> [("sort", sort), ("reverse", reverse)])
   where
     between i i' = let (mi, ma, rev) = (min i i', max i i', if i > i' then reverse else id) in rev [mi .. ma]
 
@@ -170,10 +170,10 @@ instance ArgCount Integer where
 instance ArgCount [Integer] where
   getTypes _ = [ATIntegerList]
 
-instance ArgCount f => ArgCount (Integer -> f) where
+instance (ArgCount f) => ArgCount (Integer -> f) where
   getTypes _ = ATInteger : getTypes (Proxy :: Proxy f)
 
-instance ArgCount f => ArgCount ([Integer] -> f) where
+instance (ArgCount f) => ArgCount ([Integer] -> f) where
   getTypes _ = ATIntegerList : getTypes (Proxy :: Proxy f)
 
 -- | Type class which represents applying a function f to some inputs when given
@@ -181,7 +181,7 @@ instance ArgCount f => ArgCount ([Integer] -> f) where
 --
 -- If the number of inputs is incorrect or the value given out of the range, an
 -- exception is thrown.
-class ArgCount f => ApplyFunc f where
+class (ArgCount f) => ApplyFunc f where
   -- | Takes a function, the number of arguments in the function overall, bounds
   -- on integer values to the function, and a list of `ListInteger`s (which are
   -- either a list of integers or an integer), and returns a wrapped `j` value,

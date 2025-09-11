@@ -262,7 +262,9 @@ beginnerText = do
   agenda <- formatFromEmojiName "agenda"
   rezCost <- formatFromEmojiName "rez_cost"
   return $
-    agenda <> " **NETRUNNER** " <> rezCost
+    agenda
+      <> " **NETRUNNER** "
+      <> rezCost
       <> [r|
 Netrunner is an asymmetric collectable card game about hackers hacking corporations. It's run as a *free* community endeavour by NISEI:
 |]

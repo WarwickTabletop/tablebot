@@ -25,7 +25,8 @@ data Type = Type
 
 instance FromJSON Type where
   parseJSON = withObject "Type" $ \o ->
-    Type <$> o .: "code"
+    Type
+      <$> o .: "code"
       <*> o .: "name"
       <*> o .: "position"
       <*> o .: "is_subtype"
