@@ -224,8 +224,8 @@ statsCommand :: Command
 statsCommand = Command "stats" statsCommandParser []
   where
     oneSecond = 1000000
-    fiveSeconds = 5 * oneSecond
-    timeoutTime = fiveSeconds
+    tenSeconds = 10 * oneSecond
+    timeoutTime = tenSeconds
     statsCommandParser :: Parser (Message -> DatabaseDiscord ())
     statsCommandParser = do
       firstE <- pars
