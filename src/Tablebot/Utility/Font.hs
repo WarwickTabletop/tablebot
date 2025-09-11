@@ -9,8 +9,6 @@ import Graphics.Rendering.Chart.Backend.Diagrams (DEnv (..), createEnv)
 import Graphics.Rendering.Chart.Backend.Types
 import Graphics.SVGFonts (loadFont)
 import qualified Graphics.SVGFonts.ReadFont as F
-import System.Environment (lookupEnv)
-import System.FilePath (replaceFileName)
 
 -- | A type to map between some basic font characteristics and some loaded fonts.
 type FontMap n = M.Map (String, FontSlant, FontWeight) (F.PreparedFont n)
