@@ -14,10 +14,11 @@
 module Tablebot.Plugins.Quote (quotes) where
 
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad (join)
 import Data.Aeson
 import Data.Default (Default (def))
 import Data.Functor ((<&>))
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
 import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
@@ -42,6 +43,8 @@ import Tablebot.Utility.Discord
     sendMessage,
     toMention,
     toMention',
+    idToWord,
+    wordToId,
   )
 import Tablebot.Utility.Embed
 import Tablebot.Utility.Exception (BotException (GenericException, InteractionException), catchBot, throwBot)
@@ -49,6 +52,7 @@ import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.Search
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ (r)
+import Data.Word
 
 -- Our Quote table in the database. This is fairly standard for Persistent,
 -- however you should note the name of the migration made.
@@ -59,8 +63,8 @@ Quote
     quote Text
     author Text
     submitter Text
-    msgId Int
-    cnlId Int
+    msgId Word64
+    cnlId Word64
     time UTCTime
     deriving Show
 |]
@@ -233,7 +237,7 @@ addQ qu author m = fst <$> addQ' qu author (toMention $ messageAuthor m) (messag
 addQ' :: (Context m) => Text -> Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord (MessageDetails, Int64)
 addQ' qu author requestor sourceMsg sourceChannel m = do
   now <- liftIO $ systemToUTCTime <$> getSystemTime
-  let new = Quote qu author requestor (fromIntegral sourceMsg) (fromIntegral sourceChannel) now
+  let new = Quote qu author requestor (idToWord sourceMsg) (idToWord sourceChannel) now
   added <- insert new
   let res = pack $ show $ fromSqlKey added
   renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) Nothing m <&> (,fromSqlKey added)
@@ -266,8 +270,8 @@ addMessageQuote submitter q' m = do
                   (messageContent q')
                   (toMention $ messageAuthor q')
                   (toMention' submitter)
-                  (fromIntegral $ messageId q')
-                  (fromIntegral $ messageChannelId q')
+                  (idToWord $ messageId q')
+                  (idToWord $ messageChannelId q')
                   now
           added <- insert new
           let res = pack $ show $ fromSqlKey added
@@ -279,7 +283,7 @@ addMessageQuote submitter q' m = do
 -- @!quote edit n "quoted text" - author@, and then updates quote with id n in the
 -- database, to match the provided quote.
 editQ :: Int64 -> Text -> Text -> Message -> DatabaseDiscord ()
-editQ qId qu author m = editQ' qId (Just qu) (Just author) (toMention $ messageAuthor m) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) m >>= sendCustomMessage m
+editQ qId qu author m = editQ' qId (Just qu) (Just author) (toMention $ messageAuthor m) (messageId m) (messageChannelId m) m >>= sendCustomMessage m
 
 editQ' :: (Context m) => Int64 -> Maybe Text -> Maybe Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord MessageDetails
 editQ' qId qu author requestor mid cid m =
@@ -290,7 +294,7 @@ editQ' qId qu author requestor mid cid m =
           case oQu of
             Just (Quote qu' author' _ _ _ _) -> do
               now <- liftIO $ systemToUTCTime <$> getSystemTime
-              let new = Quote (fromMaybe qu' qu) (fromMaybe author' author) requestor (fromIntegral mid) (fromIntegral cid) now
+              let new = Quote (fromMaybe qu' qu) (fromMaybe author' author) requestor (idToWord mid) (idToWord cid) now
               replace k new
               renderCustomQuoteMessage "Quote updated" new qId Nothing m
             Nothing -> return $ messageDetailsBasic "Couldn't update that quote!"
@@ -330,13 +334,13 @@ renderCustomQuoteMessage t (Quote txt author submitter msgId cnlId dtm) qId mb m
     )
   where
     getLink :: Maybe GuildId -> Maybe Text
-    getLink = fmap (\x -> getMessageLink x (fromIntegral cnlId) (fromIntegral msgId))
+    getLink = fmap (\x -> getMessageLink x (wordToId cnlId) (wordToId msgId))
     maybeAddFooter :: Maybe Text -> Text
     maybeAddFooter (Just l) = "\n[source](" <> l <> ") - added by " <> submitter
     maybeAddFooter Nothing = ""
 
 quoteApplicationCommand :: CreateApplicationCommand
-quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and retrieve quotes" (Just opts) Nothing True
+quoteApplicationCommand = CreateApplicationCommandChatInput "quote" Nothing "store and retrieve quotes" Nothing (Just opts) Nothing (Just True)
   where
     opts =
       OptionsSubcommands $
@@ -350,33 +354,43 @@ quoteApplicationCommand = CreateApplicationCommandChatInput "quote" "store and r
     addQuoteAppComm =
       OptionSubcommand
         "add"
+        Nothing
         "add a new quote"
-        [ OptionValueString "quote" "what the actual quote is" True (Left False),
-          OptionValueString "author" "who authored this quote" True (Left False)
+        Nothing
+        [ OptionValueString "quote" Nothing "what the actual quote is" Nothing True (Left False) Nothing Nothing,
+          OptionValueString "author" Nothing "who authored this quote" Nothing True (Left False) Nothing Nothing
         ]
     showQuoteAppComm =
       OptionSubcommand
         "show"
+        Nothing
         "show a quote by number"
-        [ OptionValueInteger "id" "the quote's number" True (Left True) (Just 1) Nothing
+        Nothing
+        [ OptionValueInteger "id" Nothing "the quote's number" Nothing True (Left True) (Just 1) Nothing
         ]
     randomQuoteAppComm =
       OptionSubcommand
         "random"
+        Nothing
         "show a random quote"
+        Nothing
         []
     authorQuoteAppComm =
       OptionSubcommand
         "author"
+        Nothing
         "show a random quote by an author"
-        [OptionValueString "author" "whose quotes do you want to see" True (Left False)]
+        Nothing
+        [OptionValueString "author" Nothing "whose quotes do you want to see" Nothing True (Left False) Nothing Nothing]
     editQuoteAppComm =
       OptionSubcommand
         "edit"
+        Nothing
         "edit a quote"
-        [ OptionValueInteger "quoteid" "the id of the quote to edit" True (Left False) Nothing Nothing,
-          OptionValueString "quote" "what the actual quote is" False (Left False),
-          OptionValueString "author" "who authored this quote" False (Left False)
+        Nothing
+        [ OptionValueInteger "quoteid" Nothing "the id of the quote to edit" Nothing True (Left False) Nothing Nothing,
+          OptionValueString "quote" Nothing "what the actual quote is" Nothing False (Left False) Nothing Nothing,
+          OptionValueString "author" Nothing "who authored this quote" Nothing False (Left False) Nothing Nothing
         ]
 
 quoteApplicationCommandRecv :: Interaction -> DatabaseDiscord ()
@@ -406,7 +420,7 @@ quoteApplicationCommandRecv
           ((getValue "quote" vals >>= stringFromOptionValue) >>= \q -> (getValue "author" vals >>= stringFromOptionValue) <&> (q,))
           ( \(qt, author) -> do
               let requestor = toMention' $ contextUserId i
-              (msg, qid) <- addQ' qt author requestor 0 0 i
+              (msg, qid) <- addQ' qt author requestor (wordToId 0) (wordToId 0) i
               interactionResponseCustomMessage i msg
               -- to get the message to display as wanted, we have to do some trickery
               -- we have already sent off the message above with the broken message id
@@ -418,7 +432,7 @@ quoteApplicationCommandRecv
                 Left _ -> return ()
                 Right m -> do
                   now <- liftIO $ systemToUTCTime <$> getSystemTime
-                  let new = Quote qt author requestor (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) now
+                  let new = Quote qt author requestor (idToWord $ messageId m) (idToWord $ messageChannelId m) now
                   replace (toSqlKey qid) new
                   newMsg <- renderCustomQuoteMessage (messageContent m) new qid Nothing i
                   _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
@@ -434,13 +448,13 @@ quoteApplicationCommandRecv
               case (qt, author) of
                 (Nothing, Nothing) -> interactionResponseCustomMessage i (makeEphermeral (messageDetailsBasic "No edits made to quote."))
                 _ -> do
-                  msg <- editQ' qid qt author (toMention' $ contextUserId i) 0 0 i
+                  msg <- editQ' qid qt author (toMention' $ contextUserId i) (wordToId 0) (wordToId 0) i
                   interactionResponseCustomMessage i msg
                   v <- liftDiscord $ restCall $ R.GetOriginalInteractionResponse (interactionApplicationId i) (interactionToken i)
                   case v of
                     Left _ -> return ()
                     Right m -> do
-                      msg' <- editQ' qid qt author (toMention' $ contextUserId i) (fromIntegral $ messageId m) (fromIntegral $ messageChannelId m) i
+                      msg' <- editQ' qid qt author (toMention' $ contextUserId i) (messageId m) (messageChannelId m) i
                       _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction msg')
                       return ()
           )
@@ -466,12 +480,12 @@ quoteApplicationCommandRecv
         handleNothing
           (getValue "id" vals)
           ( \case
-              OptionDataValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') showid']
+              OptionDataValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') Nothing showid']
               OptionDataValueInteger _ (Left showid') -> do
                 allQ <- allQuotes ()
                 let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
                     options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
-                interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) (toInteger qid)) <$> options)
+                interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) Nothing (toInteger qid)) <$> options)
               _ -> return ()
           )
       _ -> return ()

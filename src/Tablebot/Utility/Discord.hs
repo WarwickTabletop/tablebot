@@ -48,10 +48,12 @@ module Tablebot.Utility.Discord
     interactionResponseCustomMessage,
     interactionResponseComponentsUpdateMessage,
     interactionResponseAutocomplete,
+    idToWord,
+    wordToId
   )
 where
 
-import Control.Monad.Cont (liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Exception (MonadException (throw))
 import Data.Char (isDigit)
 import Data.Default (Default (def))
@@ -73,6 +75,7 @@ import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
 import Tablebot.Internal.Embed (Embeddable (..))
 import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
 import Tablebot.Utility.Exception (BotException (..))
+import Data.Coerce ( coerce )
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
 -- @m@.
@@ -449,3 +452,10 @@ interactionResponseAutocomplete i ac = do
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction with autocomplete response."
     Right _ -> return ()
+
+-- | Not guaranteed to be a valid ID!
+wordToId :: Word64 -> DiscordId a
+wordToId = coerce
+
+idToWord :: DiscordId a -> Word64
+idToWord = coerce

@@ -11,7 +11,8 @@
 module Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalProgram, evalList, evalInteger, evaluationException, propagateException, maximumRNG, maximumListLength) where
 
 import Control.Monad.Exception (MonadException)
-import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify, when)
+import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify)
+import Control.Monad (when)
 import Data.List (foldl', genericDrop, genericReplicate, genericTake, sortBy)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), head, tail, (<|))
 import Data.Map (Map, empty)

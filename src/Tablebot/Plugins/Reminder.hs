@@ -134,7 +134,7 @@ reminderCron = do
           res <- getMessage (DiscordId $ Snowflake cid) (DiscordId $ Snowflake mid)
           case res of
             Left _ -> do
-              sendChannelMessage (fromIntegral cid) (pack $ "Reminder to <@" ++ show uid ++ ">! " ++ content)
+              sendChannelMessage (DiscordId (Snowflake cid)) (pack $ "Reminder to <@" ++ show uid ++ ">! " ++ content)
               delete (entityKey re)
             Right mess -> do
               sendCustomReplyMessage mess (DiscordId $ Snowflake mid) True $

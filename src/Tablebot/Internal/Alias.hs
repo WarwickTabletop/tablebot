@@ -10,7 +10,7 @@
 module Tablebot.Internal.Alias where
 
 import Control.Monad.Exception (MonadException (catch), SomeException)
-import Data.Text
+import qualified Data.Text as T
 import Database.Persist.Sqlite (BackendKey (SqlBackendKey))
 import qualified Database.Persist.Sqlite as Sql
 import Database.Persist.TH
@@ -24,8 +24,8 @@ share
   [mkPersist sqlSettings, mkMigrate "aliasMigration"]
   [persistLowerCase|
 Alias
-    alias Text
-    command Text
+    alias T.Text
+    command T.Text
     type AliasType
     UniqueAlias alias type
     deriving Show

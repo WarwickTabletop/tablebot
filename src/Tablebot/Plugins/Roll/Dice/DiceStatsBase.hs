@@ -68,7 +68,7 @@ distributionRenderable d = toRenderable $ do
   layout_y_axis . laxis_override .= \ad@AxisData {_axis_labels = axisLabels} -> ad {_axis_labels = (second (\s -> if '.' `elem` s then s else s ++ ".0") <$>) <$> axisLabels}
   layout_all_font_styles .= defFontStyle
   pb <- (bars @Integer @Double) (barNames d) pts
-  let pb' = pb {_plot_bars_spacing = BarsFixGap 10 5}
+  let pb' = set plot_bars_spacing (BarsFixGap 10 5) pb
   plot $ return $ plotBars pb'
   where
     removeNullMap m

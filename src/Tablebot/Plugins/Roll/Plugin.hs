@@ -9,7 +9,8 @@
 -- A command that outputs the result of rolling the input dice.
 module Tablebot.Plugins.Roll.Plugin (rollPlugin) where
 
-import Control.Monad.Writer (MonadIO (liftIO), void)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad (void)
 import Data.ByteString.Lazy (toStrict)
 import Data.Default (Default (def))
 import Data.Distribution (isValid)

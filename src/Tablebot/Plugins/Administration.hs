@@ -13,7 +13,7 @@ module Tablebot.Plugins.Administration (administrationPlugin) where
 
 import Control.Concurrent.MVar (MVar, swapMVar)
 import Control.Monad (when)
-import Control.Monad.Cont (liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ask)
 import Data.Text (Text, pack)
 import qualified Data.Text as T

@@ -14,7 +14,8 @@ module Tablebot.Internal.Administration
   )
 where
 
-import Control.Monad.Cont (MonadIO, void, when)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad (void, when)
 import Data.List.Extra (isInfixOf, lower, trim)
 import Data.Text (Text, pack)
 import Database.Persist
