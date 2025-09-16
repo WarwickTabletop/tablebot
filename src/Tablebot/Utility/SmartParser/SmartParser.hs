@@ -189,10 +189,11 @@ instance (KnownSymbol s) => CanParse (Exactly s) where
 instance (KnownSymbol err, CanParse x) => CanParse (WithError err x) where
   pars = (WErr <$> try (pars @x)) <?> symbolVal (Proxy :: Proxy err)
 
+newtype IntegralData a = MkIntegralData a
+
 -- | Parsing implementation for all integral types
--- Overlappable due to the really flexible head state
-instance {-# OVERLAPPABLE #-} (Integral a, Read a) => CanParse a where
-  pars = integer
+instance (Integral a, Read a) => CanParse (IntegralData a) where
+  pars = MkIntegralData <$> integer
 
 instance CanParse Double where
   pars = double
