@@ -26,11 +26,11 @@ import Tablebot.Internal.Administration
 import Tablebot.Internal.Cache (getVersionInfo)
 import Tablebot.Internal.Types (CompiledPlugin (compiledName))
 import Tablebot.Utility
-import Tablebot.Utility.Database
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ
+import qualified Database.Persist.Sqlite as Sql
 
 -- | @SS@ denotes the type returned by the command setup. Here its unused.
 type SS = [Text]
@@ -60,19 +60,19 @@ addBlacklist pLabel m = requirePermission Superuser m $ do
   -- It's not an error to add an unknown plugin (so that you can pre-disable a plugin you know you're about to add),
   -- but emmit a warning so people know if it wasn't deliberate
   when (pack pLabel `notElem` known) $ sendMessage m "Warning, unknown plugin"
-  extant <- exists [PluginBlacklistLabel ==. pLabel]
+  extant <- liftSql $ Sql.exists [PluginBlacklistLabel ==. pLabel]
   if not extant
     then do
-      _ <- insert $ PluginBlacklist pLabel
+      _ <- liftSql $ Sql.insert $ PluginBlacklist pLabel
       sendMessage m "Plugin added to blacklist. Please reload for it to take effect"
     else sendMessage m "Plugin already in blacklist"
 
 removeBlacklist :: String -> Message -> EnvDatabaseDiscord SS ()
 removeBlacklist pLabel m = requirePermission Superuser m $ do
-  extant <- selectKeysList [PluginBlacklistLabel ==. pLabel] []
+  extant <- liftSql $ Sql.selectKeysList [PluginBlacklistLabel ==. pLabel] []
   if not $ null extant
     then do
-      _ <- delete (head extant)
+      _ <- liftSql $ Sql.delete (head extant)
       sendMessage m "Plugin removed from blacklist. Please reload for it to take effect"
     else sendMessage m "Plugin not in blacklist"
 
@@ -80,7 +80,7 @@ removeBlacklist pLabel m = requirePermission Superuser m $ do
 --  along with their current status.
 listBlacklist :: Message -> EnvDatabaseDiscord SS ()
 listBlacklist m = requirePermission Superuser m $ do
-  bl <- selectList allBlacklisted []
+  bl <- liftSql $ Sql.selectList allBlacklisted []
   pl <- ask
   sendMessage m (format pl (blacklisted bl))
   where

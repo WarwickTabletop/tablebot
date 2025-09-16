@@ -17,8 +17,7 @@ import Database.Persist.TH
 import Discord.Types
 import Tablebot.Internal.Administration (currentBlacklist)
 import Tablebot.Internal.Types
-import Tablebot.Utility.Database (liftSql, selectList)
-import Tablebot.Utility.Types (EnvDatabaseDiscord)
+import Tablebot.Utility.Types (EnvDatabaseDiscord, liftSql)
 
 share
   [mkPersist sqlSettings, mkMigrate "aliasMigration"]
@@ -38,5 +37,5 @@ getAliases uid = do
   if "alias" `elem` blacklist
     then return Nothing
     else
-      (Just . fmap Sql.entityVal <$> selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
+      liftSql (Just . fmap Sql.entityVal <$> Sql.selectList [AliasType Sql.<-. [AliasPublic, AliasPrivate uid]] [])
         `catch` (\(_ :: SomeException) -> return Nothing)

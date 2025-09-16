@@ -18,7 +18,6 @@ import Discord.Types
 import Tablebot.Internal.Alias
 import Tablebot.Internal.Types (AliasType (..))
 import Tablebot.Utility
-import Tablebot.Utility.Database (deleteBy, exists)
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (..), WithError (..))
@@ -157,9 +156,9 @@ aliasDeleteCommand =
 aliasDelete :: Text -> AliasType -> Message -> DatabaseDiscord ()
 aliasDelete a at m = do
   let toDelete = UniqueAlias a at
-  itemExists <- exists [AliasAlias Sql.==. a, AliasType Sql.==. at]
+  itemExists <- liftSql $ Sql.exists [AliasAlias Sql.==. a, AliasType Sql.==. at]
   if itemExists
-    then deleteBy toDelete >> sendMessage m ("Deleted alias `" <> a <> "`")
+    then liftSql (Sql.deleteBy toDelete) >> sendMessage m ("Deleted alias `" <> a <> "`")
     else sendMessage m ("No such alias `" <> a <> "`")
 
 aliasDeleteHelp :: HelpPage

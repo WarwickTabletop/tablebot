@@ -21,7 +21,7 @@ import Data.Functor ((<&>))
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
-import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.))
+import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.), toSqlKey, fromSqlKey)
 import Database.Persist.TH
 import Discord (restCall)
 import Discord.Interactions
@@ -31,7 +31,6 @@ import GHC.Generics (Generic)
 import GHC.Int (Int64)
 import System.Random (randomRIO)
 import Tablebot.Utility
-import Tablebot.Utility.Database
 import Tablebot.Utility.Discord
   ( getMessage,
     getMessageLink,
@@ -52,6 +51,7 @@ import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.Search
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ (r)
+import qualified Database.Persist.Sqlite as Sql
 import Data.Word
 
 -- Our Quote table in the database. This is fairly standard for Persistent,
@@ -178,7 +178,7 @@ randomQuote = Command "random" (parseComm randomComm) []
 -- that quote up in the database and responds with that quote.
 showQ :: (Context m) => Int64 -> m -> DatabaseDiscord MessageDetails
 showQ qId m = do
-  qu <- get $ toSqlKey qId
+  qu <- liftSql $ Sql.get $ toSqlKey qId
   case qu of
     Just q -> renderQuoteMessage q qId Nothing m
     Nothing -> return $ messageDetailsBasic "Couldn't get that quote!"
@@ -217,14 +217,14 @@ filteredRandomQuote quoteFilter errorMessage mb m = catchBot (filteredRandomQuot
 -- goes wrong.
 filteredRandomQuote' :: (Context m) => [Filter Quote] -> Text -> Maybe Button -> m -> DatabaseDiscord MessageDetails
 filteredRandomQuote' quoteFilter errorMessage mb m = do
-  num <- count quoteFilter
+  num <- liftSql $ Sql.count quoteFilter
   if num == 0 -- we can't find any quotes meeting the filter
     then throwBot (GenericException "quote exception" (unpack errorMessage))
     else do
       rindex <- liftIO $ randomRIO (0, num - 1)
-      key <- selectKeysList quoteFilter [OffsetBy rindex, LimitTo 1]
-      qu <- get $ head key
-      case qu of
+      key <- liftSql $ Sql.selectKeysList quoteFilter [OffsetBy rindex, LimitTo 1]
+      qu <- traverse (liftSql . Sql.get) $ listToMaybe key
+      case join qu of
         Just q -> renderQuoteMessage q (fromSqlKey $ head key) mb m
         Nothing -> throwBot (GenericException "quote exception" (unpack errorMessage))
 
@@ -238,7 +238,7 @@ addQ' :: (Context m) => Text -> Text -> Text -> MessageId -> ChannelId -> m -> D
 addQ' qu author requestor sourceMsg sourceChannel m = do
   now <- liftIO $ systemToUTCTime <$> getSystemTime
   let new = Quote qu author requestor (idToWord sourceMsg) (idToWord sourceChannel) now
-  added <- insert new
+  added <- liftSql $ Sql.insert new
   let res = pack $ show $ fromSqlKey added
   renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) Nothing m <&> (,fromSqlKey added)
 
@@ -259,7 +259,7 @@ thisQ m = do
 -- | @addMessageQuote@, adds a message as a quote to the database, checking that it passes the relevant tests
 addMessageQuote :: (Context m) => UserId -> Message -> m -> DatabaseDiscord MessageDetails
 addMessageQuote submitter q' m = do
-  num <- count [QuoteMsgId ==. fromIntegral (messageId q')]
+  num <- liftSql $ Sql.count [QuoteMsgId ==. idToWord (messageId q')]
   if num == 0
     then
       if not $ userIsBot (messageAuthor q')
@@ -273,7 +273,7 @@ addMessageQuote submitter q' m = do
                   (idToWord $ messageId q')
                   (idToWord $ messageChannelId q')
                   now
-          added <- insert new
+          added <- liftSql $ Sql.insert new
           let res = pack $ show $ fromSqlKey added
           renderCustomQuoteMessage ("Quote added as #" `append` res) new (fromSqlKey added) Nothing m
         else return $ makeEphermeral (messageDetailsBasic "Can't quote a bot")
@@ -288,14 +288,14 @@ editQ qId qu author m = editQ' qId (Just qu) (Just author) (toMention $ messageA
 editQ' :: (Context m) => Int64 -> Maybe Text -> Maybe Text -> Text -> MessageId -> ChannelId -> m -> DatabaseDiscord MessageDetails
 editQ' qId qu author requestor mid cid m =
   requirePermission Any m $
-    let k = toSqlKey qId
+    let k = Sql.toSqlKey qId
      in do
-          (oQu :: Maybe Quote) <- get k
+          (oQu :: Maybe Quote) <- liftSql $ Sql.get k
           case oQu of
             Just (Quote qu' author' _ _ _ _) -> do
               now <- liftIO $ systemToUTCTime <$> getSystemTime
               let new = Quote (fromMaybe qu' qu) (fromMaybe author' author) requestor (idToWord mid) (idToWord cid) now
-              replace k new
+              liftSql $ Sql.replace k new
               renderCustomQuoteMessage "Quote updated" new qId Nothing m
             Nothing -> return $ messageDetailsBasic "Couldn't update that quote!"
 
@@ -304,12 +304,12 @@ editQ' qId qu author requestor mid cid m =
 deleteQ :: Int64 -> Message -> DatabaseDiscord ()
 deleteQ qId m =
   requirePermission Any m $
-    let k = toSqlKey qId
+    let k = Sql.toSqlKey qId
      in do
-          qu <- get k
+          qu <- liftSql $ Sql.get k
           case qu of
             Just Quote {} -> do
-              delete k
+              liftSql $ Sql.delete k
               sendMessage m "Quote deleted"
             Nothing -> sendMessage m "Couldn't delete that quote!"
 
@@ -433,7 +433,7 @@ quoteApplicationCommandRecv
                 Right m -> do
                   now <- liftIO $ systemToUTCTime <$> getSystemTime
                   let new = Quote qt author requestor (idToWord $ messageId m) (idToWord $ messageChannelId m) now
-                  replace (toSqlKey qid) new
+                  liftSql $ Sql.replace (toSqlKey qid) new
                   newMsg <- renderCustomQuoteMessage (messageContent m) new qid Nothing i
                   _ <- liftDiscord $ restCall $ R.EditOriginalInteractionResponse (interactionApplicationId i) (interactionToken i) (convertMessageFormatInteraction newMsg)
                   return ()
@@ -482,7 +482,7 @@ quoteApplicationCommandRecv
           ( \case
               OptionDataValueInteger _ (Right showid') -> interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger [Choice (pack $ show showid') Nothing showid']
               OptionDataValueInteger _ (Left showid') -> do
-                allQ <- allQuotes ()
+                allQ <- allQuotes
                 let allQ' = (\qe -> (show (fromSqlKey $ entityKey qe), (fromSqlKey $ entityKey qe, (\(Quote q _ _ _ _ _) -> q) (entityVal qe)))) <$> allQ
                     options = take 25 $ closestPairsWithCosts (def {deletion = 100, substitution = 100, transposition = 5}) allQ' (unpack showid')
                 interactionResponseAutocomplete i $ InteractionResponseAutocompleteInteger ((\(qids, (qid, _)) -> Choice (pack qids) Nothing (toInteger qid)) <$> options)
@@ -607,8 +607,8 @@ instance FromJSON Quote
 instance ToJSON Quote
 
 -- | Get all the quotes in the database.
-allQuotes :: () -> DatabaseDiscord [Entity Quote]
-allQuotes _ = selectList [] []
+allQuotes :: DatabaseDiscord [Entity Quote]
+allQuotes = liftSql $ Sql.selectList [] []
 
 -- | Export all the quotes in the database to either a default quotes file or to a given
 -- file name that is quoted in the command. Superuser only.
@@ -619,7 +619,7 @@ exportQ :: Maybe (Quoted FilePath) -> Message -> DatabaseDiscord ()
 exportQ qfp m = requirePermission Superuser m $ do
   let defFileName = getSystemTime >>= \now -> return $ "quotes_" <> show (systemSeconds now) <> ".json"
   (Qu fp) <- liftIO $ maybe (Qu <$> defFileName) return qfp
-  aq <- fmap entityVal <$> allQuotes ()
+  aq <- fmap entityVal <$> allQuotes
   _ <- liftIO $ encodeFile fp aq
   sendMessage m ("Succesfully exported all " <> (pack . show . length) aq <> " quotes to `" <> pack fp <> "`")
 
@@ -630,7 +630,7 @@ importQuotes = Command "import" (parseComm importQ) []
     importQ :: Quoted FilePath -> Message -> DatabaseDiscord ()
     importQ (Qu fp) m = requirePermission Superuser m $ do
       mqs <- liftIO $ decodeFileStrict fp
-      qs <- maybe (throwBot $ GenericException "error getting file" "there was an error obtaining or decoding the quotes json") (insertMany @Quote) mqs
+      qs :: [Sql.Key Quote] <- maybe (throwBot $ GenericException "error getting file" "there was an error obtaining or decoding the quotes json") (liftSql . Sql.insertMany) mqs
       sendMessage m ("Succesfully imported " <> (pack . show . length) qs <> " quotes")
 
 -- | Clear all the quotes from the database. Superuser only.
@@ -640,6 +640,6 @@ clearQuotes = Command "clear" (parseComm clearQ) []
     clearQ :: Maybe (Quoted Text) -> Message -> DatabaseDiscord ()
     clearQ (Just (Qu "clear the quotes")) m = requirePermission Superuser m $ do
       exportQ Nothing m
-      i <- deleteWhereCount @Quote []
+      i <- liftSql $ Sql.deleteWhereCount @Quote []
       sendMessage m ("Cleared " <> pack (show i) <> " quotes from the database.")
     clearQ _ m = sendMessage m "To _really do this_, call this command like so: `quote clear \"clear the quotes\"`"
