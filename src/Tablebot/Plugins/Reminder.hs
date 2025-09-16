@@ -31,7 +31,7 @@ import Tablebot.Utility
 import Tablebot.Utility.Database
 import Tablebot.Utility.Discord (getMessage, sendChannelMessage, sendCustomReplyMessage, sendMessage, toTimestamp)
 import Tablebot.Utility.Permission (requirePermission)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..))
+import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..), IntegralData(..))
 import Text.RawString.QQ (r)
 
 -- Our Reminder table in the database. This is fairly standard for Persistent,
@@ -98,8 +98,8 @@ addReminder time content m = do
   sendMessage m ("Reminder " <> res <> " set for " <> toTimestamp time <> " with message `" <> pack content <> "`")
 
 -- @deleteReminder@ takes a reminder Id and deletes it from the list of awating reminders.
-deleteReminder :: WithError "Missing required argument" (Int) -> Message -> DatabaseDiscord ()
-deleteReminder (WErr rid) m = requirePermission Any m $ do
+deleteReminder :: WithError "Missing required argument" (IntegralData Int) -> Message -> DatabaseDiscord ()
+deleteReminder (WErr (MkIntegralData rid)) m = requirePermission Any m $ do
   delete k
   sendMessage m ("Reminder " <> pack (show rid) <> " deleted.")
   where

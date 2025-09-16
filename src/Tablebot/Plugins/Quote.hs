@@ -93,11 +93,11 @@ quoteCommand =
     quoteComm ::
       WithError
         "Unknown quote functionality."
-        (Either () (Either Int64 (RestOfInput Text))) ->
+        (Either () (Either (IntegralData Int64) (RestOfInput Text))) ->
       Message ->
       DatabaseDiscord ()
     quoteComm (WErr (Left ())) m = randomQ m >>= sendCustomMessage m
-    quoteComm (WErr (Right (Left t))) m = showQ t m >>= sendCustomMessage m
+    quoteComm (WErr (Right (Left (MkIntegralData t)))) m = showQ t m >>= sendCustomMessage m
     quoteComm (WErr (Right (Right (ROI t)))) m = authorQ t m >>= sendCustomMessage m
 
 addQuote :: Command
@@ -115,10 +115,10 @@ editQuote = Command "edit" (parseComm editComm) []
     editComm ::
       WithError
         "Edit format incorrect!\nFormat is: .quote edit quoteId \"new quote\" - author"
-        (Int64, Quoted Text, Exactly "-", RestOfInput Text) ->
+        ((IntegralData Int64), Quoted Text, Exactly "-", RestOfInput Text) ->
       Message ->
       DatabaseDiscord ()
-    editComm (WErr (qId, Qu qu, _, ROI author)) = editQ qId qu author
+    editComm (WErr (MkIntegralData qId, Qu qu, _, ROI author)) = editQ qId qu author
 
 thisQuote :: Command
 thisQuote = Command "this" (parseComm thisComm) []
@@ -154,19 +154,19 @@ showQuote :: Command
 showQuote = Command "show" (parseComm showComm) []
   where
     showComm ::
-      WithError "Quote format incorrect!\nExpected quote number to show, e.g. .quote show 420" Int64 ->
+      WithError "Quote format incorrect!\nExpected quote number to show, e.g. .quote show 420" (IntegralData Int64) ->
       Message ->
       DatabaseDiscord ()
-    showComm (WErr qId) m = showQ qId m >>= sendCustomMessage m
+    showComm (WErr (MkIntegralData qId)) m = showQ qId m >>= sendCustomMessage m
 
 deleteQuote :: Command
 deleteQuote = Command "delete" (parseComm deleteComm) []
   where
     deleteComm ::
-      WithError "Quote format incorrect!\nExpected quote number to delete, e.g. .quote delete 420" Int64 ->
+      WithError "Quote format incorrect!\nExpected quote number to delete, e.g. .quote delete 420" (IntegralData Int64) ->
       Message ->
       DatabaseDiscord ()
-    deleteComm (WErr qId) = deleteQ qId
+    deleteComm (WErr (MkIntegralData qId)) = deleteQ qId
 
 randomQuote :: Command
 randomQuote = Command "random" (parseComm randomComm) []
