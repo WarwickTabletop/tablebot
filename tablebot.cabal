@@ -1,0 +1,307 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.37.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           tablebot
+version:        0.3.3
+description:    Please see the README on GitHub at <https://github.com/tagarople/tablebot#readme>
+homepage:       https://github.com/WarwickTabletop/tablebot#readme
+bug-reports:    https://github.com/WarwickTabletop/tablebot/issues
+author:         Warwick Tabletop
+maintainer:     tagarople@gmail.com
+copyright:      2021 Warwick Tabletop
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/WarwickTabletop/tablebot
+
+library
+  exposed-modules:
+      Tablebot
+      Tablebot.Handler
+      Tablebot.Internal.Administration
+      Tablebot.Internal.Alias
+      Tablebot.Internal.Cache
+      Tablebot.Internal.Embed
+      Tablebot.Internal.Handler.Command
+      Tablebot.Internal.Handler.Event
+      Tablebot.Internal.Permission
+      Tablebot.Internal.Plugins
+      Tablebot.Internal.Types
+      Tablebot.Plugins
+      Tablebot.Plugins.Administration
+      Tablebot.Plugins.Alias
+      Tablebot.Plugins.Basic
+      Tablebot.Plugins.Cats
+      Tablebot.Plugins.Dogs
+      Tablebot.Plugins.Flip
+      Tablebot.Plugins.Fox
+      Tablebot.Plugins.Netrunner
+      Tablebot.Plugins.Netrunner.Command.BanList
+      Tablebot.Plugins.Netrunner.Command.Custom
+      Tablebot.Plugins.Netrunner.Command.Find
+      Tablebot.Plugins.Netrunner.Command.Help
+      Tablebot.Plugins.Netrunner.Command.Rules
+      Tablebot.Plugins.Netrunner.Command.Search
+      Tablebot.Plugins.Netrunner.Plugin
+      Tablebot.Plugins.Netrunner.Type.BanList
+      Tablebot.Plugins.Netrunner.Type.Card
+      Tablebot.Plugins.Netrunner.Type.Cycle
+      Tablebot.Plugins.Netrunner.Type.Faction
+      Tablebot.Plugins.Netrunner.Type.NrApi
+      Tablebot.Plugins.Netrunner.Type.Pack
+      Tablebot.Plugins.Netrunner.Type.Type
+      Tablebot.Plugins.Netrunner.Utility.BanList
+      Tablebot.Plugins.Netrunner.Utility.Card
+      Tablebot.Plugins.Netrunner.Utility.Cycle
+      Tablebot.Plugins.Netrunner.Utility.Embed
+      Tablebot.Plugins.Netrunner.Utility.Faction
+      Tablebot.Plugins.Netrunner.Utility.Misc
+      Tablebot.Plugins.Netrunner.Utility.NrApi
+      Tablebot.Plugins.Netrunner.Utility.Pack
+      Tablebot.Plugins.Ping
+      Tablebot.Plugins.Quote
+      Tablebot.Plugins.Reminder
+      Tablebot.Plugins.Roll
+      Tablebot.Plugins.Roll.Dice
+      Tablebot.Plugins.Roll.Dice.DiceData
+      Tablebot.Plugins.Roll.Dice.DiceEval
+      Tablebot.Plugins.Roll.Dice.DiceFunctions
+      Tablebot.Plugins.Roll.Dice.DiceParsing
+      Tablebot.Plugins.Roll.Dice.DiceStats
+      Tablebot.Plugins.Roll.Dice.DiceStatsBase
+      Tablebot.Plugins.Roll.Plugin
+      Tablebot.Plugins.Say
+      Tablebot.Plugins.Shibe
+      Tablebot.Plugins.Suggest
+      Tablebot.Plugins.Welcome
+      Tablebot.Utility
+      Tablebot.Utility.Discord
+      Tablebot.Utility.Embed
+      Tablebot.Utility.Exception
+      Tablebot.Utility.Font
+      Tablebot.Utility.Help
+      Tablebot.Utility.Parser
+      Tablebot.Utility.Permission
+      Tablebot.Utility.Random
+      Tablebot.Utility.Search
+      Tablebot.Utility.SmartParser
+      Tablebot.Utility.SmartParser.Interactions
+      Tablebot.Utility.SmartParser.SmartParser
+      Tablebot.Utility.SmartParser.Types
+      Tablebot.Utility.Types
+      Tablebot.Utility.Utils
+  other-modules:
+      Paths_tablebot
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      LambdaCase
+      EmptyDataDecls
+      FlexibleContexts
+      GADTs
+      GeneralizedNewtypeDeriving
+      MultiParamTypeClasses
+      QuasiQuotes
+      TemplateHaskell
+      TypeFamilies
+      DerivingStrategies
+      StandaloneDeriving
+      UndecidableInstances
+      DataKinds
+      FlexibleInstances
+      DeriveGeneric
+      TypeApplications
+      MultiWayIf
+      TupleSections
+      ConstraintKinds
+      RecordWildCards
+      ScopedTypeVariables
+      TypeOperators
+      RankNTypes
+      BangPatterns
+  ghc-options: -Wall
+  build-depends:
+      Chart
+    , Chart-diagrams
+    , JuicyPixels
+    , SVGFonts
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , data-default
+    , diagrams-core
+    , diagrams-lib
+    , diagrams-rasterific
+    , discord-haskell
+    , distribution
+    , duckling
+    , edit-distance
+    , emoji
+    , esqueleto
+    , exception-transformers
+    , extra
+    , filepath
+    , http-client
+    , http-conduit
+    , load-env
+    , megaparsec
+    , monad-logger
+    , mtl
+    , persistent
+    , persistent-sqlite
+    , persistent-template
+    , process
+    , random
+    , raw-strings-qq
+    , regex-pcre
+    , req
+    , resource-pool
+    , resourcet
+    , safe
+    , scientific
+    , split
+    , template-haskell
+    , text
+    , text-icu
+    , th-printf
+    , time
+    , timezone-olson
+    , transformers
+    , unliftio
+    , unordered-containers
+    , yaml
+  default-language: Haskell2010
+
+executable tablebot-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_tablebot
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts "-with-rtsopts=-Iw10 -N"
+  build-depends:
+      Chart
+    , Chart-diagrams
+    , JuicyPixels
+    , SVGFonts
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , data-default
+    , diagrams-core
+    , diagrams-lib
+    , diagrams-rasterific
+    , discord-haskell
+    , distribution
+    , duckling
+    , edit-distance
+    , emoji
+    , esqueleto
+    , exception-transformers
+    , extra
+    , filepath
+    , http-client
+    , http-conduit
+    , load-env
+    , megaparsec
+    , monad-logger
+    , mtl
+    , persistent
+    , persistent-sqlite
+    , persistent-template
+    , process
+    , random
+    , raw-strings-qq
+    , regex-pcre
+    , req
+    , resource-pool
+    , resourcet
+    , safe
+    , scientific
+    , split
+    , tablebot
+    , template-haskell
+    , text
+    , text-icu
+    , th-printf
+    , time
+    , timezone-olson
+    , transformers
+    , unliftio
+    , unordered-containers
+    , yaml
+  default-language: Haskell2010
+
+test-suite tablebot-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_tablebot
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Chart
+    , Chart-diagrams
+    , JuicyPixels
+    , SVGFonts
+    , aeson
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , data-default
+    , diagrams-core
+    , diagrams-lib
+    , diagrams-rasterific
+    , discord-haskell
+    , distribution
+    , duckling
+    , edit-distance
+    , emoji
+    , esqueleto
+    , exception-transformers
+    , extra
+    , filepath
+    , http-client
+    , http-conduit
+    , load-env
+    , megaparsec
+    , monad-logger
+    , mtl
+    , persistent
+    , persistent-sqlite
+    , persistent-template
+    , process
+    , random
+    , raw-strings-qq
+    , regex-pcre
+    , req
+    , resource-pool
+    , resourcet
+    , safe
+    , scientific
+    , split
+    , tablebot
+    , template-haskell
+    , text
+    , text-icu
+    , th-printf
+    , time
+    , timezone-olson
+    , transformers
+    , unliftio
+    , unordered-containers
+    , yaml
+  default-language: Haskell2010
