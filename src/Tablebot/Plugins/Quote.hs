@@ -13,15 +13,17 @@
 -- quotes and then @!quote show n@ a particular quote.
 module Tablebot.Plugins.Quote (quotes) where
 
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad (join)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Default (Default (def))
 import Data.Functor ((<&>))
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text (Text, append, pack, unpack)
 import Data.Time.Clock.System (SystemTime (systemSeconds), getSystemTime, systemToUTCTime)
-import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, (==.), toSqlKey, fromSqlKey)
+import Data.Word
+import Database.Persist.Sqlite (Entity (entityKey), Filter, SelectOpt (LimitTo, OffsetBy), entityVal, fromSqlKey, toSqlKey, (==.))
+import qualified Database.Persist.Sqlite as Sql
 import Database.Persist.TH
 import Discord (restCall)
 import Discord.Interactions
@@ -36,13 +38,13 @@ import Tablebot.Utility.Discord
     getMessageLink,
     getPrecedingMessage,
     getReplyMessage,
+    idToWord,
     interactionResponseAutocomplete,
     interactionResponseCustomMessage,
     sendCustomMessage,
     sendMessage,
     toMention,
     toMention',
-    idToWord,
     wordToId,
   )
 import Tablebot.Utility.Embed
@@ -51,8 +53,6 @@ import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.Search
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ (r)
-import qualified Database.Persist.Sqlite as Sql
-import Data.Word
 
 -- Our Quote table in the database. This is fairly standard for Persistent,
 -- however you should note the name of the migration made.

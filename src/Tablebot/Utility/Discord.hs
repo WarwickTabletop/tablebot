@@ -49,13 +49,14 @@ module Tablebot.Utility.Discord
     interactionResponseComponentsUpdateMessage,
     interactionResponseAutocomplete,
     idToWord,
-    wordToId
+    wordToId,
   )
 where
 
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Exception (MonadException (throw))
+import Control.Monad.IO.Class (liftIO)
 import Data.Char (isDigit)
+import Data.Coerce (coerce)
 import Data.Default (Default (def))
 import Data.Foldable (msum)
 import Data.List ((\\))
@@ -75,7 +76,6 @@ import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
 import Tablebot.Internal.Embed (Embeddable (..))
 import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
 import Tablebot.Utility.Exception (BotException (..))
-import Data.Coerce ( coerce )
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
 -- @m@.

@@ -19,6 +19,7 @@ import Data.Text (Text, pack)
 import qualified Data.Text as T
 import Data.Version (showVersion)
 import Database.Persist (Entity, Filter, entityVal, (==.))
+import qualified Database.Persist.Sqlite as Sql
 import Discord (stopDiscord)
 import Discord.Types
 import Language.Haskell.Printf (s)
@@ -30,7 +31,6 @@ import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser
 import Text.RawString.QQ
-import qualified Database.Persist.Sqlite as Sql
 
 -- | @SS@ denotes the type returned by the command setup. Here its unused.
 type SS = [Text]

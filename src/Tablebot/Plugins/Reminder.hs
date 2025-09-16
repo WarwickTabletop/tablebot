@@ -31,7 +31,7 @@ import Duckling.Time.Types (InstantValue (InstantValue), SingleTimeValue (Simple
 import Tablebot.Utility
 import Tablebot.Utility.Discord (getMessage, sendChannelMessage, sendCustomReplyMessage, sendMessage, toTimestamp)
 import Tablebot.Utility.Permission (requirePermission)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..), IntegralData(..))
+import Tablebot.Utility.SmartParser (IntegralData (..), PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..))
 import Text.RawString.QQ (r)
 
 -- Our Reminder table in the database. This is fairly standard for Persistent,
