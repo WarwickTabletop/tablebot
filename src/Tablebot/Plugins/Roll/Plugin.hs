@@ -14,6 +14,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString.Lazy (toStrict)
 import Data.Default (Default (def))
 import Data.Distribution (isValid)
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text, intercalate, pack, replicate, unpack)
 import qualified Data.Text as T
@@ -195,18 +196,17 @@ To see a full list of uses, options and limitations, please go to <https://githu
 
 -- | Command for generating characters.
 genchar :: Command
-genchar = Command "genchar" (snd $ head rpgSystems') (toCommand <$> rpgSystems')
+genchar = Command "genchar" (snd $ NE.head rpgSystems') (toCommand <$> NE.toList rpgSystems')
   where
     doDiceRoll (nm, lv) = (nm, parseComm $ rollDice' (Just (Program [] (Left lv))) (Just (Qu ("genchar for " <> nm))))
     rpgSystems' = doDiceRoll <$> rpgSystems
     toCommand (nm, ps) = Command nm ps []
 
 -- | List of supported genchar systems and the dice used to roll for them
-rpgSystems :: [(Text, ListValues)]
+rpgSystems :: NE.NonEmpty (Text, ListValues)
 rpgSystems =
-  [ ("dnd", MultipleValues (Value 6) (DiceBase (Dice (NBase (Value 4)) (Die (Value 6)) (Just (DieOpRecur (DieOpOptionKD Drop (Low (Value 1))) Nothing))))),
-    ("wfrp", MultipleValues (Value 8) (NBase (NBParen (Paren (Expr (BinOp (promote (Value 20)) [(Add, promote (Die (Value 10)))]))))))
-  ]
+  ("dnd", MultipleValues (Value 6) (DiceBase (Dice (NBase (Value 4)) (Die (Value 6)) (Just (DieOpRecur (DieOpOptionKD Drop (Low (Value 1))) Nothing)))))
+    NE.:| [("wfrp", MultipleValues (Value 8) (NBase (NBParen (Paren (Expr (BinOp (promote (Value 20)) [(Add, promote (Die (Value 10)))]))))))]
 
 -- | Small help page for gen char.
 gencharHelp :: HelpPage
@@ -215,7 +215,7 @@ gencharHelp =
     "genchar"
     []
     "generate stat arrays for some systems"
-    ("**Genchar**\nCan be used to generate stat arrays for certain systems.\n\nCurrently supported systems: " <> intercalate ", " (fst <$> rpgSystems) <> ".\n\n*Usage:* `genchar`, `genchar dnd`")
+    ("**Genchar**\nCan be used to generate stat arrays for certain systems.\n\nCurrently supported systems: " <> intercalate ", " (fst <$> NE.toList rpgSystems) <> ".\n\n*Usage:* `genchar`, `genchar dnd`")
     []
     None
 
