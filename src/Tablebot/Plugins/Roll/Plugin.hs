@@ -31,7 +31,7 @@ import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceStats (getStats, rangeExpr)
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (distributionByteString)
 import Tablebot.Utility
-import Tablebot.Utility.Discord (Format (Code), formatText, sendCustomMessage, sendMessage, toMention')
+import Tablebot.Utility.Discord (Format (Code), formatText, inlineCommandHelper, sendCustomMessage, sendMessage, toMention')
 import Tablebot.Utility.Exception (BotException (EvaluationException), throwBot)
 import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser
