@@ -126,7 +126,7 @@ fixSearch api = mapMaybe fix
     -- format ("r", sep, v) =
     format ("u", sep, v) = Just $ QBool "u" sep uniqueness v
     format ("b", _, []) = Nothing
-    format ("b", sep, v) = Just $ QBan "b" sep $ fixBan $ head v
+    format ("b", sep, v : _) = Just $ QBan "b" sep $ fixBan v
     -- format ("z", sep, v) =
     format _ = Nothing
     cycleIndex :: Card -> Maybe Int

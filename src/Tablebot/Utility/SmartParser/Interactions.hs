@@ -46,11 +46,13 @@ makeApplicationCommandPair name desc f = do
 -- a function's type.
 makeSlashCommand :: (MakeAppComm t) => Text -> Text -> Proxy t -> Maybe CreateApplicationCommand
 makeSlashCommand name desc p =
-  createChatInput name desc >>= \cac ->
-    return $
-      cac
-        { createOptions = Just $ OptionsValues $ makeAppComm p
-        }
+  createChatInput name desc >>= \case
+    cac@CreateApplicationCommandChatInput {} ->
+      return $
+        cac
+          { createOptions = Just $ OptionsValues $ makeAppComm p
+          }
+    _ -> Nothing
 
 -- | Create a series of command option values from the given types.
 --

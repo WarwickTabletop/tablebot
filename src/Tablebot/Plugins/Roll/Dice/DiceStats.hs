@@ -59,7 +59,7 @@ rangeListValues lv = do
     head' [] = []
     head' (x : _) = [x]
     getHeads xs = (\(xs', p) -> (,p) <$> head' xs') =<< xs
-    getTails xs = first tail <$> xs
+    getTails xs = first (drop 1) <$> xs
     zip' xs = getHeads xs : zip' (getTails xs)
 
 -- | Type class to get the overall range of a value.

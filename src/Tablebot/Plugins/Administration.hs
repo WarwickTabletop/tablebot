@@ -70,11 +70,11 @@ addBlacklist pLabel m = requirePermission Superuser m $ do
 removeBlacklist :: String -> Message -> EnvDatabaseDiscord SS ()
 removeBlacklist pLabel m = requirePermission Superuser m $ do
   extant <- liftSql $ Sql.selectKeysList [PluginBlacklistLabel ==. pLabel] []
-  if not $ null extant
-    then do
-      _ <- liftSql $ Sql.delete (head extant)
+  case extant of
+    x : _ -> do
+      _ <- liftSql $ Sql.delete x
       sendMessage m "Plugin removed from blacklist. Please reload for it to take effect"
-    else sendMessage m "Plugin not in blacklist"
+    _ -> sendMessage m "Plugin not in blacklist"
 
 -- | @listBlacklist@ shows a list of the plugins eligible for disablement (those not starting with _),
 --  along with their current status.

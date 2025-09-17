@@ -28,9 +28,9 @@ flip = Command "flip" flipcomm []
     flipcomm = do
       args <- (try quoted <|> nonSpaceWord) `sepBy` some space
       return $ \m -> do
-        c <- case length args of
-          0 -> liftIO $ chooseOneWithDefault "" ["Heads", "Tails"]
-          _ -> liftIO $ chooseOneWithDefault (head args) args
+        c <- case args of
+          [] -> liftIO $ chooseOneWithDefault "" ["Heads", "Tails"]
+          a : _ -> liftIO $ chooseOneWithDefault a args
         sendMessage m $ pack c
 
 flipHelp :: HelpPage

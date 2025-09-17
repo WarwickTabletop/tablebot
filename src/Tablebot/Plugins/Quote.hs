@@ -222,10 +222,10 @@ filteredRandomQuote' quoteFilter errorMessage mb m = do
     then throwBot (GenericException "quote exception" (unpack errorMessage))
     else do
       rindex <- liftIO $ randomRIO (0, num - 1)
-      key <- liftSql $ Sql.selectKeysList quoteFilter [OffsetBy rindex, LimitTo 1]
-      qu <- traverse (liftSql . Sql.get) $ listToMaybe key
+      keys <- liftSql $ Sql.selectKeysList quoteFilter [OffsetBy rindex, LimitTo 1]
+      qu <- traverse (\key -> fmap (,key) <$> liftSql (Sql.get key)) $ listToMaybe keys
       case join qu of
-        Just q -> renderQuoteMessage q (fromSqlKey $ head key) mb m
+        Just (q, key) -> renderQuoteMessage q (fromSqlKey key) mb m
         Nothing -> throwBot (GenericException "quote exception" (unpack errorMessage))
 
 -- | @addQuote@, which looks for a message of the form
