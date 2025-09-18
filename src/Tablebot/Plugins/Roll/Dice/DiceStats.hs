@@ -1,3 +1,5 @@
+{-# LANGUAGE QualifiedDo #-}
+
 -- |
 -- Module      : Tablebot.Plugins.Roll.Dice.DiceStats
 -- Description : Get statistics on particular expressions.
@@ -10,7 +12,6 @@
 -- expressions.
 module Tablebot.Plugins.Roll.Dice.DiceStats (rangeExpr, rangeListValues, getStats) where
 
-import Control.Monad
 import Control.Monad.Exception
 import Data.Bifunctor (Bifunctor (first))
 import qualified Data.Distribution as D
@@ -22,18 +23,11 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (Distribution)
 import Tablebot.Utility.Exception (catchBot)
 
--- | Alias for an experiment of integers.
---
--- Where a distribution is a concrete mapping between values and probabilities,
--- an Experiment is more a monadic representation of a Distribution, effectively
--- deferring calculation to the end.
---
--- I'm not sure if it's more efficient but it certainly makes composing things
--- a lot easier
-type Experiment = D.Experiment Integer
+import qualified Tablebot.Plugins.Roll.Dice.DistributionMonad as DM
 
--- | Convenient alias for a experiments of lists of integers.
-type ExperimentList = D.Experiment [Integer]
+type Experiment = D.Distribution Integer
+
+type ExperimentList = D.Distribution [Integer]
 
 -- | Get the most common values, the mean, and the standard deviation of a given
 -- distribution.
@@ -46,12 +40,12 @@ getStats d = (modalOrder, D.expectation d, D.standardDeviation d)
 rangeExpr :: (MonadException m) => Expr -> m Distribution
 rangeExpr e = do
   ex <- range e
-  return $ D.run ex
+  return $ ex
 
 rangeListValues :: (MonadException m) => ListValues -> m [Distribution]
 rangeListValues lv = do
   lve <- rangeList lv
-  let lvd = D.run lve
+  let lvd = lve
       lvd' = D.toList lvd
   return $ D.fromList <$> zip' lvd'
   where
@@ -83,17 +77,17 @@ instance (RangeList a) => RangeList (MiscData a) where
   rangeList' (MiscVar l) = rangeList l
   rangeList' (MiscIf i) = rangeIfExpr rangeList i
 
-rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Experiment b)) -> If a -> m (D.Experiment b)
+rangeIfExpr :: (MonadException m, Ord b) => (a -> m (D.Distribution b)) -> If a -> m (D.Distribution b)
 rangeIfExpr func (If b t f) = do
   b' <- range b
-  let mp = D.toMap $ D.run b'
+  let mp = D.toMap b'
       canBeFalse = M.member 0 mp
       canBeTrue = not $ M.null $ M.filterWithKey (\k _ -> k /= 0) mp
-      emptyExp = D.from $ D.fromList @_ @Integer []
+      emptyExp = D.fromList @_ @Integer []
   t' <- if canBeTrue then func t else return emptyExp
   f' <- if canBeFalse then func f else return emptyExp
   return $
-    do
+    DM.do
       b'' <- b'
       if b'' /= 0 then t' else f'
 
@@ -111,7 +105,10 @@ instance (ParseShow typ, Range sub) => Range (BinOp sub typ) where
       foldel at (typ, b) = do
         a' <- at
         b' <- range b
-        return $ getOperation typ <$> a' <*> b'
+        return $ DM.do
+          param1 <- a'
+          param2 <- b'
+          DM.return $ getOperation typ param1 param2
 
 instance Range Expr where
   range' (Expr e) = range e
@@ -124,14 +121,20 @@ instance Range Term where
         a' <- at
         b' <- range b
         -- If 0 is always the denominator, the distribution will be empty.
-        return $ getOperation Div <$> a' <*> D.from (D.assuming (/= 0) (D.run b'))
+        return $ DM.do
+          param1 <- a'
+          param2 <- (D.assuming (/= 0) b')
+          DM.return $ getOperation Div param1 param2
       foldel at (typ, b) = do
         a' <- at
         b' <- range b
-        return $ getOperation typ <$> a' <*> b'
+        return $ DM.do
+          param1 <- a'
+          param2 <- b'
+          DM.return $ getOperation typ param1 param2
 
 instance Range Negation where
-  range' (Neg t) = fmap negate <$> range t
+  range' (Neg t) = (negate DM.<$>) <$> range t
   range' (NoNeg t) = range t
 
 instance Range Expo where
@@ -140,14 +143,17 @@ instance Range Expo where
     d <- range t
     d' <- range e
     -- if the exponent is always negative, the distribution will be empty
-    return $ (^) <$> d <*> D.from (D.assuming (>= 0) (D.run d'))
+    return $ DM.do
+      param1 <- d
+      param2 <- D.assuming (>= 0) d'
+      DM.return $ param1 ^ param2
 
 instance Range Func where
   range' (NoFunc t) = range t
   range' (Func fi avs) = rangeFunction fi avs
 
 instance Range NumBase where
-  range' (Value i) = return $ return i
+  range' (Value i) = return $ DM.return i
   range' (NBParen (Paren e)) = range e
 
 instance Range Base where
@@ -160,27 +166,27 @@ instance Range Die where
   range' (Die nb) = do
     nbr <- range nb
     return $
-      do
+      DM.do
         nbV <- nbr
-        D.from $ D.uniform [1 .. nbV]
+        D.uniform [1 .. nbV]
   range' (CustomDie lv) = do
     dievs <- rangeList lv
-    return $ dievs >>= D.from . D.uniform
+    return $ dievs DM.>>= D.uniform
 
 instance Range Dice where
   range' (Dice b d mdor) = do
     b' <- range b
     d' <- range d
-    let e = do
+    let e = DM.do
           diecount <- b'
-          getDiceExperiment diecount (D.run d')
+          getDiceExperiment diecount d'
     res <- rangeDiceExperiment d' mdor e
-    return $ sum <$> res
+    return $ sum DM.<$> res
 
 -- | Get the distribution of values from a given number of (identically
 -- distributed) values and the distribution of that value.
 getDiceExperiment :: Integer -> Distribution -> ExperimentList
-getDiceExperiment i = replicateM (fromInteger i) . D.from
+getDiceExperiment i d = DM.sequence $ replicate (fromInteger i) d
 
 -- | Go through each operator on dice and modify the `Experiment` representing
 -- all possible collections of rolls, returning the `Experiment` produced on
@@ -196,27 +202,27 @@ rangeDieOpExperiment die (DieOpOptionLazy o) is = rangeDieOpExperiment die o is
 rangeDieOpExperiment _ (DieOpOptionKD kd lhw) is = rangeDieOpExperimentKD kd lhw is
 rangeDieOpExperiment die (Reroll rro cond lim) is = do
   limd <- range lim
-  return $ do
+  return $ DM.do
     limit <- limd
     let newDie = mkNewDie limit
     rolls <- is
     let (count, cutdownRolls) = countTriggers limit rolls
     if count == 0
-      then return cutdownRolls
-      else (cutdownRolls ++) <$> getDiceExperiment count (D.run newDie)
+      then DM.return cutdownRolls
+      else (cutdownRolls ++) DM.<$> getDiceExperiment count newDie
   where
     mkNewDie limitValue
       | rro = die
-      | otherwise = D.from $ D.assuming (\i -> not $ applyCompare cond i limitValue) (D.run die)
+      | otherwise = D.assuming (\i -> not $ applyCompare cond i limitValue) die
     countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i : xs')) (0, [])
 
 -- | Perform a keep/drop operation on the `Experiment` of dice rolls.
 rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> ExperimentList -> m ExperimentList
 rangeDieOpExperimentKD kd (Where cond nb) is = do
   nbDis <- range nb
-  return $ do
+  return $ DM.do
     wherelimit <- nbDis
-    filter (\i -> keepDrop $ applyCompare cond i wherelimit) <$> is
+    filter (\i -> keepDrop $ applyCompare cond i wherelimit) DM.<$> is
   where
     keepDrop
       | kd == Keep = id
@@ -227,9 +233,9 @@ rangeDieOpExperimentKD kd lhw is = do
     Nothing -> whereException
     Just nb' -> do
       nbd <- range nb'
-      return $ do
+      return $ DM.do
         kdlh <- nbd
-        getKeep kdlh . sortBy' <$> is
+        (getKeep kdlh . sortBy') DM.<$> is
   where
     -- the below exception should never trigger - it is a hold over. it is
     -- present so that this thing type checks nicely.
@@ -253,7 +259,7 @@ class (ParseShow a) => RangeList a where
 instance RangeList ListValuesBase where
   rangeList' (LVBList es) = do
     exprs <- mapM range es
-    return $ sequence exprs
+    return $ DM.sequence exprs
   rangeList' (LVBParen (Paren lv)) = rangeList lv
 
 instance RangeList ListValues where
@@ -262,21 +268,21 @@ instance RangeList ListValues where
     nbd <- range nb
     bd <- range b
     return $
-      do
+      DM.do
         valNum <- nbd
-        getDiceExperiment valNum (D.run bd)
+        getDiceExperiment valNum bd
   rangeList' (LVFunc fi avs) = rangeFunction fi avs
   rangeList' (ListValuesMisc m) = rangeList m
   rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
-rangeArgValue :: (MonadException m) => ArgValue -> m (D.Experiment ListInteger)
-rangeArgValue (AVExpr e) = (LIInteger <$>) <$> range e
-rangeArgValue (AVListValues lv) = (LIList <$>) <$> rangeList lv
+rangeArgValue :: (MonadException m) => ArgValue -> m (D.Distribution ListInteger)
+rangeArgValue (AVExpr e) = (LIInteger DM.<$>) <$> range e
+rangeArgValue (AVListValues lv) = (LIList DM.<$>) <$> rangeList lv
 
-rangeFunction :: (MonadException m, Ord j) => FuncInfoBase j -> [ArgValue] -> m (D.Experiment j)
+rangeFunction :: (MonadException m, Ord j) => FuncInfoBase j -> [ArgValue] -> m (D.Distribution j)
 rangeFunction fi exprs = do
   exprs' <- mapM rangeArgValue exprs
-  let params = first (funcInfoFunc fi) <$> D.toList (D.run $ sequence exprs')
-  D.from . D.fromList <$> foldAndIgnoreErrors params
+  let params = first (funcInfoFunc fi) <$> D.toList (DM.sequence exprs')
+  D.fromList <$> foldAndIgnoreErrors params
   where
     foldAndIgnoreErrors = foldr (\(mv, p) mb -> catchBot ((: []) . (,p) <$> mv) (const (return [])) >>= \v -> mb >>= \b -> return (v ++ b)) (return [])
