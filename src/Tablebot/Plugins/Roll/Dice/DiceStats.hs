@@ -279,4 +279,4 @@ rangeFunction fi exprs = do
   let params = first (funcInfoFunc fi) <$> D.toList (D.run $ sequence exprs')
   D.from . D.fromList <$> foldAndIgnoreErrors params
   where
-    foldAndIgnoreErrors = foldr (\(mv, p) mb -> mb >>= \b -> catchBot ((: []) . (,p) <$> mv) (const (return [])) >>= \v -> return (v ++ b)) (return [])
+    foldAndIgnoreErrors = foldr (\(mv, p) mb -> catchBot ((: []) . (,p) <$> mv) (const (return [])) >>= \v -> mb >>= \b -> return (v ++ b)) (return [])
