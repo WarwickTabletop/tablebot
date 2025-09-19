@@ -72,7 +72,7 @@ data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
 
 -- | The type for a binary operator between one or more `sub` values
 data BinOp sub typ where
-  BinOp :: (Operation typ) => sub -> [(typ, sub)] -> BinOp sub typ
+  BinOp :: sub -> [(typ, sub)] -> BinOp sub typ
 
 deriving instance (Show sub, Show typ) => Show (BinOp sub typ)
 

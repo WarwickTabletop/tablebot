@@ -99,7 +99,7 @@ instance (RangeList a) => RangeList (Var a) where
   rangeList' (Var _ a) = rangeList a
   rangeList' (VarLazy _ a) = rangeList a
 
-instance (ParseShow typ, Range sub) => Range (BinOp sub typ) where
+instance (ParseShow typ, Operation typ, Range sub) => Range (BinOp sub typ) where
   range' (BinOp a tas) = foldl' foldel (range a) tas
     where
       foldel at (typ, b) = do
