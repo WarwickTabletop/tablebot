@@ -1,5 +1,5 @@
-# stack resolver 18.18 uses ghc 9.12.2
-FROM haskell:9.12.2-bookworm as build
+# stack resolver 24.10 uses ghc 9.10.2 - when upgrading LTS version in stack.yaml, check Haskell version on https://www.stackage.org/ and check which Debian release is available on https://hub.docker.com/_/haskell/
+FROM haskell:9.10.2-bullseye as build
 RUN mkdir -p /tablebot/build
 WORKDIR /tablebot/build
 
@@ -15,9 +15,10 @@ RUN stack build --system-ghc
 
 RUN mv "$(stack path --local-install-root --system-ghc)/bin" /tablebot/build/bin
 
-FROM haskell:9.12.2-slim-bookworm as app
+# ensure this matches first FROM
+FROM haskell:9.10.2-slim-bullseye as app
 
-# system runtime deps - if this command fails, check libicu version (https://packages.debian.org/search?keywords=libicu&searchon=names&suite=bookworm&section=all) and upgrade if necessary
+# system runtime deps - if this command fails, check libicu version (https://packages.debian.org/index) and upgrade if necessary
 RUN apt-get update -qq && \
   apt-get install -qq -y libpcre3 libicu72 --fix-missing --no-install-recommends && \
   apt-get clean && \
