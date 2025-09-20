@@ -52,7 +52,7 @@ packages:
     git: https://github.com/L0neGamer/haskell-distribution.git
 - completed:
     commit: f22e3cdd7b77977fe3e9ec75fccd9a0f79c47f97
-    git: git@github.com:L0neGamer/duckling.git
+    git: https://github.com/L0neGamer/duckling.git
     name: duckling
     pantry-tree:
       sha256: 126902871d2ae27e2ac4a88a07f04a4c3b7bff3f0fdf067d8d9226136002ff51
@@ -60,7 +60,7 @@ packages:
     version: 0.2.0.1
   original:
     commit: f22e3cdd7b77977fe3e9ec75fccd9a0f79c47f97
-    git: git@github.com:L0neGamer/duckling.git
+    git: https://github.com/L0neGamer/duckling.git
 snapshots:
 - completed:
     sha256: 057c5a66404132b661211de21bb4490f6df89c162752a17f0df5a0959381b869
