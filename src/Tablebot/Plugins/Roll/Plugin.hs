@@ -23,6 +23,7 @@ import Discord.Interactions
 import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
 import Discord.Types (ActionRow (..), Button (..), Message (..), User (..), UserId, mkButton, mkEmoji)
 import System.Timeout (timeout)
+import System.Environment (lookupEnv)
 import Tablebot.Internal.Cache (getFontMap)
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
@@ -36,6 +37,7 @@ import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser
 import Text.Megaparsec
 import Text.RawString.QQ (r)
+import Text.Read (readMaybe)
 
 -- | The basic execution function for rolling dice. Both the expression and message are
 -- optional. If the expression is not given, then the default roll is used.
@@ -223,9 +225,6 @@ gencharHelp =
 statsCommand :: Command
 statsCommand = Command "stats" statsCommandParser []
   where
-    oneSecond = 1000000
-    tenSeconds = 10 * oneSecond
-    timeoutTime = tenSeconds
     statsCommandParser :: Parser (Message -> DatabaseDiscord ())
     statsCommandParser = do
       firstE <- pars
@@ -233,6 +232,8 @@ statsCommand = Command "stats" statsCommandParser []
       return $ statsCommand' (firstE : restEs)
     statsCommand' :: [Expr] -> Message -> DatabaseDiscord ()
     statsCommand' es m = do
+      let oneSecond = 1000000
+      timeoutTime <- liftIO $ (oneSecond *) . fromMaybe 10 . readMaybe . fromMaybe "10" <$> lookupEnv "STATS_TIMEOUT"
       mrange' <- liftIO $ timeout timeoutTime $ mapM (\e -> rangeExpr e >>= \re -> re `seq` return (re, parseShow e)) es
       case mrange' of
         Nothing -> throwBot (EvaluationException "Timed out calculating statistics" [])
