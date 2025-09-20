@@ -20,7 +20,7 @@ FROM haskell:9.10.2-slim-bullseye as app
 
 # system runtime deps - if this command fails, check libicu version (https://packages.debian.org/index) and upgrade if necessary
 RUN apt-get update -qq && \
-  apt-get install -qq -y libpcre3 libicu72 --fix-missing --no-install-recommends && \
+  apt-get install -qq -y libpcre3 libicu67 --fix-missing --no-install-recommends && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
