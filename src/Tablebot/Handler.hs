@@ -127,7 +127,7 @@ submitApplicationCommands compiledAppComms cacheMVar =
         Nothing -> pure ()
         Just serverIdStr -> do
           serverId <- readServerStr serverIdStr
-          aid <- partialApplicationID . cacheApplication <$> readCache
+          aid <- fullApplicationID . cacheApplication <$> readCache
           applicationCommands <-
             mapM
               ( \(CApplicationCommand cac action) -> do

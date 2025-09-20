@@ -13,12 +13,13 @@ module Tablebot.Plugins.Administration (administrationPlugin) where
 
 import Control.Concurrent.MVar (MVar, swapMVar)
 import Control.Monad (when)
-import Control.Monad.Cont (liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ask)
 import Data.Text (Text, pack)
 import qualified Data.Text as T
 import Data.Version (showVersion)
 import Database.Persist (Entity, Filter, entityVal, (==.))
+import qualified Database.Persist.Sqlite as Sql
 import Discord (stopDiscord)
 import Discord.Types
 import Language.Haskell.Printf (s)
@@ -26,7 +27,6 @@ import Tablebot.Internal.Administration
 import Tablebot.Internal.Cache (getVersionInfo)
 import Tablebot.Internal.Types (CompiledPlugin (compiledName))
 import Tablebot.Utility
-import Tablebot.Utility.Database
 import Tablebot.Utility.Discord (sendMessage)
 import Tablebot.Utility.Permission (requirePermission)
 import Tablebot.Utility.SmartParser
@@ -60,27 +60,27 @@ addBlacklist pLabel m = requirePermission Superuser m $ do
   -- It's not an error to add an unknown plugin (so that you can pre-disable a plugin you know you're about to add),
   -- but emmit a warning so people know if it wasn't deliberate
   when (pack pLabel `notElem` known) $ sendMessage m "Warning, unknown plugin"
-  extant <- exists [PluginBlacklistLabel ==. pLabel]
+  extant <- liftSql $ Sql.exists [PluginBlacklistLabel ==. pLabel]
   if not extant
     then do
-      _ <- insert $ PluginBlacklist pLabel
+      _ <- liftSql $ Sql.insert $ PluginBlacklist pLabel
       sendMessage m "Plugin added to blacklist. Please reload for it to take effect"
     else sendMessage m "Plugin already in blacklist"
 
 removeBlacklist :: String -> Message -> EnvDatabaseDiscord SS ()
 removeBlacklist pLabel m = requirePermission Superuser m $ do
-  extant <- selectKeysList [PluginBlacklistLabel ==. pLabel] []
-  if not $ null extant
-    then do
-      _ <- delete (head extant)
+  extant <- liftSql $ Sql.selectKeysList [PluginBlacklistLabel ==. pLabel] []
+  case extant of
+    x : _ -> do
+      _ <- liftSql $ Sql.delete x
       sendMessage m "Plugin removed from blacklist. Please reload for it to take effect"
-    else sendMessage m "Plugin not in blacklist"
+    _ -> sendMessage m "Plugin not in blacklist"
 
 -- | @listBlacklist@ shows a list of the plugins eligible for disablement (those not starting with _),
 --  along with their current status.
 listBlacklist :: Message -> EnvDatabaseDiscord SS ()
 listBlacklist m = requirePermission Superuser m $ do
-  bl <- selectList allBlacklisted []
+  bl <- liftSql $ Sql.selectList allBlacklisted []
   pl <- ask
   sendMessage m (format pl (blacklisted bl))
   where

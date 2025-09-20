@@ -359,7 +359,7 @@ instance Context Message where
 
 instance Context Interaction where
   -- this is safe to do because we are guaranteed to get either a user or a member
-  contextUserId i = maybe 0 userId (either memberUser Just mor)
+  contextUserId i = maybe (DiscordId (Snowflake 0)) userId (either memberUser Just mor)
     where
       (MemberOrUser mor) = interactionUser i
   contextGuildId i = return $ interactionGuildId i

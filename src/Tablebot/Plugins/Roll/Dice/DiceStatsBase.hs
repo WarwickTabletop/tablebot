@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 -- |
 -- Module      : Tablebot.Plugins.Roll.Dice.DiceStatsBase
 -- Description : The basics for dice stats
@@ -68,7 +70,7 @@ distributionRenderable d = toRenderable $ do
   layout_y_axis . laxis_override .= \ad@AxisData {_axis_labels = axisLabels} -> ad {_axis_labels = (second (\s -> if '.' `elem` s then s else s ++ ".0") <$>) <$> axisLabels}
   layout_all_font_styles .= defFontStyle
   pb <- (bars @Integer @Double) (barNames d) pts
-  let pb' = pb {_plot_bars_spacing = BarsFixGap 10 5}
+  let pb' = set plot_bars_spacing (BarsFixGap 10 5) pb
   plot $ return $ plotBars pb'
   where
     removeNullMap m
@@ -106,31 +108,42 @@ scaledIntAxis' r@(minI, maxI) _ = makeAxis (_la_labelf lap) ((minI - 1) : (maxI 
         )
     gridvs = labelvs
 
+data Stream a = a :|< Stream a
+  deriving (Functor)
+
+prependList :: [a] -> Stream a -> Stream a
+prependList [] stream = stream
+prependList (a : as) stream = a :|< prependList as stream
+
+spanStream :: (a -> Bool) -> Stream a -> ([a], Stream a)
+spanStream f stream@(a :|< as)
+  | f a = first (a :) $ spanStream f as
+  | otherwise = ([], stream)
+
 -- | Taken and modified from
 -- https://hackage.haskell.org/package/Chart-1.9.3/docs/src/Graphics.Rendering.Chart.Axis.Int.html#stepsInt
 stepsInt' :: Integer -> (Integer, Integer) -> [Integer]
 stepsInt' nSteps range = bestSize (goodness alt0) alt0 alts
   where
-    bestSize n a (a' : as) =
+    bestSize n a (a' :|< as) =
       let n' = goodness a'
        in if n' < n then bestSize n' a' as else a
-    bestSize _ _ [] = []
 
     goodness vs = abs (genericLength vs - nSteps)
 
-    (alt0 : alts) = map (`steps` range) sampleSteps'
+    (alt0 :|< alts) = fmap (`steps` range) sampleSteps'
 
     -- throw away sampleSteps that are definitely too small as
     -- they takes a long time to process
     sampleSteps' =
       let rangeMag = (snd range - fst range)
 
-          (s1, s2) = span (< (rangeMag `div` nSteps)) sampleSteps
-       in (reverse . take 5 . reverse) s1 ++ s2
+          (s1, s2) = spanStream (< (rangeMag `div` nSteps)) sampleSteps
+       in (reverse . take 5 . reverse) s1 `prependList` s2
 
     -- generate all possible step sizes
-    sampleSteps = [1, 2, 5] ++ sampleSteps1
-    sampleSteps1 = [10, 20, 25, 50] ++ map (* 10) sampleSteps1
+    sampleSteps = [1, 2, 5] `prependList` sampleSteps1
+    sampleSteps1 = [10, 20, 25, 50] `prependList` fmap (* 10) sampleSteps1
 
     steps :: Integer -> (Integer, Integer) -> [Integer]
     steps size' (minV, maxV) = takeWhile (< b) [a, a + size' ..] ++ [b]

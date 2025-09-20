@@ -46,11 +46,13 @@ makeApplicationCommandPair name desc f = do
 -- a function's type.
 makeSlashCommand :: (MakeAppComm t) => Text -> Text -> Proxy t -> Maybe CreateApplicationCommand
 makeSlashCommand name desc p =
-  createChatInput name desc >>= \cac ->
-    return $
-      cac
-        { createOptions = Just $ OptionsValues $ makeAppComm p
-        }
+  createChatInput name desc >>= \case
+    cac@CreateApplicationCommandChatInput {} ->
+      return $
+        cac
+          { createOptions = Just $ OptionsValues $ makeAppComm p
+          }
+    _ -> Nothing
 
 -- | Create a series of command option values from the given types.
 --
@@ -78,21 +80,21 @@ class MakeAppCommArg commandty where
 -- | Create a labelled text argument. By default it is required and does not
 -- have autocompeletion.
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Text) where
-  makeAppCommArg l = OptionValueString n d True (Left False)
+  makeAppCommArg l = OptionValueString n Nothing d Nothing True (Left False) Nothing Nothing
     where
       (n, d) = getLabelValues l
 
 -- | Create a labelled integer argument. By default it is required and does not
 -- have autocompeletion, and does not have bounds.
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Integer) where
-  makeAppCommArg l = OptionValueInteger n d True (Left False) Nothing Nothing
+  makeAppCommArg l = OptionValueInteger n Nothing d Nothing True (Left False) Nothing Nothing
     where
       (n, d) = getLabelValues l
 
 -- | Create a labelled scientific argument. By default it is required and does not
 -- have autocompeletion, and does not have bounds.
 instance (KnownSymbol name, KnownSymbol desc) => MakeAppCommArg (Labelled name desc Scientific) where
-  makeAppCommArg l = OptionValueNumber n d True (Left False) Nothing Nothing
+  makeAppCommArg l = OptionValueNumber n Nothing d Nothing True (Left False) Nothing Nothing
     where
       (n, d) = getLabelValues l
 
@@ -274,8 +276,8 @@ onlyAllowRequestor' msg f = do
     )
     <* eof
   where
-    prefunc :: UserId -> SenderUserId -> Interaction -> DatabaseDiscord (Maybe MessageDetails)
-    prefunc uid (SenderUserId u) i =
+    prefunc :: Snowflake -> SenderUserId -> Interaction -> DatabaseDiscord (Maybe MessageDetails)
+    prefunc uid (SenderUserId (DiscordId u)) i =
       if uid == u
         then return Nothing
         else

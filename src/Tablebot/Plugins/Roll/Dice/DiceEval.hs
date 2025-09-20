@@ -10,9 +10,10 @@
 -- expressions.
 module Tablebot.Plugins.Roll.Dice.DiceEval (ParseShow (parseShow), evalProgram, evalList, evalInteger, evaluationException, propagateException, maximumRNG, maximumListLength) where
 
+import Control.Monad (when)
 import Control.Monad.Exception (MonadException)
-import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify, when)
-import Data.List (foldl', genericDrop, genericReplicate, genericTake, sortBy)
+import Control.Monad.State (MonadIO (liftIO), StateT, evalStateT, gets, modify)
+import Data.List (genericDrop, genericReplicate, genericTake, sortBy)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), head, tail, (<|))
 import Data.Map (Map, empty)
 import qualified Data.Map as M
@@ -160,7 +161,9 @@ propagateException t a = catchBot a handleException
     handleException (EvaluationException msg' locs) = throwBot (EvaluationException msg' (addIfNotIn locs))
     handleException e = throwBot e
     pa = unpack t
-    addIfNotIn locs = if null locs || pa /= Prelude.head locs then pa : locs else locs
+    addIfNotIn locs = case locs of
+      x : _ | pa == x -> locs
+      _ -> pa : locs
 
 -- | This type class evaluates an item and returns a list of integers (with
 -- their representations if valid).

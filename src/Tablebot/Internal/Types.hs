@@ -127,7 +127,7 @@ instance PersistField AliasType where
   toPersistValue AliasPublic = PersistInt64 (-1)
   fromPersistValue = \case
     PersistInt64 (-1) -> Right AliasPublic
-    PersistInt64 i -> Right $ AliasPrivate (fromIntegral i)
+    PersistInt64 i -> Right $ AliasPrivate (DiscordId (Snowflake (fromIntegral i)))
     _ -> Left "AliasType: fromPersistValue: Invalid value"
 
 instance PersistFieldSql AliasType where

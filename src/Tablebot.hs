@@ -27,7 +27,6 @@ import Data.Map as M (empty)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
 import qualified Data.Text as T
-import Data.Text.Encoding (encodeUtf8)
 import Database.Persist.Sqlite
   ( runMigration,
     runSqlPool,
@@ -38,7 +37,6 @@ import Discord.Internal.Rest
 import LoadEnv (loadEnv)
 import Paths_tablebot (version)
 import System.Environment (getEnv, lookupEnv)
-import System.Exit (die)
 import Tablebot.Handler (eventHandler, killCron, runCron, submitApplicationCommands)
 import Tablebot.Internal.Administration
   ( ShutdownReason (Reload),
@@ -144,13 +142,8 @@ runTablebot vinfo dToken prefix dbpath plugins config =
     activityStatus =
       UpdateStatusOpts
         { updateStatusOptsSince = Nothing,
-          updateStatusOptsGame =
-            Just
-              ( def
-                  { activityName = gamePlaying config prefix,
-                    activityType = ActivityTypeGame
-                  }
-              ),
+          updateStatusOptsActivities =
+            [mkActivity (gamePlaying config prefix) ActivityTypeGame],
           updateStatusOptsNewStatus = UpdateStatusOnline,
           updateStatusOptsAFK = False
         }

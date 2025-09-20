@@ -29,9 +29,9 @@ import Tablebot.Plugins.Netrunner.Utility.Card (toText)
 import Tablebot.Plugins.Netrunner.Utility.Embed
 import Tablebot.Plugins.Netrunner.Utility.NrApi (getNrApi)
 import Tablebot.Utility
-import Tablebot.Utility.Discord (formatFromEmojiName, sendEmbedMessage, sendMessage)
+import Tablebot.Utility.Discord (formatFromEmojiName, inlineCommandHelper, sendEmbedMessage, sendMessage)
 import Tablebot.Utility.Embed (addColour)
-import Tablebot.Utility.Parser (inlineCommandHelper, keyValue, keyValuesSepOn)
+import Tablebot.Utility.Parser (keyValue, keyValuesSepOn)
 import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), RestOfInput (ROI), RestOfInput1 (ROI1), WithError (WErr))
 import Tablebot.Utility.Types ()
 import Text.Megaparsec (anySingleBut, some)
