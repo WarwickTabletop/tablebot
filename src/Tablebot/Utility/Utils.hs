@@ -13,7 +13,7 @@ import Control.Monad (when)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, filter, toLower)
 import Data.Text.ICU.Char (Bool_ (Diacritic), property)
-import Data.Text.ICU.Normalize (NormalizationMode (NFD), normalize)
+import Data.Text.ICU.Normalize2 (NormalizationMode (NFD), normalize)
 import Data.Text.Lazy (toStrict)
 import Data.Text.Lazy.Builder (toLazyText)
 import Data.Text.Lazy.Builder.Int (decimal)
@@ -30,12 +30,12 @@ isDebug = do
     justDebug (Just "1") = True
     justDebug _ = False
 
-debugPrint :: Show a => a -> IO ()
+debugPrint :: (Show a) => a -> IO ()
 debugPrint a = do
   d <- isDebug
   when d $ print a
 
-intToText :: Integral a => a -> Text
+intToText :: (Integral a) => a -> Text
 intToText = toStrict . toLazyText . decimal
 
 -- | @standardise@ takes converts text to lowercase and removes diacritics

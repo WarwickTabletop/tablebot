@@ -44,14 +44,6 @@ getStats d = (modalOrder, expectation d, standardDeviation d)
     vals = toList d
     modalOrder = fst <$> sortBy (\(_, r) (_, r') -> compare r' r) vals
 
--- | Convenience wrapper which gets the range of the given values then applies
--- the function to the resultant distributions.
-combineRangesBinOp :: (MonadException m, Range a, Range b, ParseShow a, ParseShow b) => (Integer -> Integer -> Integer) -> a -> b -> m Experiment
-combineRangesBinOp f a b = do
-  d <- range a
-  d' <- range b
-  return $ f <$> d <*> d'
-
 rangeExpr :: (MonadException m) => Expr -> m Distribution
 rangeExpr e = do
   ex <- range e
@@ -67,7 +59,7 @@ rangeListValues lv = do
     head' [] = []
     head' (x : _) = [x]
     getHeads xs = (\(xs', p) -> (,p) <$> head' xs') =<< xs
-    getTails xs = first tail <$> xs
+    getTails xs = first (drop 1) <$> xs
     zip' xs = getHeads xs : zip' (getTails xs)
 
 -- | Type class to get the overall range of a value.
@@ -76,7 +68,7 @@ rangeListValues lv = do
 -- has a variety of  functions that operate on them.
 --
 -- An `Data.Distribution.Experiment` is a monadic form of this.
-class ParseShow a => Range a where
+class (ParseShow a) => Range a where
   -- | Try and get the `Experiment` of the given value, throwing a
   -- `MonadException` on failure.
   range :: (MonadException m, ParseShow a) => a -> m Experiment
@@ -114,20 +106,30 @@ instance (RangeList a) => RangeList (Var a) where
   rangeList' (Var _ a) = rangeList a
   rangeList' (VarLazy _ a) = rangeList a
 
+instance (ParseShow typ, Range sub) => Range (BinOp sub typ) where
+  range' (BinOp a tas) = foldl' foldel (range a) tas
+    where
+      foldel at (typ, b) = do
+        a' <- at
+        b' <- range b
+        return $ getOperation typ <$> a' <*> b'
+
 instance Range Expr where
-  range' (NoExpr t) = range t
-  range' (Add t e) = combineRangesBinOp (+) t e
-  range' (Sub t e) = combineRangesBinOp (-) t e
+  range' (Expr e) = range e
   range' (ExprMisc t) = range t
 
 instance Range Term where
-  range' (NoTerm t) = range t
-  range' (Multi t e) = combineRangesBinOp (*) t e
-  range' (Div t e) = do
-    d <- range t
-    d' <- range e
-    -- If 0 is always the denominator, the distribution will be empty.
-    return $ div <$> d <*> from (assuming (/= 0) (run d'))
+  range' (Term (BinOp a tas)) = foldl' foldel (range a) tas
+    where
+      foldel at (Div, b) = do
+        a' <- at
+        b' <- range b
+        -- If 0 is always the denominator, the distribution will be empty.
+        return $ getOperation Div <$> a' <*> from (assuming (/= 0) (run b'))
+      foldel at (typ, b) = do
+        a' <- at
+        b' <- range b
+        return $ getOperation typ <$> a' <*> b'
 
 instance Range Negation where
   range' (Neg t) = fmap negate <$> range t
@@ -190,7 +192,7 @@ rangeDiceExperiment die (Just (DieOpRecur doo mdor)) is = rangeDieOpExperiment d
 
 -- | Perform one dice operation on the given `Experiment`, possibly returning
 -- a modified experiment representing the distribution of dice rolls.
-rangeDieOpExperiment :: MonadException m => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
+rangeDieOpExperiment :: (MonadException m) => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
 rangeDieOpExperiment die (DieOpOptionLazy o) is = rangeDieOpExperiment die o is
 rangeDieOpExperiment _ (DieOpOptionKD kd lhw) is = rangeDieOpExperimentKD kd lhw is
 rangeDieOpExperiment die (Reroll rro cond lim) is = do
@@ -241,7 +243,7 @@ rangeDieOpExperimentKD kd lhw is = do
 --
 -- Only used within `DiceStats` as I have no interest in producing statistics on
 -- lists
-class ParseShow a => RangeList a where
+class (ParseShow a) => RangeList a where
   -- | Try and get the `DistributionList` of the given value, throwing a
   -- `MonadException` on failure.
   rangeList :: (MonadException m, ParseShow a) => a -> m ExperimentList
@@ -268,7 +270,7 @@ instance RangeList ListValues where
   rangeList' (ListValuesMisc m) = rangeList m
   rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
-rangeArgValue :: MonadException m => ArgValue -> m (D.Experiment ListInteger)
+rangeArgValue :: (MonadException m) => ArgValue -> m (D.Experiment ListInteger)
 rangeArgValue (AVExpr e) = (LIInteger <$>) <$> range e
 rangeArgValue (AVListValues lv) = (LIList <$>) <$> rangeList lv
 

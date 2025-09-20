@@ -11,14 +11,17 @@
 module Tablebot.Utility.Parser where
 
 import Data.Char (isDigit, isLetter, isSpace)
-import Data.Functor (void, ($>))
+import Data.Functor (($>))
 import Data.Text (Text)
-import qualified Data.Text as T
-import Discord.Internal.Rest (Message)
-import Tablebot.Utility
-import Tablebot.Utility.Discord (reactToMessage)
+import Discord.Types
+  ( DiscordId (..),
+    Snowflake (..),
+    UserId,
+  )
+import Tablebot.Utility.Types (Parser)
 import Text.Megaparsec
-import Text.Megaparsec.Char (char, string)
+import Text.Megaparsec.Char (char)
+import Text.Read (readMaybe)
 
 space :: Parser ()
 space = satisfy isSpace $> ()
@@ -167,24 +170,9 @@ double = do
         _ <- char '.'
         num <- some digit
         return $ '.' : num
-      )
+    )
       <|> return ""
   return (read (minus : digits ++ decimal))
-
--- | For helping to create inline commands. Takes the opening characters, closing
--- characters, a parser to get a value `e`, and an action that takes that `e` and a
--- message and produces a DatabaseDiscord effect.
-inlineCommandHelper :: Text -> Text -> Parser e -> (e -> Message -> EnvDatabaseDiscord d ()) -> EnvInlineCommand d
-inlineCommandHelper open close p action =
-  InlineCommand
-    ( do
-        getExprs <- some (try $ skipManyTill anySingle (string open *> skipSpace *> (((Right <$> try p) <* skipSpace <* string close) <|> (Left . T.pack <$> manyTill anySingle (string close)))))
-        return $ \m -> mapM_ (`action'` m) (take maxInlineCommands getExprs)
-    )
-  where
-    maxInlineCommands = 3
-    action' (Right p') m = action p' m
-    action' (Left _) m = void $ reactToMessage m "x"
 
 -- | Parse 0 or more comma separated values.
 parseCommaSeparated :: Parser a -> Parser [a]
@@ -214,3 +202,11 @@ instance (ParseShow a, ParseShow b) => ParseShow (Either a b) where
 
 instance ParseShow Text where
   parseShow t = t
+
+-- | Try to get the userid from a given string.
+parseMentionUserId :: Parser UserId
+parseMentionUserId = do
+  digits <- between (chunk "<@" <* optional (single '!')) (single '>') (some digit) -- single '<' *> single '@' *> single '!' *> some (satisy ) <* single '>'
+  case readMaybe digits of
+    Just i -> pure $ DiscordId $ Snowflake $ i
+    Nothing -> fail $ "could not read user id: " <> show digits

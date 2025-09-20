@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 -- |
 -- Module      : Tablebot.Plugins.Roll.Dice.DiceStatsBase
 -- Description : The basics for dice stats
@@ -15,6 +17,7 @@ module Tablebot.Plugins.Roll.Dice.DiceStatsBase
 where
 
 import Codec.Picture (PngSavable (encodePng))
+import Control.Monad.Exception (MonadException)
 import Data.Bifunctor
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Distribution as D
@@ -25,10 +28,11 @@ import qualified Data.Text as T
 import Diagrams (Diagram, dims2D, renderDia)
 import Diagrams.Backend.Rasterific
 import Graphics.Rendering.Chart.Axis.Int
-import Graphics.Rendering.Chart.Backend.Diagrams (defaultEnv, runBackendR)
+import Graphics.Rendering.Chart.Backend.Diagrams (runBackendR)
 import Graphics.Rendering.Chart.Backend.Types
 import Graphics.Rendering.Chart.Easy
 import Tablebot.Plugins.Roll.Dice.DiceEval (evaluationException)
+import Tablebot.Utility.Font (FontMap, makeSansSerifEnv)
 
 -- | A wrapper type for mapping values to their probabilities.
 type Distribution = D.Distribution Integer
@@ -39,22 +43,21 @@ diagramX, diagramY :: Double
 
 -- | Get the ByteString representation of the given distribution, setting the
 -- string as its title.
-distributionByteString :: [(Distribution, T.Text)] -> IO B.ByteString
-distributionByteString d = encodePng . renderDia Rasterific opts <$> distributionDiagram d
+distributionByteString :: (MonadException m) => FontMap Double -> [(Distribution, T.Text)] -> m B.ByteString
+distributionByteString fontMap d = encodePng . renderDia Rasterific opts <$> distributionDiagram fontMap d
   where
     opts = RasterificOptions (dims2D diagramX diagramY)
 
 -- | Get the Diagram representation of the given distribution, setting the
 -- string as its title.
-distributionDiagram :: [(Distribution, T.Text)] -> IO (Diagram B)
-distributionDiagram d = do
+distributionDiagram :: (MonadException m) => FontMap Double -> [(Distribution, T.Text)] -> m (Diagram B)
+distributionDiagram fontMap d = do
   if null d
     then evaluationException "empty distribution" []
-    else do
-      defEnv <- defaultEnv (AlignmentFns id id) diagramX diagramY
-      return . fst $ runBackendR defEnv r
+    else return . fst $ runBackendR defEnv r
   where
     r = distributionRenderable d
+    defEnv = makeSansSerifEnv diagramX diagramY fontMap
 
 -- | Get the Renderable representation of the given distribution, setting the
 -- string as its title.
@@ -67,7 +70,7 @@ distributionRenderable d = toRenderable $ do
   layout_y_axis . laxis_override .= \ad@AxisData {_axis_labels = axisLabels} -> ad {_axis_labels = (second (\s -> if '.' `elem` s then s else s ++ ".0") <$>) <$> axisLabels}
   layout_all_font_styles .= defFontStyle
   pb <- (bars @Integer @Double) (barNames d) pts
-  let pb' = pb {_plot_bars_spacing = BarsFixGap 10 5}
+  let pb' = set plot_bars_spacing (BarsFixGap 10 5) pb
   plot $ return $ plotBars pb'
   where
     removeNullMap m
@@ -105,31 +108,42 @@ scaledIntAxis' r@(minI, maxI) _ = makeAxis (_la_labelf lap) ((minI - 1) : (maxI 
         )
     gridvs = labelvs
 
+data Stream a = a :|< Stream a
+  deriving (Functor)
+
+prependList :: [a] -> Stream a -> Stream a
+prependList [] stream = stream
+prependList (a : as) stream = a :|< prependList as stream
+
+spanStream :: (a -> Bool) -> Stream a -> ([a], Stream a)
+spanStream f stream@(a :|< as)
+  | f a = first (a :) $ spanStream f as
+  | otherwise = ([], stream)
+
 -- | Taken and modified from
 -- https://hackage.haskell.org/package/Chart-1.9.3/docs/src/Graphics.Rendering.Chart.Axis.Int.html#stepsInt
 stepsInt' :: Integer -> (Integer, Integer) -> [Integer]
 stepsInt' nSteps range = bestSize (goodness alt0) alt0 alts
   where
-    bestSize n a (a' : as) =
+    bestSize n a (a' :|< as) =
       let n' = goodness a'
        in if n' < n then bestSize n' a' as else a
-    bestSize _ _ [] = []
 
     goodness vs = abs (genericLength vs - nSteps)
 
-    (alt0 : alts) = map (`steps` range) sampleSteps'
+    (alt0 :|< alts) = fmap (`steps` range) sampleSteps'
 
     -- throw away sampleSteps that are definitely too small as
     -- they takes a long time to process
     sampleSteps' =
       let rangeMag = (snd range - fst range)
 
-          (s1, s2) = span (< (rangeMag `div` nSteps)) sampleSteps
-       in (reverse . take 5 . reverse) s1 ++ s2
+          (s1, s2) = spanStream (< (rangeMag `div` nSteps)) sampleSteps
+       in (reverse . take 5 . reverse) s1 `prependList` s2
 
     -- generate all possible step sizes
-    sampleSteps = [1, 2, 5] ++ sampleSteps1
-    sampleSteps1 = [10, 20, 25, 50] ++ map (* 10) sampleSteps1
+    sampleSteps = [1, 2, 5] `prependList` sampleSteps1
+    sampleSteps1 = [10, 20, 25, 50] `prependList` fmap (* 10) sampleSteps1
 
     steps :: Integer -> (Integer, Integer) -> [Integer]
     steps size' (minV, maxV) = takeWhile (< b) [a, a + size' ..] ++ [b]

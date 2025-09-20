@@ -69,6 +69,8 @@ dependencies:
 - distribution
 - extra
 - process
+- filepath
+- SVGFonts
 
 library:
   source-dirs: src
@@ -98,6 +100,7 @@ library:
     - TypeOperators
     - RankNTypes
     - BangPatterns
+    - ViewPatterns
   ghc-options:
     - -Wall
 
@@ -109,7 +112,7 @@ executables:
     ghc-options:
       - -threaded
       - -rtsopts
-      - -with-rtsopts=-N
+      - "\"-with-rtsopts=-Iw10 -N\""
     dependencies:
       - tablebot
 

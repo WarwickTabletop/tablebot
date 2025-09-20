@@ -29,7 +29,7 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Utility.Parser
 import Tablebot.Utility.SmartParser (CanParse (..), (<??>))
 import Tablebot.Utility.Types (Parser)
-import Text.Megaparsec (MonadParsec (try), choice, failure, optional, some, (<?>), (<|>))
+import Text.Megaparsec (MonadParsec (try), choice, failure, many, optional, some, (<?>), (<|>))
 import Text.Megaparsec.Char (char, string)
 import Text.Megaparsec.Error (ErrorItem (Tokens))
 
@@ -40,7 +40,7 @@ failure' s ss = failure (Just $ Tokens $ NE.fromList $ T.unpack s) (S.map (Token
 variableName :: Parser T.Text
 variableName = T.pack <$> some (choice $ char <$> '_' : ['a' .. 'z'])
 
-instance CanParse a => CanParse (Var a) where
+instance (CanParse a) => CanParse (Var a) where
   pars = do
     _ <- try (string "var") <* skipSpace
     letCon <- try (char '!' $> VarLazy) <|> return Var
@@ -87,9 +87,11 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
-      <|> ListValuesMisc <$> (pars >>= checkVar)
-      <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
-      <|> LVBase <$> pars
+      <|> ListValuesMisc
+      <$> (pars >>= checkVar)
+        <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
+        <|> LVBase
+      <$> pars
     where
       checkVar (MiscVar l)
         | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
@@ -104,7 +106,8 @@ instance CanParse ListValuesBase where
               <* skipSpace
               <* (char '}' <??> "could not find closing brace for list")
           )
-      <|> LVBParen . unnest
+        <|> LVBParen
+        . unnest
       <$> pars
     where
       unnest (Paren (LVBase (LVBParen e))) = e
@@ -121,21 +124,32 @@ instance (CanParse b) => CanParse (If b) where
     e <- string "else" *> skipSpace1 *> pars
     return $ If a t e
 
-instance CanParse a => CanParse (MiscData a) where
+instance (CanParse a) => CanParse (MiscData a) where
   pars = (MiscVar <$> pars) <|> (MiscIf <$> pars)
+
+instance (CanParse sub, CanParse typ, Operation typ) => CanParse (BinOp sub typ) where
+  pars = do
+    a <- pars
+    tas <- many parseTas
+    return $ BinOp a tas
+    where
+      parseTas = try $ do
+        t <- skipSpace *> pars
+        a' <- skipSpace *> pars
+        return (t, a')
+
+instance CanParse ExprType where
+  pars = try (char '+' $> Add) <|> try (char '-' $> Sub)
 
 instance CanParse Expr where
   pars =
-    (ExprMisc <$> pars)
-      <|> ( do
-              t <- pars
-              binOpParseHelp '+' (Add t) <|> binOpParseHelp '-' (Sub t) <|> (return . NoExpr) t
-          )
+    (ExprMisc <$> pars) <|> (Expr <$> pars)
+
+instance CanParse TermType where
+  pars = try (char '*' $> Multi) <|> try (char '/' $> Div)
 
 instance CanParse Term where
-  pars = do
-    t <- pars
-    binOpParseHelp '*' (Multi t) <|> binOpParseHelp '/' (Div t) <|> (return . NoTerm) t
+  pars = Term <$> pars
 
 instance CanParse Func where
   pars = functionParser integerFunctions Func <|> NoFunc <$> pars
@@ -156,8 +170,11 @@ functionParser m mainCons =
 
 instance CanParse Negation where
   pars =
-    try (char '-') *> skipSpace *> (Neg <$> pars)
-      <|> NoNeg <$> pars
+    try (char '-')
+      *> skipSpace
+      *> (Neg <$> pars)
+        <|> NoNeg
+      <$> pars
 
 instance CanParse Expo where
   pars = do
@@ -167,9 +184,10 @@ instance CanParse Expo where
 instance CanParse NumBase where
   pars =
     (NBParen . unnest <$> pars)
-      <|> Value <$> integer <??> "could not parse integer"
+      <|> Value
+      <$> integer <??> "could not parse integer"
     where
-      unnest (Paren (NoExpr (NoTerm (NoNeg (NoExpo (NoFunc (NBase (NBParen e)))))))) = e
+      unnest (Paren (Expr (SingBinOp (Term (SingBinOp (NoNeg (NoExpo (NoFunc (NBase (NBParen e)))))))))) = e
       unnest e = e
 
 instance (CanParse a) => CanParse (Paren a) where
@@ -182,8 +200,9 @@ instance CanParse Base where
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
     )
-      <|> DiceBase <$> parseDice (Value 1)
-      <|> (NumVar <$> try variableName)
+      <|> DiceBase
+      <$> parseDice (Value 1)
+        <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do
@@ -274,7 +293,7 @@ instance ParseShow ArgValue where
 instance ParseShow ListValues where
   parseShow (LVBase e) = parseShow e
   parseShow (MultipleValues nb b) = parseShow nb <> "#" <> parseShow b
-  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (LVFunc s n) = funcInfoName s <> "(" <> T.intercalate ", " (parseShow <$> n) <> ")"
   parseShow (LVVar t) = t
   parseShow (ListValuesMisc l) = parseShow l
 
@@ -282,23 +301,30 @@ instance ParseShow ListValuesBase where
   parseShow (LVBList es) = "{" <> T.intercalate ", " (parseShow <$> es) <> "}"
   parseShow (LVBParen p) = parseShow p
 
-instance ParseShow a => ParseShow (MiscData a) where
+instance (ParseShow a) => ParseShow (MiscData a) where
   parseShow (MiscVar l) = parseShow l
   parseShow (MiscIf l) = parseShow l
 
+instance (ParseShow sub, ParseShow typ) => ParseShow (BinOp sub typ) where
+  parseShow (BinOp a tas) = parseShow a <> T.concat (fmap (\(t, a') -> " " <> parseShow t <> " " <> parseShow a') tas)
+
+instance ParseShow ExprType where
+  parseShow Add = "+"
+  parseShow Sub = "-"
+
+instance ParseShow TermType where
+  parseShow Multi = "*"
+  parseShow Div = "/"
+
 instance ParseShow Expr where
-  parseShow (Add t e) = parseShow t <> " + " <> parseShow e
-  parseShow (Sub t e) = parseShow t <> " - " <> parseShow e
-  parseShow (NoExpr t) = parseShow t
+  parseShow (Expr e) = parseShow e
   parseShow (ExprMisc e) = parseShow e
 
 instance ParseShow Term where
-  parseShow (Multi f t) = parseShow f <> " * " <> parseShow t
-  parseShow (Div f t) = parseShow f <> " / " <> parseShow t
-  parseShow (NoTerm f) = parseShow f
+  parseShow (Term f) = parseShow f
 
 instance ParseShow Func where
-  parseShow (Func s n) = funcInfoName s <> "(" <> T.intercalate "," (parseShow <$> n) <> ")"
+  parseShow (Func s n) = funcInfoName s <> "(" <> T.intercalate ", " (parseShow <$> n) <> ")"
   parseShow (NoFunc b) = parseShow b
 
 instance ParseShow Negation where

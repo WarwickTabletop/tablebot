@@ -31,7 +31,7 @@ import Data.Text (Text, isInfixOf, length, take)
 import Text.EditDistance
 
 -- | @compareOn@ is a helper function for comparing types that aren't ord.
-compareOn :: Ord b => (a -> b) -> a -> a -> Ordering
+compareOn :: (Ord b) => (a -> b) -> a -> a -> Ordering
 compareOn comp a b = compare (comp a) (comp b)
 
 -- | @FuzzyCosts@ is a wrapper for Text.EditDistance's EditCosts data type for

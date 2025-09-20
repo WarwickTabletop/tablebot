@@ -27,7 +27,6 @@ module Tablebot.Utility.Discord
     toMention,
     toMention',
     fromMention,
-    fromMentionStr,
     toTimestamp,
     toTimestamp',
     formatEmoji,
@@ -48,19 +47,23 @@ module Tablebot.Utility.Discord
     interactionResponseCustomMessage,
     interactionResponseComponentsUpdateMessage,
     interactionResponseAutocomplete,
+    inlineCommandHelper,
+    idToWord,
+    wordToId,
   )
 where
 
-import Control.Monad.Cont (liftIO)
+import Control.Monad
 import Control.Monad.Exception (MonadException (throw))
-import Data.Char (isDigit)
+import Control.Monad.IO.Class (liftIO)
+import Data.Coerce (coerce)
 import Data.Default (Default (def))
-import Data.Foldable (msum)
 import Data.List ((\\))
 import Data.Map.Strict (keys)
 import Data.Maybe (listToMaybe)
 import Data.String (IsString (fromString))
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, pack)
+import qualified Data.Text as T
 import Data.Time.Clock (nominalDiffTimeToSeconds)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Discord (Cache (cacheGuilds), DiscordHandler, RestCallErrorCode, readCache, restCall)
@@ -71,8 +74,11 @@ import GHC.Word (Word64)
 import System.Environment (lookupEnv)
 import Tablebot.Internal.Cache (fillEmojiCache, lookupEmojiCache)
 import Tablebot.Internal.Embed (Embeddable (..))
-import Tablebot.Utility (EnvDatabaseDiscord, MessageDetails, convertMessageFormatBasic, convertMessageFormatInteraction, liftDiscord, messageDetailsBasic)
+import Tablebot.Utility
 import Tablebot.Utility.Exception (BotException (..))
+import Tablebot.Utility.Parser
+import Text.Megaparsec
+import Text.Megaparsec.Char (string)
 
 -- | @sendMessage@ sends the input message @t@ in the same channel as message
 -- @m@.
@@ -152,7 +158,7 @@ sendCustomReplyMessage m mid fail' t = do
 -- If you suffer from nightmares, don't look in 'Tablebot.Handler.Embed'. Nothing good lives there.
 -- In the future, I may actually submit a PR to discord-haskell with a fix to allow colours properly.
 sendEmbedMessage ::
-  Embeddable e =>
+  (Embeddable e) =>
   Message ->
   Text ->
   e ->
@@ -160,7 +166,7 @@ sendEmbedMessage ::
 sendEmbedMessage m = sendChannelEmbedMessage (messageChannelId m)
 
 sendChannelEmbedMessage ::
-  Embeddable e =>
+  (Embeddable e) =>
   ChannelId ->
   Text ->
   e ->
@@ -305,16 +311,7 @@ toMention' u = "<@!" <> pack (show u) <> ">"
 -- | @fromMention@ converts some text into what could be a userid (which isn't checked
 -- for correctness above getting rid of triangle brackets, '@', and the optional '!')
 fromMention :: Text -> Maybe UserId
-fromMention = fromMentionStr . unpack
-
--- | Try to get the userid from a given string.
-fromMentionStr :: String -> Maybe UserId
-fromMentionStr user
-  | length user < 4 || head user /= '<' || last user /= '>' || (head . tail) user /= '@' || (head stripToNum /= '!' && (not . isDigit) (head stripToNum)) = Nothing
-  | all isDigit (tail stripToNum) = Just $ if head stripToNum == '!' then read (tail stripToNum) else read stripToNum
-  | otherwise = Nothing
-  where
-    stripToNum = (init . tail . tail) user
+fromMention = parseMaybe parseMentionUserId
 
 -- | Data types for different time formats.
 data TimeFormat = Default | ShortTime | LongTime | ShortDate | LongDate | ShortDateTime | LongDateTime | Relative deriving (Show, Enum, Eq)
@@ -449,3 +446,25 @@ interactionResponseAutocomplete i ac = do
   case res of
     Left _ -> throw $ InteractionException "Failed to respond to interaction with autocomplete response."
     Right _ -> return ()
+
+-- | Not guaranteed to be a valid ID!
+wordToId :: Word64 -> DiscordId a
+wordToId = coerce
+
+idToWord :: DiscordId a -> Word64
+idToWord = coerce
+
+-- | For helping to create inline commands. Takes the opening characters, closing
+-- characters, a parser to get a value `e`, and an action that takes that `e` and a
+-- message and produces a DatabaseDiscord effect.
+inlineCommandHelper :: Text -> Text -> Parser e -> (e -> Message -> EnvDatabaseDiscord d ()) -> EnvInlineCommand d
+inlineCommandHelper open close p action =
+  InlineCommand
+    ( do
+        getExprs <- some (try $ skipManyTill anySingle (string open *> skipSpace *> (((Right <$> try p) <* skipSpace <* string close) <|> (Left . T.pack <$> manyTill anySingle (string close)))))
+        return $ \m -> mapM_ (`action'` m) (take maxInlineCommands getExprs)
+    )
+  where
+    maxInlineCommands = 3
+    action' (Right p') m = action p' m
+    action' (Left _) m = void $ reactToMessage m "x"

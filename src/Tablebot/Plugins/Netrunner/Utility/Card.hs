@@ -165,7 +165,8 @@ toReleaseData api card = fromMaybe "" helper
             x -> " (universal influence: " <> pack (show x) <> ")"
           legality = rotation <> banStatus <> restriction <> globalPenalty <> universalInf
           expansion =
-            Cycle.name c <> legality
+            Cycle.name c
+              <> legality
               <> if Pack.name p /= Cycle.name c
                 then " • " <> Pack.name p
                 else ""

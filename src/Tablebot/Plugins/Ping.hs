@@ -25,8 +25,7 @@ ping :: Command
 ping =
   Command
     "ping"
-    ( parseComm $ echo "pong"
-    )
+    (parseComm $ echo "pong")
     []
 
 pingHelp :: HelpPage

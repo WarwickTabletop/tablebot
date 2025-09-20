@@ -14,7 +14,8 @@ module Tablebot.Internal.Administration
   )
 where
 
-import Control.Monad.Cont (MonadIO, void, when)
+import Control.Monad (void, when)
+import Control.Monad.IO.Class (MonadIO)
 import Data.List.Extra (isInfixOf, lower, trim)
 import Data.Text (Text, pack)
 import Database.Persist
@@ -32,7 +33,7 @@ PluginBlacklist
     deriving Show
 |]
 
-currentBlacklist :: MonadIO m => SqlPersistT m [Text]
+currentBlacklist :: (MonadIO m) => SqlPersistT m [Text]
 currentBlacklist = do
   bl <- selectList allBlacklisted []
   return $ fmap (pack . pluginBlacklistLabel . entityVal) bl

@@ -28,6 +28,7 @@ import Discord.Interactions
 import Discord.Internal.Rest.Channel (MessageDetailedOpts (MessageDetailedOpts))
 import qualified Discord.Requests as R
 import Discord.Types
+import Tablebot.Utility.Font (FontMap)
 import Text.Megaparsec (Parsec)
 
 -- * DatabaseDiscord
@@ -48,9 +49,10 @@ type DatabaseDiscord = EnvDatabaseDiscord ()
 type Database d = SqlPersistM d
 
 data TablebotCache = TCache
-  { cacheKnownEmoji :: Map Text Emoji,
-    cacheApplicationCommands :: Map ApplicationCommandId (Interaction -> EnvDatabaseDiscord () ()),
-    cacheVersionInfo :: VersionInfo
+  { cacheKnownEmoji :: !(Map Text Emoji),
+    cacheApplicationCommands :: !(Map ApplicationCommandId (Interaction -> EnvDatabaseDiscord () ())),
+    cacheVersionInfo :: !VersionInfo,
+    cacheFonts :: !(FontMap Double)
   }
 
 data VersionInfo = VInfo
@@ -357,7 +359,7 @@ instance Context Message where
 
 instance Context Interaction where
   -- this is safe to do because we are guaranteed to get either a user or a member
-  contextUserId i = maybe 0 userId (either memberUser Just mor)
+  contextUserId i = maybe (DiscordId (Snowflake 0)) userId (either memberUser Just mor)
     where
       (MemberOrUser mor) = interactionUser i
   contextGuildId i = return $ interactionGuildId i

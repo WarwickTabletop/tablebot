@@ -17,6 +17,7 @@ module Tablebot.Internal.Handler.Command
   )
 where
 
+import qualified Data.Functor as Functor
 import Data.List (find)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
@@ -125,7 +126,7 @@ instance ShowErrorComponent ReadableError where
 
 makeBundleReadable :: ParseErrorBundle Text Void -> (ParseErrorBundle Text ReadableError, String)
 makeBundleReadable (ParseErrorBundle errs state) =
-  let (errors, title) = NE.unzip $ NE.map makeReadable errs
+  let (errors, title) = Functor.unzip $ NE.map makeReadable errs
    in (ParseErrorBundle errors state, getTitle $ NE.toList title)
   where
     getTitle :: [Maybe String] -> String
@@ -133,10 +134,9 @@ makeBundleReadable (ParseErrorBundle errs state) =
     getTitle titles = case filter (not . null) $ catMaybes titles of
       -- therefore, `x` is nonempty, so `lines x` is nonempty, meaning that `head (lines x)` is fine,
       -- since `lines x` is nonempty for nonempty input.
-      (x : xs) ->
-        let title = head (lines x)
-         in if null xs then title else title ++ " (and " ++ show (length xs) ++ " more)"
-      [] -> "Parser Error!"
+      ((NE.nonEmpty . lines -> Just (title NE.:| _)) : xs) ->
+        if null xs then title else title ++ " (and " ++ show (length xs) ++ " more)"
+      _ -> "Parser Error!"
 
 -- | Transform our errors into more useful ones.
 -- This uses the Label hidden within each error to build an error message,

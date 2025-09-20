@@ -19,7 +19,7 @@ where
 
 import Data.List (nubBy)
 import Data.Map (keys)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text, intercalate, isInfixOf, toLower, unpack)
 import qualified Data.Text as T (length, take)
 import Tablebot.Plugins.Netrunner.Type.BanList (BanList (active, affectedCards, listId, name), CardBan (..))
@@ -81,9 +81,7 @@ listAffectedCards api b =
    in (pre, map format cCards, map format rCards)
   where
     find :: Text -> Maybe Card
-    find cCode = case filter ((Just cCode ==) . code) $ cards api of
-      [] -> Nothing
-      xs -> Just $ head xs
+    find cCode = listToMaybe $ filter ((Just cCode ==) . code) $ cards api
     format :: Card -> Text
     format card = symbol (toMwlStatus api b card) <> " " <> condense (fromMaybe "?" $ title card)
     condense :: Text -> Text

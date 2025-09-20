@@ -30,7 +30,8 @@ data BanList = BanList
 
 instance FromJSON BanList where
   parseJSON = withObject "BanList" $ \o ->
-    BanList <$> o .: "id"
+    BanList
+      <$> o .: "id"
       <*> o .: "date_creation"
       <*> o .: "date_update"
       <*> o .: "code"
@@ -66,11 +67,11 @@ instance FromJSON CardBan where
       return $ maybe False (== 0) limit
     return $
       if
-          | banned -> Banned
-          | restricted -> Restricted
-          | universalInfluence > 0 -> UniversalInfluence universalInfluence
-          | globalPenalty > 0 -> GlobalPenalty globalPenalty
-          | otherwise -> GlobalPenalty universalInfluence
+        | banned -> Banned
+        | restricted -> Restricted
+        | universalInfluence > 0 -> UniversalInfluence universalInfluence
+        | globalPenalty > 0 -> GlobalPenalty globalPenalty
+        | otherwise -> GlobalPenalty universalInfluence
 
 defaultBanList :: BanList
 defaultBanList =

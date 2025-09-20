@@ -21,17 +21,17 @@ import Data.Time.Clock.System (getSystemTime, systemToUTCTime)
 import Data.Time.LocalTime (ZonedTime, zonedTimeToUTC)
 import Data.Time.LocalTime.TimeZone.Olson.Parse (getTimeZoneSeriesFromOlsonFile)
 import Data.Word (Word64)
-import Database.Esqueleto hiding (delete, insert)
+import Database.Esqueleto.Legacy
+import qualified Database.Persist.Sqlite as Sql
 import Database.Persist.TH
 import Discord.Types
 import Duckling.Core (Dimension (Time), Entity (value), Lang (EN), Region (GB), ResolvedVal (RVal), Seal (Seal), currentReftime, makeLocale, parse)
 import Duckling.Resolve (Context (..), DucklingTime, Options (..))
 import Duckling.Time.Types (InstantValue (InstantValue), SingleTimeValue (SimpleValue), TimeValue (TimeValue))
 import Tablebot.Utility
-import Tablebot.Utility.Database
 import Tablebot.Utility.Discord (getMessage, sendChannelMessage, sendCustomReplyMessage, sendMessage, toTimestamp)
 import Tablebot.Utility.Permission (requirePermission)
-import Tablebot.Utility.SmartParser (PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..))
+import Tablebot.Utility.SmartParser (IntegralData (..), PComm (parseComm), Quoted (Qu), RestOfInput (ROI), WithError (..))
 import Text.RawString.QQ (r)
 
 -- Our Reminder table in the database. This is fairly standard for Persistent,
@@ -93,14 +93,14 @@ addReminder time content m = do
   let (Snowflake cid) = unId $ messageChannelId m
       (Snowflake mid) = unId $ messageId m
       (Snowflake uid) = unId $ userId $ messageAuthor m
-  added <- insert $ Reminder cid mid uid time content
+  added <- liftSql $ Sql.insert $ Reminder cid mid uid time content
   let res = pack $ show $ fromSqlKey added
   sendMessage m ("Reminder " <> res <> " set for " <> toTimestamp time <> " with message `" <> pack content <> "`")
 
 -- @deleteReminder@ takes a reminder Id and deletes it from the list of awating reminders.
-deleteReminder :: WithError "Missing required argument" (Int) -> Message -> DatabaseDiscord ()
-deleteReminder (WErr rid) m = requirePermission Any m $ do
-  delete k
+deleteReminder :: WithError "Missing required argument" (IntegralData Int) -> Message -> DatabaseDiscord ()
+deleteReminder (WErr (MkIntegralData rid)) m = requirePermission Any m $ do
+  liftSql $ Sql.delete k
   sendMessage m ("Reminder " <> pack (show rid) <> " deleted.")
   where
     k :: Key Reminder
@@ -130,17 +130,16 @@ reminderCron = do
   forM_ entitydue $ \re ->
     let (Reminder cid mid uid _time content) = entityVal re
      in do
-          liftIO . print $ entityVal re
           res <- getMessage (DiscordId $ Snowflake cid) (DiscordId $ Snowflake mid)
           case res of
             Left _ -> do
-              sendChannelMessage (fromIntegral cid) (pack $ "Reminder to <@" ++ show uid ++ ">! " ++ content)
-              delete (entityKey re)
+              sendChannelMessage (DiscordId (Snowflake cid)) (pack $ "Reminder to <@" ++ show uid ++ ">! " ++ content)
+              liftSql $ Sql.delete (entityKey re)
             Right mess -> do
               sendCustomReplyMessage mess (DiscordId $ Snowflake mid) True $
                 pack $
                   "Reminder to <@" ++ show uid ++ ">! " ++ content
-              delete (entityKey re)
+              liftSql $ Sql.delete (entityKey re)
 
 reminderHelp :: HelpPage
 reminderHelp =
