@@ -17,9 +17,9 @@ RUN mv "$(stack path --local-install-root --system-ghc)/bin" /tablebot/build/bin
 
 FROM haskell:9.12.2-slim-bookworm as app
 
-# system runtime deps
+# system runtime deps - if this command fails, check libicu version (https://packages.debian.org/search?keywords=libicu&searchon=names&suite=bookworm&section=all) and upgrade if necessary
 RUN apt-get update -qq && \
-  apt-get install -qq -y libpcre3 libicu63 --fix-missing --no-install-recommends && \
+  apt-get install -qq -y libpcre3 libicu72 --fix-missing --no-install-recommends && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
