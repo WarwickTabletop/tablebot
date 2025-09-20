@@ -1,5 +1,5 @@
-# stack resolver 18.18 uses ghc 8.10.7
-FROM haskell:8.10.7 as build
+# stack resolver 18.18 uses ghc 9.12.2
+FROM haskell:9.12.2 as build
 RUN mkdir -p /tablebot/build
 WORKDIR /tablebot/build
 
@@ -16,7 +16,7 @@ RUN stack build --system-ghc
 
 RUN mv "$(stack path --local-install-root --system-ghc)/bin" /tablebot/build/bin
 
-FROM haskell:8.10.7-slim as app
+FROM haskell:9.12.2-slim as app
 
 # system runtime deps
 RUN sed -i s/deb.debian.org/archive.debian.org/g /etc/apt/sources.list && \ 
