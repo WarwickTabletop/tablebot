@@ -22,8 +22,8 @@ import Discord.Interactions
   )
 import Discord.Internal.Rest.Channel (ChannelRequest (..), MessageDetailedOpts (..))
 import Discord.Types (ActionRow (..), Button (..), Message (..), User (..), UserId, mkButton, mkEmoji)
-import System.Timeout (timeout)
 import System.Environment (lookupEnv)
+import System.Timeout (timeout)
 import Tablebot.Internal.Cache (getFontMap)
 import Tablebot.Internal.Handler.Command (parseValue)
 import Tablebot.Plugins.Roll.Dice
