@@ -47,7 +47,7 @@ extra-deps:
 - persistent-2.17.1.0
 - svg-builder-0.1.1
 - git: https://github.com/L0neGamer/haskell-distribution.git
-  commit: 569d6452e4bffedb2c0d3795885fccdb22a4d29d
+  commit: 313eb7a280b010fda1e21876da4171503c76516f
 - git: https://github.com/L0neGamer/duckling.git
   commit: f22e3cdd7b77977fe3e9ec75fccd9a0f79c47f97
 
