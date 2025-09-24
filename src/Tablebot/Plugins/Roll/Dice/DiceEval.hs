@@ -318,12 +318,12 @@ evalDieOp' (MkDieOpOption doo : doos) die is = do
   is' <- evalDieOp'' doo' die is
   evalDieOp' doos die is'
   where
-    processLHW (Low i) = do
+    processLHW (LH Low i) = do
       (i', _) <- evalShow i
-      return (Low (Value i'))
-    processLHW (High i) = do
+      return (LH Low (Value i'))
+    processLHW (LH High i) = do
       (i', _) <- evalShow i
-      return (High (Value i'))
+      return (LH High (Value i'))
     processLHW (Where o i) = do
       (i', _) <- evalShow i
       return (Where o (Value i'))

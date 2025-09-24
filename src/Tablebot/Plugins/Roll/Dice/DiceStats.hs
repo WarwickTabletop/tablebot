@@ -229,21 +229,16 @@ rangeDieOpExperimentKD kd (Where cond nb) is = do
     keepDrop
       | kd == Keep = id
       | otherwise = not
-rangeDieOpExperimentKD kd lhw is = do
-  let nb = getValueLowHigh lhw
-  case nb of
-    Nothing -> whereException
-    Just nb' -> do
-      nbd <- range nb'
-      return $ DM.do
-        kdlh <- nbd
-        (getKeep kdlh . sortBy') DM.<$> is
+rangeDieOpExperimentKD kd (LH lw nb) is = do
+  nbd <- range nb
+  return $ DM.do
+    kdlh <- nbd
+    (getKeep kdlh . sortBy') DM.<$> is
   where
-    -- the below exception should never trigger - it is a hold over. it is
-    -- present so that this thing type checks nicely.
-    whereException = evaluationException "keep/drop where is unsupported" []
-    order l l' = if isLow lhw then compare l l' else compare l' l
-    sortBy' = sortBy order
+    order = case lw of
+      Low -> id
+      High -> flip
+    sortBy' = sortBy (order compare)
     getKeep = if kd == Keep then genericTake else genericDrop
 
 -- | Type class to get the overall range of a list of values.

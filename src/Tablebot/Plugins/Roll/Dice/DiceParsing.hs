@@ -241,8 +241,8 @@ parseAdvancedOrdering = (try (choice opts) <?> "could not parse an ordering") >>
 parseLowHigh :: Parser LowHighWhere
 parseLowHigh = ((choice @[] $ char <$> "lhw") <??> "could not parse high, low or where") >>= helper
   where
-    helper 'h' = High <$> pars
-    helper 'l' = Low <$> pars
+    helper 'h' = LH High <$> pars
+    helper 'l' = LH Low <$> pars
     helper 'w' = parseAdvancedOrdering >>= \o -> pars <&> Where o
     helper c = failure' (T.singleton c) (S.fromList ["h", "l", "w"])
 
@@ -350,8 +350,8 @@ instance ParseShow Dice where
     where
       fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
       fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
-      fromLHW (Low i) = "l" <> parseShow i
-      fromLHW (High i) = "h" <> parseShow i
+      fromLHW (LH Low i) = "l" <> parseShow i
+      fromLHW (LH High i) = "h" <> parseShow i
       helper' [] = ""
       helper' (dopo' : dor') = helper dopo' <> helper' dor'
       helper (MkDieOpOption doo) = case doo of

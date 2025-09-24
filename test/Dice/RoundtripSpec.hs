@@ -87,7 +87,7 @@ genDieOpOption = Gen.choice (fmap (fmap MkDieOpOption) strictDieOp <> [MkDieOpOp
   strictDieOp :: MonadGen m => [m (DieOpOptionOf 'Strict)]
   strictDieOp = 
     [ DieOpOptionKD <$> Gen.element [Keep, Drop] <*> Gen.frequency
-      [ (2, Gen.element [Low, High] <*> genNumBase)
+      [ (2, LH <$> Gen.element [Low, High] <*> genNumBase)
       , (1, Where <$> genAdvancedOrdering <*> genNumBase)
       ]
     , Reroll <$> Gen.element [True, False] <*> genAdvancedOrdering <*> genNumBase

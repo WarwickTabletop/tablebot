@@ -212,20 +212,22 @@ instance Eq DieOpOption where
     (DieOpOptionLazy dooo1, DieOpOptionLazy dooo2) -> dooo1 == dooo2
     _ -> False
 
+data LowHigh = Low | High
+  deriving (Show, Eq, Enum, Bounded)
+
 -- | A type used to designate how the keep/drop option should work
-data LowHighWhere = Low NumBase | High NumBase | Where AdvancedOrdering NumBase deriving (Show, Eq)
+data LowHighWhere = LH LowHigh NumBase | Where AdvancedOrdering NumBase deriving (Show, Eq)
 
 -- | Utility function to get the integer determining how many values to get
 -- given a `LowHighWhere`. If the given value is `Low` or `High`, then Just the
 -- NumBase contained is returned. Else, Nothing is returned.
 getValueLowHigh :: LowHighWhere -> Maybe NumBase
-getValueLowHigh (Low i) = Just i
-getValueLowHigh (High i) = Just i
+getValueLowHigh (LH _ i) = Just i
 getValueLowHigh (Where _ _) = Nothing
 
 -- | Returns whether the given `LowHighWhere` is `Low` or not.
 isLow :: LowHighWhere -> Bool
-isLow (Low _) = True
+isLow (LH Low _) = True
 isLow _ = False
 
 -- | Utility value for whether to keep or drop values.
