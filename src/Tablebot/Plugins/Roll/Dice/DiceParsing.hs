@@ -197,32 +197,32 @@ instance CanParse Base where
 instance CanParse Die where
   pars = do
     _ <- try (char 'd') <?> "could not find 'd' for die"
-    lazyFunc <- (try (char '!') $> LazyDie) <|> return id
-    lazyFunc
-      <$> ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
-              <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
-                      <|> (Die <$> pars <??> "could not parse base number for die")
-                  )
-          )
+    optional (char '!') >>= \case
+      Just _ -> MkDie . LazyDie <$> dieTypes
+      Nothing -> MkDie <$> dieTypes
+    where
+      dieTypes :: Parser (DieOf Strict)
+      dieTypes = 
+        ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
+                  <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
+                          <|> (Die <$> pars <??> "could not parse base number for die")
+                      )
+              )
 
 -- | Given a `NumBase` (the value on the front of a set of dice), construct a
 -- set of dice.
 parseDice :: NumBase -> Parser Dice
-parseDice nb = parseDice' <*> return (NBase nb)
+parseDice nb = parseDice' <&> ($ nb)
 
 -- | Helper for parsing Dice, where as many `Dice` as possible are parsed and a
 -- function that takes a `Base` value and returns a `Dice` value is returned.
 -- This `Base` value is meant to be first value that `Dice` have.
-parseDice' :: Parser (Base -> Dice)
+parseDice' :: Parser (NumBase -> Dice)
 parseDice' = do
   d <- (pars :: Parser Die)
-  mdor <- parseDieOpRecur
+  mdor <- many parseDieOpOption
 
-  ( do
-      bd <- try parseDice' <?> "trying to recurse dice failed"
-      return (\b -> bd (DiceBase $ Dice b d mdor))
-    )
-    <|> return (\b -> Dice b d mdor)
+  return (\b -> Dice b d mdor)
 
 -- | Parse a `/=`, `<=`, `>=`, `<`, `=`, `>` as an `AdvancedOrdering`.
 parseAdvancedOrdering :: Parser AdvancedOrdering
@@ -241,25 +241,22 @@ parseLowHigh = ((choice @[] $ char <$> "lhw") <??> "could not parse high, low or
     helper 'w' = parseAdvancedOrdering >>= \o -> pars <&> Where o
     helper c = failure' (T.singleton c) (S.fromList ["h", "l", "w"])
 
--- | Parse a bunch of die options into, possibly, a DieOpRecur.
-parseDieOpRecur :: Parser (Maybe DieOpRecur)
-parseDieOpRecur = do
-  dopo <- optional parseDieOpOption
-  maybe (return Nothing) (\dopo' -> Just . DieOpRecur dopo' <$> parseDieOpRecur) dopo
-
 -- | Parse a single die option.
 parseDieOpOption :: Parser DieOpOption
 parseDieOpOption = do
-  lazyFunc <- (try (char '!') $> DieOpOptionLazy) <|> return id
-  ( ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
+  optional (char '!') >>= \case
+    Nothing -> MkDieOpOption <$> dooParse
+    Just _ -> MkDieOpOption . DieOpOptionLazy <$> dooParse
+  where
+  dooParse :: Parser (DieOpOptionOf Strict)
+  dooParse =
+    ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
         <|> (try (string "rr") *> parseAdvancedOrdering >>= \o -> Reroll False o <$> pars)
         <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
                   <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
               )
                 <?> "could not parse keep/drop"
             )
-    )
-      <&> lazyFunc
     )
     <?> "could not parse dieOpOption - expecting one of the options described in the doc (call `help roll` to access)"
 
