@@ -128,10 +128,13 @@ funcInfoInsert = FuncInfo "insert" [ATInteger, ATInteger, ATIntegerList] ATInteg
 -- including types, the function name, and the function itself.
 data FuncInfoBase j = FuncInfo {funcInfoName :: Text, funcInfoParameters :: [ArgType], funcReturnType :: ArgType, funcInfoFunc :: forall m. (MonadException m) => [ListInteger] -> m j}
 
+instance Eq (FuncInfoBase j) where
+  (==) fib1 fib2 = funcInfoName fib1 == funcInfoName fib2
+
 type FuncInfo = FuncInfoBase Integer
 
 instance Show (FuncInfoBase j) where
-  show (FuncInfo fin ft frt _) = "FuncInfo " <> unpack fin <> " " <> show ft <> " " <> show frt
+  show (FuncInfo fin ft frt _) = "FuncInfo \"" <> unpack fin <> "\" " <> show ft <> " " <> show frt
 
 -- | A simple way to construct a function that returns a value j, and has no
 -- constraints on the given values.
