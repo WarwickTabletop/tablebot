@@ -23,29 +23,29 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 -- evaluated `varValue`.
 --
 -- List variables have to be prefixed with `l_`. This really helps with parsing.
-data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show)
+data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show, Eq)
 
 -- | If the first value is truthy (non-zero or a non-empty list) then return
 -- the `thenValue`, else return the `elseValue`.
-data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show)
+data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show, Eq)
 
 -- | Either an If or a Var that returns a `b`.
-data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show)
+data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show, Eq)
 
 -- | An expression is just an Expr or a ListValues with a semicolon on the end.
 --
 -- When evaluating, VarLazy expressions are handled with a special case - they
 -- are not evaluated until the value is first referenced. Otherwise, the value
 -- is evaluated as the statement is encountered
-data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
+data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show, Eq)
 
 -- | A program is a series of `Statement`s followed by either a `ListValues` or
 -- an Expr.
-data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
+data Program = Program [Statement] (Either ListValues Expr) deriving (Show, Eq)
 
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for list values.
 data ListValues
@@ -59,7 +59,7 @@ data ListValues
     LVVar Text
   | -- | A misc list values expression.
     ListValuesMisc (MiscData ListValues)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for basic list values (that can be used as is for custom dice).
 --
@@ -68,13 +68,11 @@ data ListValues
 -- expressions. Effectively what this is used for is so that these can be used
 -- as dice side values.
 data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for a binary operator between one or more `sub` values
-data BinOp sub typ where
-  BinOp :: sub -> [(typ, sub)] -> BinOp sub typ
-
-deriving instance (Show sub, Show typ) => Show (BinOp sub typ)
+data BinOp sub typ = BinOp sub [(typ, sub)]
+  deriving (Show, Eq)
 
 -- | Convenience pattern for the empty list.
 pattern SingBinOp :: (Operation typ) => sub -> BinOp sub typ
@@ -91,11 +89,11 @@ class Operation a where
 --
 -- Represents either a misc expression or additive operations between terms.
 data Expr = ExprMisc (MiscData Expr) | Expr (BinOp Term ExprType)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type of the additive expression, either addition or subtraction.
 data ExprType = Add | Sub
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum, Bounded)
 
 instance Operation ExprType where
   getOperation Sub = (-)
@@ -103,11 +101,11 @@ instance Operation ExprType where
 
 -- | Represents multiplicative operations between (possible) negations.
 newtype Term = Term (BinOp Negation TermType)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type of the additive expression, either addition or subtraction.
 data TermType = Multi | Div
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum, Bounded)
 
 instance Operation TermType where
   getOperation Multi = (*)
@@ -115,27 +113,27 @@ instance Operation TermType where
 
 -- | The type representing a possibly negated value.
 data Negation = Neg Expo | NoNeg Expo
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a value with exponentials.
 data Expo = Expo Func Expo | NoExpo Func
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a single function application, or a base item.
 data Func = Func FuncInfo [ArgValue] | NoFunc Base
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing an integer value or an expression in brackets.
 data NumBase = NBParen (Paren Expr) | Value Integer
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | Container for a parenthesised value.
 newtype Paren a = Paren a
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a numeric base value value or a dice value.
 data Base = NBase NumBase | DiceBase Dice | NumVar Text
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- Dice Operations after this point
 
@@ -185,7 +183,7 @@ data DieOpOption
   deriving (Show)
 
 -- | A type used to designate how the keep/drop option should work
-data LowHighWhere = Low NumBase | High NumBase | Where AdvancedOrdering NumBase deriving (Show)
+data LowHighWhere = Low NumBase | High NumBase | Where AdvancedOrdering NumBase deriving (Show, Eq)
 
 -- | Utility function to get the integer determining how many values to get
 -- given a `LowHighWhere`. If the given value is `Low` or `High`, then Just the
@@ -201,7 +199,7 @@ isLow (Low _) = True
 isLow _ = False
 
 -- | Utility value for whether to keep or drop values.
-data KeepDrop = Keep | Drop deriving (Show, Eq)
+data KeepDrop = Keep | Drop deriving (Show, Eq, Enum, Bounded)
 
 -- | Utility type class for quickly promoting values.
 class Converter a b where
