@@ -87,11 +87,9 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
-      <|> ListValuesMisc
-      <$> (pars >>= checkVar)
-        <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
-        <|> LVBase
-      <$> pars
+      <|> (ListValuesMisc <$> (pars >>= checkVar))
+      <|> (MultipleValues <$> (try (pars <* char '#')) <*> pars)
+      <|> (LVBase <$> pars)
     where
       checkVar (MiscVar l)
         | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
@@ -107,11 +105,7 @@ instance CanParse ListValuesBase where
               <* (char '}' <??> "could not find closing brace for list")
           )
         <|> LVBParen
-        . unnest
       <$> pars
-    where
-      unnest (Paren (LVBase (LVBParen e))) = e
-      unnest e = e
 
 -- | Helper function to try to parse the second part of a binary operator.
 binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
@@ -183,12 +177,9 @@ instance CanParse Expo where
 
 instance CanParse NumBase where
   pars =
-    (NBParen . unnest <$> pars)
+    (NBParen <$> pars)
       <|> Value
       <$> integer <??> "could not parse integer"
-    where
-      unnest (Paren (Expr (SingBinOp (Term (SingBinOp (NoNeg (NoExpo (NoFunc (NBase (NBParen e)))))))))) = e
-      unnest e = e
 
 instance (CanParse a) => CanParse (Paren a) where
   pars = try (char '(') *> skipSpace *> (Paren <$> pars) <* skipSpace <* char ')'
@@ -348,10 +339,10 @@ instance ParseShow Base where
   parseShow (NumVar t) = t
 
 instance ParseShow Die where
-  parseShow (Die b) = "d" <> parseShow b
-  parseShow (CustomDie lv) = "d" <> parseShow lv
-  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
-  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
+  parseShow (MkDie die) = case die of
+    (Die b) -> "d" <> parseShow b
+    (CustomDie lv) -> "d" <> parseShow lv
+    (LazyDie d) -> "d!" <> T.tail (parseShow (MkDie d))
 
 instance ParseShow Dice where
   parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
@@ -360,13 +351,14 @@ instance ParseShow Dice where
       fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
       fromLHW (Low i) = "l" <> parseShow i
       fromLHW (High i) = "h" <> parseShow i
-      helper' Nothing = ""
-      helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
-      helper (DieOpOptionLazy doo) = "!" <> helper doo
-      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
-      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
-      helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
-      helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw
+      helper' [] = ""
+      helper' (dopo' : dor') = helper dopo' <> helper' dor'
+      helper (MkDieOpOption doo) = case doo of
+        DieOpOptionLazy dooo -> "!" <> helper (MkDieOpOption dooo)
+        Reroll True o i -> "ro" <> fromOrdering o <> parseShow i
+        Reroll False o i -> "rr" <> fromOrdering o <> parseShow i
+        DieOpOptionKD Keep lhw -> "k" <> fromLHW lhw
+        DieOpOptionKD Drop lhw -> "d" <> fromLHW lhw
 
 instance (ParseShow a) => ParseShow (Var a) where
   parseShow (Var t a) = "var " <> t <> " = " <> parseShow a
