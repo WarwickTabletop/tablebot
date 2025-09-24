@@ -113,7 +113,7 @@ binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
 instance (CanParse b) => CanParse (If b) where
   pars = do
-    a <- string "if" *> skipSpace1 *> pars <* skipSpace1
+    a <- try (string "if" *> skipSpace1) *> pars <* skipSpace1
     t <- string "then" *> skipSpace1 *> pars <* skipSpace1
     e <- string "else" *> skipSpace1 *> pars
     return $ If a t e
