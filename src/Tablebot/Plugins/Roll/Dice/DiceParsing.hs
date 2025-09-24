@@ -157,7 +157,12 @@ functionParser m mainCons =
   do
     fi <- try (choice (string <$> functionNames) >>= \t -> return (m M.! t)) <?> "could not find function"
     let ft = funcInfoParameters fi
-    es <- skipSpace *> string "(" *> skipSpace *> parseArgValues ft <* skipSpace <* (string ")" <??> "could not find closing bracket on function call")
+    es <- skipSpace *>
+      try (string "(" <??> ("could not find opening bracket for function call: \"" <> T.unpack (funcInfoName fi) <> "\"")) *>
+        skipSpace *>
+          parseArgValues ft
+            <* skipSpace
+              <* (string ")" <??> "could not find closing bracket on function call")
     return $ mainCons fi es
   where
     functionNames = sortBy (\a b -> compare (T.length b) (T.length a)) $ M.keys m
