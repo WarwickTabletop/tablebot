@@ -162,16 +162,17 @@ instance Range Base where
   range' b@(NumVar _) = evaluationException "cannot find range of variable" [parseShow b]
 
 instance Range Die where
-  range' (LazyDie d) = range d
-  range' (Die nb) = do
-    nbr <- range nb
-    return $
-      DM.do
-        nbV <- nbr
-        D.uniform [1 .. nbV]
-  range' (CustomDie lv) = do
-    dievs <- rangeList lv
-    return $ dievs DM.>>= D.uniform
+  range' (MkDie aDie) = case aDie of
+    LazyDie d -> range (MkDie d)
+    Die nb -> do
+      nbr <- range nb
+      return $
+        DM.do
+          nbV <- nbr
+          D.uniform [1 .. nbV]
+    CustomDie lv -> do
+      dievs <- rangeList lv
+      return $ dievs DM.>>= D.uniform
 
 instance Range Dice where
   range' (Dice b d mdor) = do
@@ -191,30 +192,31 @@ getDiceExperiment i d = DM.sequence $ replicate (fromInteger i) d
 -- | Go through each operator on dice and modify the `Experiment` representing
 -- all possible collections of rolls, returning the `Experiment` produced on
 -- finding `Nothing`.
-rangeDiceExperiment :: (MonadException m) => Experiment -> Maybe DieOpRecur -> ExperimentList -> m ExperimentList
-rangeDiceExperiment _ Nothing is = return is
-rangeDiceExperiment die (Just (DieOpRecur doo mdor)) is = rangeDieOpExperiment die doo is >>= rangeDiceExperiment die mdor
+rangeDiceExperiment :: (MonadException m) => Experiment -> [DieOpOption] -> ExperimentList -> m ExperimentList
+rangeDiceExperiment _ [] is = return is
+rangeDiceExperiment die (doo : doos) is = rangeDieOpExperiment die doo is >>= rangeDiceExperiment die doos
 
 -- | Perform one dice operation on the given `Experiment`, possibly returning
 -- a modified experiment representing the distribution of dice rolls.
 rangeDieOpExperiment :: (MonadException m) => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
-rangeDieOpExperiment die (DieOpOptionLazy o) is = rangeDieOpExperiment die o is
-rangeDieOpExperiment _ (DieOpOptionKD kd lhw) is = rangeDieOpExperimentKD kd lhw is
-rangeDieOpExperiment die (Reroll rro cond lim) is = do
-  limd <- range lim
-  return $ DM.do
-    limit <- limd
-    let newDie = mkNewDie limit
-    rolls <- is
-    let (count, cutdownRolls) = countTriggers limit rolls
-    if count == 0
-      then DM.return cutdownRolls
-      else (cutdownRolls ++) DM.<$> getDiceExperiment count newDie
-  where
-    mkNewDie limitValue
-      | rro = die
-      | otherwise = D.assuming (\i -> not $ applyCompare cond i limitValue) die
-    countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i : xs')) (0, [])
+rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
+  (DieOpOptionLazy o) -> rangeDieOpExperiment die (MkDieOpOption o) is
+  (DieOpOptionKD kd lhw) -> rangeDieOpExperimentKD kd lhw is
+  (Reroll rro cond lim) -> do
+    limd <- range lim
+    return $ DM.do
+      limit <- limd
+      let newDie = mkNewDie limit
+      rolls <- is
+      let (count, cutdownRolls) = countTriggers limit rolls
+      if count == 0
+        then DM.return cutdownRolls
+        else (cutdownRolls ++) DM.<$> getDiceExperiment count newDie
+    where
+      mkNewDie limitValue
+        | rro = die
+        | otherwise = D.assuming (\i -> not $ applyCompare cond i limitValue) die
+      countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i : xs')) (0, [])
 
 -- | Perform a keep/drop operation on the `Experiment` of dice rolls.
 rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> ExperimentList -> m ExperimentList
