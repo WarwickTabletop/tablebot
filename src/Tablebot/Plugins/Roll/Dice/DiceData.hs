@@ -137,18 +137,33 @@ data Base = NBase NumBase | DiceBase Dice | NumVar Text
 
 -- Dice Operations after this point
 
+data Laziness = Lazy | Strict
+
 -- | The type representing a simple N sided die or a custom die, or a lazy one
 -- of one of those values.
-data Die = Die NumBase | CustomDie ListValuesBase | LazyDie Die deriving (Show)
+data DieOf (l :: Laziness) where
+  Die :: NumBase -> DieOf l
+  CustomDie :: ListValuesBase -> DieOf l
+  LazyDie :: DieOf Strict -> DieOf Lazy
+
+deriving instance Show (DieOf l)
+deriving instance Eq (DieOf l)
+
+data Die where
+  MkDie :: DieOf l -> Die
+
+deriving instance Show Die
+instance Eq Die where
+  (==) (MkDie die1) (MkDie die2) = case (die1, die2) of
+    (Die n1, Die n2) -> n1 == n2
+    (CustomDie lvb1, CustomDie lvb2) -> lvb1 == lvb2
+    (LazyDie do1, LazyDie do2) -> do1 == do2
+    _ -> False
 
 -- | The type representing a number of dice equal to the `Base` value, and
 -- possibly some die options.
-data Dice = Dice Base Die (Maybe DieOpRecur)
-  deriving (Show)
-
--- | The type representing one or more die options.
-data DieOpRecur = DieOpRecur DieOpOption (Maybe DieOpRecur)
-  deriving (Show)
+data Dice = Dice NumBase Die [DieOpOption]
+  deriving (Show, Eq)
 
 -- | Some more advanced ordering options for things like `<=` and `/=`.
 data AdvancedOrdering = Not AdvancedOrdering | OrderingId Ordering | And [AdvancedOrdering] | Or [AdvancedOrdering]
@@ -176,11 +191,26 @@ advancedOrderingMapping = (M.fromList lst, M.fromList $ swap <$> lst)
 
 -- | The type representing a die option; a reroll, a keep/drop operation, or
 -- lazily performing some other die option.
-data DieOpOption
-  = Reroll {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase}
-  | DieOpOptionKD KeepDrop LowHighWhere
-  | DieOpOptionLazy DieOpOption
-  deriving (Show)
+data DieOpOptionOf (l :: Laziness) where
+  Reroll :: {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase}
+    -> DieOpOptionOf l
+  DieOpOptionKD :: KeepDrop -> LowHighWhere -> DieOpOptionOf l
+  DieOpOptionLazy :: DieOpOptionOf Strict -> DieOpOptionOf Lazy
+
+deriving instance Show (DieOpOptionOf l)
+deriving instance Eq (DieOpOptionOf l)
+
+data DieOpOption where
+  MkDieOpOption :: DieOpOptionOf l -> DieOpOption
+
+deriving instance Show DieOpOption
+instance Eq DieOpOption where
+  (==) (MkDieOpOption doo1) (MkDieOpOption doo2) = case (doo1, doo2) of
+    (Reroll rro1 cond1 lim1, Reroll rro2 cond2 lim2) ->
+      rro1 == rro2 && cond1 == cond2 && lim1 == lim2
+    (DieOpOptionKD kd1 lhw1, DieOpOptionKD kd2 lhw2) -> kd1 == kd2 && lhw1 == lhw2
+    (DieOpOptionLazy dooo1, DieOpOptionLazy dooo2) -> dooo1 == dooo2
+    _ -> False
 
 -- | A type used to designate how the keep/drop option should work
 data LowHighWhere = Low NumBase | High NumBase | Where AdvancedOrdering NumBase deriving (Show, Eq)
@@ -240,7 +270,7 @@ instance Converter Dice Base where
   promote = DiceBase
 
 instance Converter Die Base where
-  promote d = promote $ Dice (promote (1 :: Integer)) d Nothing
+  promote d = promote $ Dice (promote (1 :: Integer)) d []
 
 instance Converter [Integer] ListValues where
   promote = LVBase . LVBList . (promote <$>)
