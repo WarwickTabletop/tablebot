@@ -126,3 +126,12 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - tablebot
+      - tasty
+      - tasty-discover
+      - tasty-hspec
+      - tasty-hedgehog
+      - hspec
+      - hedgehog
+      - hspec-hedgehog
+    build-tools:
+      - tasty-discover:tasty-discover

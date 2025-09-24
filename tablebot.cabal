@@ -252,10 +252,13 @@ test-suite tablebot-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Dice.RoundtripSpec
       Paths_tablebot
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+      tasty-discover:tasty-discover
   build-depends:
       Chart
     , Chart-diagrams
@@ -279,6 +282,9 @@ test-suite tablebot-test
     , extra
     , filepath
     , hashable
+    , hedgehog
+    , hspec
+    , hspec-hedgehog
     , http-client
     , http-conduit
     , load-env
@@ -299,6 +305,10 @@ test-suite tablebot-test
     , scientific
     , split
     , tablebot
+    , tasty
+    , tasty-discover
+    , tasty-hedgehog
+    , tasty-hspec
     , template-haskell
     , text
     , text-icu
