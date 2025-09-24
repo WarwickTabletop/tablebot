@@ -191,9 +191,8 @@ instance CanParse Base where
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
     )
-      <|> DiceBase
-      <$> parseDice (Value 1)
-        <|> (NumVar <$> try variableName)
+      <|> (DiceBase <$> try (parseDice (Value 1)))
+      <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do
