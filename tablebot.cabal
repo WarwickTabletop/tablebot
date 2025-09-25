@@ -79,6 +79,7 @@ library
       Tablebot.Plugins.Roll.Dice.DiceStats
       Tablebot.Plugins.Roll.Dice.DiceStatsBase
       Tablebot.Plugins.Roll.Dice.DistributionMonad
+      Tablebot.Plugins.Roll.Dice.SortedList
       Tablebot.Plugins.Roll.Plugin
       Tablebot.Plugins.Say
       Tablebot.Plugins.Shibe

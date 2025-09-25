@@ -24,10 +24,13 @@ import Tablebot.Plugins.Roll.Dice.DiceStatsBase (Distribution)
 import Tablebot.Utility.Exception (catchBot)
 
 import qualified Tablebot.Plugins.Roll.Dice.DistributionMonad as DM
+import Tablebot.Plugins.Roll.Dice.SortedList as SL
 
 type Experiment = D.Distribution Integer
 
-type ExperimentList = D.Distribution [Integer]
+type ExperimentList = D.Distribution (SortedList Integer)
+
+type DistributionList = D.Distribution [Integer]
 
 -- | Get the most common values, the mean, and the standard deviation of a given
 -- distribution.
@@ -182,12 +185,13 @@ instance Range Dice where
           diecount <- b'
           getDiceExperiment diecount d'
     res <- rangeDiceExperiment d' mdor e
-    return $ sum DM.<$> res
+    return $! sum DM.<$> res
 
 -- | Get the distribution of values from a given number of (identically
 -- distributed) values and the distribution of that value.
 getDiceExperiment :: Integer -> Distribution -> ExperimentList
-getDiceExperiment i d = DM.sequence $ replicate (fromInteger i) d
+getDiceExperiment i d =
+  DM.sequenceSL (replicate (fromInteger i) d)
 
 -- | Go through each operator on dice and modify the `Experiment` representing
 -- all possible collections of rolls, returning the `Experiment` produced on
@@ -210,13 +214,13 @@ rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
       rolls <- is
       let (count, cutdownRolls) = countTriggers limit rolls
       if count == 0
-        then DM.return cutdownRolls
-        else (cutdownRolls ++) DM.<$> getDiceExperiment count newDie
+        then DM.return rolls
+        else (cutdownRolls <>) DM.<$> getDiceExperiment count newDie
     where
       mkNewDie limitValue
         | rro = die
         | otherwise = D.assuming (\i -> not $ applyCompare cond i limitValue) die
-      countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i : xs')) (0, [])
+      countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i `SL.insert` xs')) (0, mempty)
 
 -- | Perform a keep/drop operation on the `Experiment` of dice rolls.
 rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> ExperimentList -> m ExperimentList
@@ -224,7 +228,7 @@ rangeDieOpExperimentKD kd (Where cond nb) is = do
   nbDis <- range nb
   return $ DM.do
     wherelimit <- nbDis
-    filter (\i -> keepDrop $ applyCompare cond i wherelimit) DM.<$> is
+    SL.filter (\i -> keepDrop $ applyCompare cond i wherelimit) DM.<$> is
   where
     keepDrop
       | kd == Keep = id
@@ -233,13 +237,14 @@ rangeDieOpExperimentKD kd (LH lw nb) is = do
   nbd <- range nb
   return $ DM.do
     kdlh <- nbd
-    (getKeep kdlh . sortBy') DM.<$> is
+    (keepF . lowHighF (fromInteger kdlh)) DM.<$> is
   where
-    order = case lw of
-      Low -> id
-      High -> flip
-    sortBy' = sortBy (order compare)
-    getKeep = if kd == Keep then genericTake else genericDrop
+    keepF = case kd of
+      Keep -> fst
+      Drop -> snd
+    lowHighF = case lw of
+      Low -> splitL
+      High -> splitR
 
 -- | Type class to get the overall range of a list of values.
 --
@@ -248,10 +253,10 @@ rangeDieOpExperimentKD kd (LH lw nb) is = do
 class (ParseShow a) => RangeList a where
   -- | Try and get the `DistributionList` of the given value, throwing a
   -- `MonadException` on failure.
-  rangeList :: (MonadException m, ParseShow a) => a -> m ExperimentList
+  rangeList :: (MonadException m, ParseShow a) => a -> m DistributionList
   rangeList a = propagateException (parseShow a) (rangeList' a)
 
-  rangeList' :: (MonadException m, ParseShow a) => a -> m ExperimentList
+  rangeList' :: (MonadException m, ParseShow a) => a -> m DistributionList
 
 instance RangeList ListValuesBase where
   rangeList' (LVBList es) = do
@@ -267,7 +272,7 @@ instance RangeList ListValues where
     return $
       DM.do
         valNum <- nbd
-        getDiceExperiment valNum bd
+        SL.toList DM.<$> getDiceExperiment valNum bd
   rangeList' (LVFunc fi avs) = rangeFunction fi avs
   rangeList' (ListValuesMisc m) = rangeList m
   rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]

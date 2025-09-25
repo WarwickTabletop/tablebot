@@ -6,6 +6,7 @@ module Tablebot.Plugins.Roll.Dice.DistributionMonad where
 import Data.Distribution.Core
 import Data.Ord (Ord)
 import Data.Function (id)
+import Tablebot.Plugins.Roll.Dice.SortedList as SL
 
 (>>=) :: (Ord b) => Distribution a -> (a -> Distribution b) -> Distribution b
 (>>=) = andThen
@@ -22,3 +23,7 @@ traverse f (a : as) = f a >>= \b -> (b :) <$> traverse f as
 
 sequence :: Ord a => [Distribution a] -> Distribution [a]
 sequence = traverse id
+
+sequenceSL :: (Ord a) => [Distribution a] -> Distribution (SortedList a)
+sequenceSL [] = return mempty
+sequenceSL (da : das) = da >>= \a -> SL.insert a <$> sequenceSL das
