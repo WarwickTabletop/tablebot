@@ -155,7 +155,6 @@ library
     , exception-transformers
     , extra
     , filepath
-    , hashable
     , http-client
     , http-conduit
     , load-env
@@ -216,7 +215,6 @@ executable tablebot-exe
     , exception-transformers
     , extra
     , filepath
-    , hashable
     , http-client
     , http-conduit
     , load-env
@@ -282,7 +280,6 @@ test-suite tablebot-test
     , exception-transformers
     , extra
     , filepath
-    , hashable
     , hedgehog
     , hspec
     , hspec-hedgehog
