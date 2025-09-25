@@ -8,16 +8,13 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import Test.Hspec.Hedgehog ()
-import Data.Kind
-import Text.Read
-import Tablebot.Plugins.Roll.Dice.DiceParsing
+import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Utility.SmartParser.SmartParser
 import Tablebot.Utility.Parser
 import Text.Megaparsec (runParser, eof)
 import Tablebot.Plugins.Roll.Dice.DiceData as Dice
 import qualified Data.Text as T
-import Control.Monad.IO.Class
 
 genExpr :: MonadGen m => m Expr
 genExpr =
@@ -115,6 +112,5 @@ spec_roundtrip_dice :: Spec
 spec_roundtrip_dice = do
   it "roundtrip dice" $ do
     dice <- forAll genExpr :: PropertyT IO Expr
-    liftIO $ print (parseShow dice)
     Right dice === runParser (pars <* eof) "" (parseShow dice)
 
