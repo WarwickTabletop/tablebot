@@ -6,6 +6,7 @@ module Tablebot.Plugins.Roll.Dice.DistributionMonad where
 import Data.Distribution.Core
 import Data.Ord (Ord)
 import Data.Function (id)
+import Data.Monoid
 import Tablebot.Plugins.Roll.Dice.SortedList as SL
 
 (>>=) :: (Ord b) => Distribution a -> (a -> Distribution b) -> Distribution b
@@ -19,9 +20,10 @@ return = always
 
 traverse :: Ord b => (a -> Distribution b) -> [a] -> Distribution [b]
 traverse _ [] = return []
-traverse f (a : as) = f a >>= \b -> (b :) <$> traverse f as
+traverse f (a : as) =
+  f a >>= \b -> (b :) <$> traverse f as
 
-sequence :: Ord a => [Distribution a] -> Distribution [a]
+sequence :: (Ord a) => [Distribution a] -> Distribution [a]
 sequence = traverse id
 
 sequenceSL :: (Ord a) => [Distribution a] -> Distribution (SortedList a)

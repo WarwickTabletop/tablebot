@@ -13,7 +13,7 @@
 module Tablebot.Plugins.Roll.Dice.DiceStats (rangeExpr, rangeListValues, getStats) where
 
 import Control.Monad.Exception
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor
 import qualified Data.Distribution as D
 import Data.List
 import qualified Data.Map as M
@@ -26,9 +26,7 @@ import Tablebot.Utility.Exception (catchBot)
 import qualified Tablebot.Plugins.Roll.Dice.DistributionMonad as DM
 import Tablebot.Plugins.Roll.Dice.SortedList as SL
 
-type Experiment = D.Distribution Integer
-
-type ExperimentList = D.Distribution (SortedList Integer)
+type DistributionSortedList = D.Distribution (SortedList Integer)
 
 type DistributionList = D.Distribution [Integer]
 
@@ -62,15 +60,13 @@ rangeListValues lv = do
 --
 -- A `Data.Distribution.Distribution` is a map of values to probabilities, and
 -- has a variety of  functions that operate on them.
---
--- An `Data.Distribution.Experiment` is a monadic form of this.
 class (ParseShow a) => Range a where
-  -- | Try and get the `Experiment` of the given value, throwing a
+  -- | Try and get the `Distribution` of the given value, throwing a
   -- `MonadException` on failure.
-  range :: (MonadException m, ParseShow a) => a -> m Experiment
+  range :: (MonadException m, ParseShow a) => a -> m Distribution
   range a = propagateException (parseShow a) (range' a)
 
-  range' :: (MonadException m, ParseShow a) => a -> m Experiment
+  range' :: (MonadException m, ParseShow a) => a -> m Distribution
 
 instance (Range a) => Range (MiscData a) where
   range' (MiscVar l) = range l
@@ -189,20 +185,20 @@ instance Range Dice where
 
 -- | Get the distribution of values from a given number of (identically
 -- distributed) values and the distribution of that value.
-getDiceExperiment :: Integer -> Distribution -> ExperimentList
+getDiceExperiment :: Integer -> Distribution -> DistributionSortedList
 getDiceExperiment i d =
   DM.sequenceSL (replicate (fromInteger i) d)
 
 -- | Go through each operator on dice and modify the `Experiment` representing
 -- all possible collections of rolls, returning the `Experiment` produced on
 -- finding `Nothing`.
-rangeDiceExperiment :: (MonadException m) => Experiment -> [DieOpOption] -> ExperimentList -> m ExperimentList
+rangeDiceExperiment :: (MonadException m) => Distribution -> [DieOpOption] -> DistributionSortedList -> m DistributionSortedList
 rangeDiceExperiment _ [] is = return is
 rangeDiceExperiment die (doo : doos) is = rangeDieOpExperiment die doo is >>= rangeDiceExperiment die doos
 
 -- | Perform one dice operation on the given `Experiment`, possibly returning
 -- a modified experiment representing the distribution of dice rolls.
-rangeDieOpExperiment :: (MonadException m) => Experiment -> DieOpOption -> ExperimentList -> m ExperimentList
+rangeDieOpExperiment :: (MonadException m) => Distribution -> DieOpOption -> DistributionSortedList -> m DistributionSortedList
 rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
   (DieOpOptionLazy o) -> rangeDieOpExperiment die (MkDieOpOption o) is
   (DieOpOptionKD kd lhw) -> rangeDieOpExperimentKD kd lhw is
@@ -223,7 +219,7 @@ rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
       countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i `SL.insert` xs')) (0, mempty)
 
 -- | Perform a keep/drop operation on the `Experiment` of dice rolls.
-rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> ExperimentList -> m ExperimentList
+rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> DistributionSortedList -> m DistributionSortedList
 rangeDieOpExperimentKD kd (Where cond nb) is = do
   nbDis <- range nb
   return $ DM.do
