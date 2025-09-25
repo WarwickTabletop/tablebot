@@ -15,8 +15,10 @@ module Tablebot.Plugins.Roll.Dice.DiceStats (rangeExpr, rangeListValues, getStat
 import Control.Monad.Exception
 import Data.Bifunctor
 import qualified Data.Distribution as D
+import Data.Foldable
 import Data.List
 import qualified Data.Map as M
+import Data.Monoid
 import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceEval
 import Tablebot.Plugins.Roll.Dice.DiceFunctions
@@ -179,8 +181,8 @@ instance Range Dice where
     let e = DM.do
           diecount <- b'
           getDiceExperiment diecount d'
-    res <- rangeDiceExperiment d' mdor e
-    return $! sum DM.<$> res
+    adjustDice <- rangeDiceExperiment d' mdor
+    return $! sum DM.<$> adjustDice e
 
 -- | Get the distribution of values from a given number of (identically
 -- distributed) values and the distribution of that value.
@@ -191,19 +193,19 @@ getDiceExperiment i d =
 -- | Go through each operator on dice and modify the `Experiment` representing
 -- all possible collections of rolls, returning the `Experiment` produced on
 -- finding `Nothing`.
-rangeDiceExperiment :: (MonadException m) => Distribution -> [DieOpOption] -> DistributionSortedList -> m DistributionSortedList
-rangeDiceExperiment _ [] is = return is
-rangeDiceExperiment die (doo : doos) is = rangeDieOpExperiment die doo is >>= rangeDiceExperiment die doos
+rangeDiceExperiment :: (MonadException m) => Distribution -> [DieOpOption] -> m (DistributionSortedList -> DistributionSortedList)
+rangeDiceExperiment die =
+  fmap (appEndo . fold) . traverse (rangeDieOpExperiment die)
 
 -- | Perform one dice operation on the given `Experiment`, possibly returning
 -- a modified experiment representing the distribution of dice rolls.
-rangeDieOpExperiment :: (MonadException m) => Distribution -> DieOpOption -> DistributionSortedList -> m DistributionSortedList
-rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
-  (DieOpOptionLazy o) -> rangeDieOpExperiment die (MkDieOpOption o) is
-  (DieOpOptionKD kd lhw) -> rangeDieOpExperimentKD kd lhw is
+rangeDieOpExperiment :: (MonadException m) => Distribution -> DieOpOption -> m (Endo DistributionSortedList)
+rangeDieOpExperiment die (MkDieOpOption doo) = case doo of
+  (DieOpOptionLazy o) -> rangeDieOpExperiment die (MkDieOpOption o)
+  (DieOpOptionKD kd lhw) -> rangeDieOpExperimentKD kd lhw
   (Reroll rro cond lim) -> do
     limd <- range lim
-    return $ DM.do
+    return $ Endo $ \is -> DM.do
       limit <- limd
       let newDie = mkNewDie limit
       rolls <- is
@@ -218,19 +220,19 @@ rangeDieOpExperiment die (MkDieOpOption doo) is = case doo of
       countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i `SL.insert` xs')) (0, mempty)
 
 -- | Perform a keep/drop operation on the `Experiment` of dice rolls.
-rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> DistributionSortedList -> m DistributionSortedList
-rangeDieOpExperimentKD kd (Where cond nb) is = do
+rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> m (Endo DistributionSortedList)
+rangeDieOpExperimentKD kd (Where cond nb) = do
   nbDis <- range nb
-  return $ DM.do
+  return $ Endo $ \is -> DM.do
     wherelimit <- nbDis
     SL.filter (\i -> keepDrop $ applyCompare cond i wherelimit) DM.<$> is
   where
     keepDrop
       | kd == Keep = id
       | otherwise = not
-rangeDieOpExperimentKD kd (LH lw nb) is = do
+rangeDieOpExperimentKD kd (LH lw nb) = do
   nbd <- range nb
-  return $ DM.do
+  return $ Endo $ \is -> DM.do
     kdlh <- nbd
     (keepF . lowHighF (fromInteger kdlh)) DM.<$> is
   where
