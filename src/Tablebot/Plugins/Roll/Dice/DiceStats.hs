@@ -10,7 +10,7 @@
 --
 -- This plugin generates statistics based on the values of dice in given
 -- expressions.
-module Tablebot.Plugins.Roll.Dice.DiceStats (rangeExpr, rangeListValues, getStats) where
+module Tablebot.Plugins.Roll.Dice.DiceStats (rangeExpr, getStats) where
 
 import Control.Monad.Exception
 import Data.Bifunctor
@@ -40,22 +40,7 @@ getStats d = (modalOrder, D.expectation d, D.standardDeviation d)
     modalOrder = fst <$> sortBy (\(_, r) (_, r') -> compare r' r) vals
 
 rangeExpr :: (MonadException m) => Expr -> m Distribution
-rangeExpr e = do
-  ex <- range e
-  return $ ex
-
-rangeListValues :: (MonadException m) => ListValues -> m [Distribution]
-rangeListValues lv = do
-  lve <- rangeList lv
-  let lvd = lve
-      lvd' = D.toList lvd
-  return $ D.fromList <$> zip' lvd'
-  where
-    head' [] = []
-    head' (x : _) = [x]
-    getHeads xs = (\(xs', p) -> (,p) <$> head' xs') =<< xs
-    getTails xs = first (drop 1) <$> xs
-    zip' xs = getHeads xs : zip' (getTails xs)
+rangeExpr = range
 
 -- | Try and get the `Distribution` of the given value, throwing a
 -- `MonadException` on failure.
@@ -190,15 +175,14 @@ getDiceExperiment :: Integer -> Distribution -> DistributionSortedList
 getDiceExperiment i d =
   DM.sequenceSL (replicate (fromInteger i) d)
 
--- | Go through each operator on dice and modify the `Experiment` representing
--- all possible collections of rolls, returning the `Experiment` produced on
--- finding `Nothing`.
+-- | Go through each operator on dice and modify the distribution of values
+-- based on those operations.
 rangeDiceExperiment :: (MonadException m) => Distribution -> [DieOpOption] -> m (DistributionSortedList -> DistributionSortedList)
 rangeDiceExperiment die =
   fmap (appEndo . fold) . traverse (rangeDieOpExperiment die)
 
--- | Perform one dice operation on the given `Experiment`, possibly returning
--- a modified experiment representing the distribution of dice rolls.
+-- | Perform one dice operation on a set of values, returning
+-- a modified distribution of dice rolls.
 rangeDieOpExperiment :: (MonadException m) => Distribution -> DieOpOption -> m (Endo DistributionSortedList)
 rangeDieOpExperiment die (MkDieOpOption doo) = case doo of
   (DieOpOptionLazy o) -> rangeDieOpExperiment die (MkDieOpOption o)
@@ -219,7 +203,7 @@ rangeDieOpExperiment die (MkDieOpOption doo) = case doo of
         | otherwise = D.assuming (\i -> not $ applyCompare cond i limitValue) die
       countTriggers limitValue = foldr (\i ~(c, xs') -> if applyCompare cond i limitValue then (c + 1, xs') else (c, i `SL.insert` xs')) (0, mempty)
 
--- | Perform a keep/drop operation on the `Experiment` of dice rolls.
+-- | Perform a keep/drop operation on the dice rolls.
 rangeDieOpExperimentKD :: (MonadException m) => KeepDrop -> LowHighWhere -> m (Endo DistributionSortedList)
 rangeDieOpExperimentKD kd (Where cond nb) = do
   nbDis <- range nb
@@ -284,4 +268,10 @@ rangeFunction fi exprs = do
   let params = first (funcInfoFunc fi) <$> D.toList (DM.sequence exprs')
   D.fromList <$> foldAndIgnoreErrors params
   where
-    foldAndIgnoreErrors = foldr (\(mv, p) mb -> catchBot ((: []) . (,p) <$> mv) (const (return [])) >>= \v -> mb >>= \b -> return (v ++ b)) (return [])
+    foldAndIgnoreErrors = foldr foldrFunc (return [])
+    foldrFunc :: (MonadException m) => (m a, t) -> m [(a, t)] -> m [(a, t)]
+    foldrFunc (mv, p) mb = do
+      -- try to execute the result of each function, and if it throws an
+      -- exception we cancel out the exception and say that it never happened
+      v <- catchBot (pure . (,p) <$> mv) (\_ -> pure [])
+      (v <>) <$> mb
