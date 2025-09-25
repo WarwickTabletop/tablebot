@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Dice.RoundtripSpec where
 
@@ -15,6 +17,7 @@ import Tablebot.Utility.Parser
 import Text.Megaparsec (runParser, eof)
 import Tablebot.Plugins.Roll.Dice.DiceData as Dice
 import qualified Data.Text as T
+import Data.Traversable
 
 genExpr :: MonadGen m => m Expr
 genExpr =
@@ -56,8 +59,15 @@ genExpo =
 genFunc :: MonadGen m => m Func
 genFunc = Gen.frequency
   [ (5, NoFunc <$> genBase)
-  -- , (1, Func <$> Gen.element integerFunctions <*> Gen.list (Range.linear 1 2) genArg)
+  , (1, functionGen Func integerFunctions)
   ]
+
+functionGen :: (Foldable f, MonadGen m) => (FuncInfoBase j -> [ArgValue] -> r) -> f (FuncInfoBase j) -> m r
+functionGen cons functions = Gen.element functions >>= \func@(FuncInfo {..}) ->
+  cons func <$> for funcInfoParameters (\case
+    ATInteger -> AVExpr <$> genExpr
+    ATIntegerList -> AVListValues <$> genListValues
+    )
 
 genArg :: MonadGen m => m ArgValue
 genArg = Gen.choice [AVExpr <$> genExpr, AVListValues <$> genListValues]
@@ -100,13 +110,15 @@ genListValuesBase = Gen.choice
   ]
 
 genListValues :: MonadGen m => m ListValues
-genListValues = Gen.frequency
-  [ (4, MultipleValues <$> genNumBase <*> genBase)
-  , (2, LVBase <$> genListValuesBase)
-  , (2, ListValuesMisc <$> genMisc True genListValues)
-  -- , (1, LVFunc <$> Gen.element listFunctions <*> Gen.list (Range.linear 1 2) genArg)
-  , (1, LVVar . ("l_" <>) <$> genVarName)
-  ]
+genListValues =
+  Gen.recursive Gen.choice 
+    [ LVVar . ("l_" <>) <$> genVarName
+      ]
+    [ MultipleValues <$> genNumBase <*> genBase
+    , LVBase <$> genListValuesBase
+    , ListValuesMisc <$> genMisc True genListValues
+    , functionGen LVFunc listFunctions
+      ]
 
 spec_roundtrip_dice :: Spec
 spec_roundtrip_dice = do
