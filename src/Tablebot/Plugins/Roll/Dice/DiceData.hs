@@ -147,12 +147,14 @@ data DieOf (l :: Laziness) where
   LazyDie :: DieOf Strict -> DieOf Lazy
 
 deriving instance Show (DieOf l)
+
 deriving instance Eq (DieOf l)
 
 data Die where
   MkDie :: DieOf l -> Die
 
 deriving instance Show Die
+
 instance Eq Die where
   (==) (MkDie die1) (MkDie die2) = case (die1, die2) of
     (Die n1, Die n2) -> n1 == n2
@@ -192,18 +194,21 @@ advancedOrderingMapping = (M.fromList lst, M.fromList $ swap <$> lst)
 -- | The type representing a die option; a reroll, a keep/drop operation, or
 -- lazily performing some other die option.
 data DieOpOptionOf (l :: Laziness) where
-  Reroll :: {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase}
-    -> DieOpOptionOf l
+  Reroll ::
+    {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase} ->
+    DieOpOptionOf l
   DieOpOptionKD :: KeepDrop -> LowHighWhere -> DieOpOptionOf l
   DieOpOptionLazy :: DieOpOptionOf Strict -> DieOpOptionOf Lazy
 
 deriving instance Show (DieOpOptionOf l)
+
 deriving instance Eq (DieOpOptionOf l)
 
 data DieOpOption where
   MkDieOpOption :: DieOpOptionOf l -> DieOpOption
 
 deriving instance Show DieOpOption
+
 instance Eq DieOpOption where
   (==) (MkDieOpOption doo1) (MkDieOpOption doo2) = case (doo1, doo2) of
     (Reroll rro1 cond1 lim1, Reroll rro2 cond2 lim2) ->

@@ -157,12 +157,13 @@ functionParser m mainCons =
   do
     fi <- try (choice (string <$> functionNames) >>= \t -> return (m M.! t)) <?> "could not find function"
     let ft = funcInfoParameters fi
-    es <- skipSpace *>
-      try (string "(" <??> ("could not find opening bracket for function call: \"" <> T.unpack (funcInfoName fi) <> "\"")) *>
-        skipSpace *>
-          parseArgValues ft
-            <* skipSpace
-              <* (string ")" <??> "could not find closing bracket on function call")
+    es <-
+      skipSpace
+        *> try (string "(" <??> ("could not find opening bracket for function call: \"" <> T.unpack (funcInfoName fi) <> "\""))
+        *> skipSpace
+        *> parseArgValues ft
+        <* skipSpace
+        <* (string ")" <??> "could not find closing bracket on function call")
     return $ mainCons fi es
   where
     functionNames = sortBy (\a b -> compare (T.length b) (T.length a)) $ M.keys m
@@ -207,12 +208,12 @@ instance CanParse Die where
       Nothing -> MkDie <$> dieTypes
     where
       dieTypes :: Parser (DieOf Strict)
-      dieTypes = 
+      dieTypes =
         ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
-                  <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
-                          <|> (Die <$> pars <??> "could not parse base number for die")
-                      )
-              )
+            <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
+                    <|> (Die <$> pars <??> "could not parse base number for die")
+                )
+        )
 
 -- | Given a `NumBase` (the value on the front of a set of dice), construct a
 -- set of dice.
@@ -253,17 +254,17 @@ parseDieOpOption = do
     Nothing -> MkDieOpOption <$> dooParse
     Just _ -> MkDieOpOption . DieOpOptionLazy <$> dooParse
   where
-  dooParse :: Parser (DieOpOptionOf Strict)
-  dooParse =
-    ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
-        <|> (try (string "rr") *> parseAdvancedOrdering >>= \o -> Reroll False o <$> pars)
-        <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
-                  <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
+    dooParse :: Parser (DieOpOptionOf Strict)
+    dooParse =
+      ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
+          <|> (try (string "rr") *> parseAdvancedOrdering >>= \o -> Reroll False o <$> pars)
+          <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
+                    <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
+                )
+                  <?> "could not parse keep/drop"
               )
-                <?> "could not parse keep/drop"
-            )
-    )
-    <?> "could not parse dieOpOption - expecting one of the options described in the doc (call `help roll` to access)"
+      )
+        <?> "could not parse dieOpOption - expecting one of the options described in the doc (call `help roll` to access)"
 
 -- | Parse a single `ArgType` into an `ArgValue`.
 parseArgValue :: ArgType -> Parser ArgValue

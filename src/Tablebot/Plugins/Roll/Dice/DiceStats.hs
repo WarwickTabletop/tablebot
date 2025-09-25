@@ -21,10 +21,9 @@ import Tablebot.Plugins.Roll.Dice.DiceData
 import Tablebot.Plugins.Roll.Dice.DiceEval
 import Tablebot.Plugins.Roll.Dice.DiceFunctions
 import Tablebot.Plugins.Roll.Dice.DiceStatsBase (Distribution)
-import Tablebot.Utility.Exception (catchBot)
-
 import qualified Tablebot.Plugins.Roll.Dice.DistributionMonad as DM
 import Tablebot.Plugins.Roll.Dice.SortedList as SL
+import Tablebot.Utility.Exception (catchBot)
 
 type DistributionSortedList = D.Distribution (SortedList Integer)
 
