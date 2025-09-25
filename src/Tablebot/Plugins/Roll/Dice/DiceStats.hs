@@ -56,16 +56,16 @@ rangeListValues lv = do
     getTails xs = first (drop 1) <$> xs
     zip' xs = getHeads xs : zip' (getTails xs)
 
+-- | Try and get the `Distribution` of the given value, throwing a
+-- `MonadException` on failure.
+range :: (MonadException m, Range a, ParseShow a) => a -> m Distribution
+range a = propagateException (parseShow a) (range' a)
+
 -- | Type class to get the overall range of a value.
 --
 -- A `Data.Distribution.Distribution` is a map of values to probabilities, and
 -- has a variety of  functions that operate on them.
 class (ParseShow a) => Range a where
-  -- | Try and get the `Distribution` of the given value, throwing a
-  -- `MonadException` on failure.
-  range :: (MonadException m, ParseShow a) => a -> m Distribution
-  range a = propagateException (parseShow a) (range' a)
-
   range' :: (MonadException m, ParseShow a) => a -> m Distribution
 
 instance (Range a) => Range (MiscData a) where
@@ -242,16 +242,16 @@ rangeDieOpExperimentKD kd (LH lw nb) is = do
       Low -> splitL
       High -> splitR
 
+-- | Try and get the `DistributionList` of the given value, throwing a
+-- `MonadException` on failure.
+rangeList :: (MonadException m, RangeList a, ParseShow a) => a -> m DistributionList
+rangeList a = propagateException (parseShow a) (rangeList' a)
+
 -- | Type class to get the overall range of a list of values.
 --
 -- Only used within `DiceStats` as I have no interest in producing statistics on
 -- lists
 class (ParseShow a) => RangeList a where
-  -- | Try and get the `DistributionList` of the given value, throwing a
-  -- `MonadException` on failure.
-  rangeList :: (MonadException m, ParseShow a) => a -> m DistributionList
-  rangeList a = propagateException (parseShow a) (rangeList' a)
-
   rangeList' :: (MonadException m, ParseShow a) => a -> m DistributionList
 
 instance RangeList ListValuesBase where
