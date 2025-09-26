@@ -3,7 +3,7 @@ packages: .
 source-repository-package
   type: git
   location: git@github.com:L0neGamer/haskell-distribution.git
-  tag: 569d6452e4bffedb2c0d3795885fccdb22a4d29d
+  tag: 313eb7a280b010fda1e21876da4171503c76516f
 
 source-repository-package
   type: git

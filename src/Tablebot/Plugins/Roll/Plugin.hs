@@ -207,8 +207,8 @@ genchar = Command "genchar" (snd $ NE.head rpgSystems') (toCommand <$> NE.toList
 -- | List of supported genchar systems and the dice used to roll for them
 rpgSystems :: NE.NonEmpty (Text, ListValues)
 rpgSystems =
-  ("dnd", MultipleValues (Value 6) (DiceBase (Dice (NBase (Value 4)) (Die (Value 6)) (Just (DieOpRecur (DieOpOptionKD Drop (Low (Value 1))) Nothing)))))
-    NE.:| [("wfrp", MultipleValues (Value 8) (NBase (NBParen (Paren (Expr (BinOp (promote (Value 20)) [(Add, promote (Die (Value 10)))]))))))]
+  ("dnd", MultipleValues (Value 6) (DiceBase (Dice (Value 4) (MkDie (Die (Value 6))) [MkDieOpOption (DieOpOptionKD Drop (LH Low (Value 1)))])))
+    NE.:| [("wfrp", MultipleValues (Value 8) (NBase (NBParen (Paren (Expr (BinOp (promote (Value 20)) [(Add, promote (MkDie (Die (Value 10))))]))))))]
 
 -- | Small help page for gen char.
 gencharHelp :: HelpPage

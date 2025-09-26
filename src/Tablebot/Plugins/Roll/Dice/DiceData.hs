@@ -23,29 +23,29 @@ import Tablebot.Plugins.Roll.Dice.DiceFunctions (FuncInfo, FuncInfoBase)
 -- evaluated `varValue`.
 --
 -- List variables have to be prefixed with `l_`. This really helps with parsing.
-data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show)
+data Var a = Var {varName :: Text, varValue :: a} | VarLazy {varName :: Text, varValue :: a} deriving (Show, Eq)
 
 -- | If the first value is truthy (non-zero or a non-empty list) then return
 -- the `thenValue`, else return the `elseValue`.
-data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show)
+data If b = If {ifCond :: Expr, thenValue :: b, elseValue :: b} deriving (Show, Eq)
 
 -- | Either an If or a Var that returns a `b`.
-data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show)
+data MiscData b = MiscIf (If b) | MiscVar (Var b) deriving (Show, Eq)
 
 -- | An expression is just an Expr or a ListValues with a semicolon on the end.
 --
 -- When evaluating, VarLazy expressions are handled with a special case - they
 -- are not evaluated until the value is first referenced. Otherwise, the value
 -- is evaluated as the statement is encountered
-data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show)
+data Statement = StatementExpr Expr | StatementListValues ListValues deriving (Show, Eq)
 
 -- | A program is a series of `Statement`s followed by either a `ListValues` or
 -- an Expr.
-data Program = Program [Statement] (Either ListValues Expr) deriving (Show)
+data Program = Program [Statement] (Either ListValues Expr) deriving (Show, Eq)
 
 -- | The value of an argument given to a function.
 data ArgValue = AVExpr Expr | AVListValues ListValues
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for list values.
 data ListValues
@@ -59,7 +59,7 @@ data ListValues
     LVVar Text
   | -- | A misc list values expression.
     ListValuesMisc (MiscData ListValues)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for basic list values (that can be used as is for custom dice).
 --
@@ -68,13 +68,11 @@ data ListValues
 -- expressions. Effectively what this is used for is so that these can be used
 -- as dice side values.
 data ListValuesBase = LVBParen (Paren ListValues) | LVBList [Expr]
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type for a binary operator between one or more `sub` values
-data BinOp sub typ where
-  BinOp :: (Operation typ) => sub -> [(typ, sub)] -> BinOp sub typ
-
-deriving instance (Show sub, Show typ) => Show (BinOp sub typ)
+data BinOp sub typ = BinOp sub [(typ, sub)]
+  deriving (Show, Eq)
 
 -- | Convenience pattern for the empty list.
 pattern SingBinOp :: (Operation typ) => sub -> BinOp sub typ
@@ -91,11 +89,11 @@ class Operation a where
 --
 -- Represents either a misc expression or additive operations between terms.
 data Expr = ExprMisc (MiscData Expr) | Expr (BinOp Term ExprType)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type of the additive expression, either addition or subtraction.
 data ExprType = Add | Sub
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum, Bounded)
 
 instance Operation ExprType where
   getOperation Sub = (-)
@@ -103,11 +101,11 @@ instance Operation ExprType where
 
 -- | Represents multiplicative operations between (possible) negations.
 newtype Term = Term (BinOp Negation TermType)
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type of the additive expression, either addition or subtraction.
 data TermType = Multi | Div
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum, Bounded)
 
 instance Operation TermType where
   getOperation Multi = (*)
@@ -115,42 +113,59 @@ instance Operation TermType where
 
 -- | The type representing a possibly negated value.
 data Negation = Neg Expo | NoNeg Expo
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a value with exponentials.
 data Expo = Expo Func Expo | NoExpo Func
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a single function application, or a base item.
 data Func = Func FuncInfo [ArgValue] | NoFunc Base
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing an integer value or an expression in brackets.
 data NumBase = NBParen (Paren Expr) | Value Integer
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | Container for a parenthesised value.
 newtype Paren a = Paren a
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- | The type representing a numeric base value value or a dice value.
 data Base = NBase NumBase | DiceBase Dice | NumVar Text
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- Dice Operations after this point
 
+data Laziness = Lazy | Strict
+
 -- | The type representing a simple N sided die or a custom die, or a lazy one
 -- of one of those values.
-data Die = Die NumBase | CustomDie ListValuesBase | LazyDie Die deriving (Show)
+data DieOf (l :: Laziness) where
+  Die :: NumBase -> DieOf l
+  CustomDie :: ListValuesBase -> DieOf l
+  LazyDie :: DieOf Strict -> DieOf Lazy
+
+deriving instance Show (DieOf l)
+
+deriving instance Eq (DieOf l)
+
+data Die where
+  MkDie :: DieOf l -> Die
+
+deriving instance Show Die
+
+instance Eq Die where
+  (==) (MkDie die1) (MkDie die2) = case (die1, die2) of
+    (Die n1, Die n2) -> n1 == n2
+    (CustomDie lvb1, CustomDie lvb2) -> lvb1 == lvb2
+    (LazyDie do1, LazyDie do2) -> do1 == do2
+    _ -> False
 
 -- | The type representing a number of dice equal to the `Base` value, and
 -- possibly some die options.
-data Dice = Dice Base Die (Maybe DieOpRecur)
-  deriving (Show)
-
--- | The type representing one or more die options.
-data DieOpRecur = DieOpRecur DieOpOption (Maybe DieOpRecur)
-  deriving (Show)
+data Dice = Dice NumBase Die [DieOpOption]
+  deriving (Show, Eq)
 
 -- | Some more advanced ordering options for things like `<=` and `/=`.
 data AdvancedOrdering = Not AdvancedOrdering | OrderingId Ordering | And [AdvancedOrdering] | Or [AdvancedOrdering]
@@ -178,30 +193,50 @@ advancedOrderingMapping = (M.fromList lst, M.fromList $ swap <$> lst)
 
 -- | The type representing a die option; a reroll, a keep/drop operation, or
 -- lazily performing some other die option.
-data DieOpOption
-  = Reroll {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase}
-  | DieOpOptionKD KeepDrop LowHighWhere
-  | DieOpOptionLazy DieOpOption
-  deriving (Show)
+data DieOpOptionOf (l :: Laziness) where
+  Reroll ::
+    {rerollOnce :: Bool, condition :: AdvancedOrdering, limit :: NumBase} ->
+    DieOpOptionOf l
+  DieOpOptionKD :: KeepDrop -> LowHighWhere -> DieOpOptionOf l
+  DieOpOptionLazy :: DieOpOptionOf Strict -> DieOpOptionOf Lazy
+
+deriving instance Show (DieOpOptionOf l)
+
+deriving instance Eq (DieOpOptionOf l)
+
+data DieOpOption where
+  MkDieOpOption :: DieOpOptionOf l -> DieOpOption
+
+deriving instance Show DieOpOption
+
+instance Eq DieOpOption where
+  (==) (MkDieOpOption doo1) (MkDieOpOption doo2) = case (doo1, doo2) of
+    (Reroll rro1 cond1 lim1, Reroll rro2 cond2 lim2) ->
+      rro1 == rro2 && cond1 == cond2 && lim1 == lim2
+    (DieOpOptionKD kd1 lhw1, DieOpOptionKD kd2 lhw2) -> kd1 == kd2 && lhw1 == lhw2
+    (DieOpOptionLazy dooo1, DieOpOptionLazy dooo2) -> dooo1 == dooo2
+    _ -> False
+
+data LowHigh = Low | High
+  deriving (Show, Eq, Enum, Bounded)
 
 -- | A type used to designate how the keep/drop option should work
-data LowHighWhere = Low NumBase | High NumBase | Where AdvancedOrdering NumBase deriving (Show)
+data LowHighWhere = LH LowHigh NumBase | Where AdvancedOrdering NumBase deriving (Show, Eq)
 
 -- | Utility function to get the integer determining how many values to get
 -- given a `LowHighWhere`. If the given value is `Low` or `High`, then Just the
 -- NumBase contained is returned. Else, Nothing is returned.
 getValueLowHigh :: LowHighWhere -> Maybe NumBase
-getValueLowHigh (Low i) = Just i
-getValueLowHigh (High i) = Just i
+getValueLowHigh (LH _ i) = Just i
 getValueLowHigh (Where _ _) = Nothing
 
 -- | Returns whether the given `LowHighWhere` is `Low` or not.
 isLow :: LowHighWhere -> Bool
-isLow (Low _) = True
+isLow (LH Low _) = True
 isLow _ = False
 
 -- | Utility value for whether to keep or drop values.
-data KeepDrop = Keep | Drop deriving (Show, Eq)
+data KeepDrop = Keep | Drop deriving (Show, Eq, Enum, Bounded)
 
 -- | Utility type class for quickly promoting values.
 class Converter a b where
@@ -242,7 +277,7 @@ instance Converter Dice Base where
   promote = DiceBase
 
 instance Converter Die Base where
-  promote d = promote $ Dice (promote (1 :: Integer)) d Nothing
+  promote d = promote $ Dice (promote (1 :: Integer)) d []
 
 instance Converter [Integer] ListValues where
   promote = LVBase . LVBList . (promote <$>)

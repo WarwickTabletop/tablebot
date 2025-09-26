@@ -234,31 +234,32 @@ instance IOEval Base where
       _ -> evaluationException ("could not find integer variable `" <> t <> "`") []
 
 instance IOEval Die where
-  evalShow' ld@(LazyDie d) = do
-    (i, _) <- evalShow d
-    ds <- dieShow Nothing ld [(i, Nothing)]
-    return (i, ds)
-  evalShow' d@(CustomDie (LVBList es)) = do
-    e <- liftIO $ chooseOne es
-    (i, _) <- evalShow e
-    ds <- dieShow Nothing d [(i, Nothing)]
-    incRNGCount
-    return (i, ds)
-  evalShow' d@(CustomDie is) = do
-    (is', _) <- evalShowL is
-    i <- liftIO $ chooseOne (fst <$> is')
-    ds <- dieShow Nothing d [(i, Nothing)]
-    incRNGCount
-    return (i, ds)
-  evalShow' d@(Die b) = do
-    (bound, _) <- evalShow b
-    if bound < 1
-      then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (parseShow b) <> ")") []
-      else do
-        i <- randomRIO (1, bound)
-        ds <- dieShow Nothing d [(i, Nothing)]
-        incRNGCount
-        return (i, ds)
+  evalShow' theDie@(MkDie aDie) = case aDie of
+    LazyDie d -> do
+      (i, _) <- evalShow (MkDie d)
+      ds <- dieShow Nothing (MkDie d) [(i, Nothing)]
+      return (i, ds)
+    CustomDie (LVBList es) -> do
+      e <- liftIO $ chooseOne es
+      (i, _) <- evalShow e
+      ds <- dieShow Nothing theDie [(i, Nothing)]
+      incRNGCount
+      return (i, ds)
+    CustomDie is -> do
+      (is', _) <- evalShowL is
+      i <- liftIO $ chooseOne (fst <$> is')
+      ds <- dieShow Nothing theDie [(i, Nothing)]
+      incRNGCount
+      return (i, ds)
+    Die b -> do
+      (bound, _) <- evalShow b
+      if bound < 1
+        then evaluationException ("Cannot roll a < 1 sided die (" <> formatText Code (parseShow b) <> ")") []
+        else do
+          i <- randomRIO (1, bound)
+          ds <- dieShow Nothing theDie [(i, Nothing)]
+          incRNGCount
+          return (i, ds)
 
 instance IOEval Dice where
   evalShow' dop = do
@@ -296,61 +297,64 @@ evalDieOp (Dice b ds dopo) = do
           rs <- evalDieOp' dopo ds' vs
           return (sortBy sortByOption rs, crits)
   where
-    condenseDie (Die dBase) = do
-      (i, _) <- evalShow dBase
-      return (Die (Value i), Just (1, i))
-    condenseDie (CustomDie is) = do
-      (is', _) <- evalShowL is
-      return (CustomDie (LVBList (promote . fst <$> is')), Nothing)
-    condenseDie (LazyDie d) = return (d, Nothing)
+    condenseDie (MkDie d) = case d of
+      Die dBase -> do
+        (i, _) <- evalShow dBase
+        return (MkDie (Die (Value i)), Just (1, i))
+      CustomDie is -> do
+        (is', _) <- evalShowL is
+        return (MkDie (CustomDie (LVBList (promote . fst <$> is'))), Nothing)
+      LazyDie d' -> return (MkDie d', Nothing)
     sortByOption (e :| es, _) (f :| fs, _)
       | e == f = compare (length fs) (length es)
       | otherwise = compare e f
 
 -- | Utility function that processes a `Maybe DieOpRecur`, when given a die, and
 -- dice that have already been processed.
-evalDieOp' :: Maybe DieOpRecur -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
-evalDieOp' Nothing _ is = return is
-evalDieOp' (Just (DieOpRecur doo mdor)) die is = do
-  doo' <- processDOO doo
+evalDieOp' :: [DieOpOption] -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
+evalDieOp' [] _ is = return is
+evalDieOp' (MkDieOpOption doo : doos) die is = do
+  doo' <- processDOO
   is' <- evalDieOp'' doo' die is
-  evalDieOp' mdor die is'
+  evalDieOp' doos die is'
   where
-    processLHW (Low i) = do
+    processLHW (LH Low i) = do
       (i', _) <- evalShow i
-      return (Low (Value i'))
-    processLHW (High i) = do
+      return (LH Low (Value i'))
+    processLHW (LH High i) = do
       (i', _) <- evalShow i
-      return (High (Value i'))
+      return (LH High (Value i'))
     processLHW (Where o i) = do
       (i', _) <- evalShow i
       return (Where o (Value i'))
-    processDOO (DieOpOptionKD kd lhw) = do
-      lhw' <- processLHW lhw
-      return (DieOpOptionKD kd lhw')
-    processDOO (Reroll once o i) = do
-      (i', _) <- evalShow i
-      return (Reroll once o (Value i'))
-    processDOO (DieOpOptionLazy doo') = return doo'
+    processDOO = case doo of
+      DieOpOptionKD kd lhw -> do
+        lhw' <- processLHW lhw
+        return $ MkDieOpOption (DieOpOptionKD kd lhw')
+      Reroll once o i -> do
+        (i', _) <- evalShow i
+        return $ MkDieOpOption (Reroll once o (Value i'))
+      DieOpOptionLazy doo' -> return $ MkDieOpOption doo'
 
 -- | Utility function that processes a `DieOpOption`, when given a die, and dice
 -- that have already been processed.
 evalDieOp'' :: DieOpOption -> Die -> [(NonEmpty Integer, Bool)] -> ProgramStateM [(NonEmpty Integer, Bool)]
-evalDieOp'' (DieOpOptionLazy doo) die is = evalDieOp'' doo die is
-evalDieOp'' (DieOpOptionKD kd lhw) _ is = evalDieOpHelpKD kd lhw is
-evalDieOp'' (Reroll once o i) die is = foldr rerollF (return []) is
-  where
-    rerollF g@(i', b) isRngCount' = do
-      is' <- isRngCount'
-      (iEval, _) <- evalShow i
-      if b && applyCompare o (NE.head i') iEval
-        then do
-          (v, _) <- evalShow die
-          let ret = (v <| i', b)
-          if once
-            then return (ret : is')
-            else rerollF ret (return is')
-        else return (g : is')
+evalDieOp'' (MkDieOpOption doo) die is = case doo of
+  DieOpOptionLazy doo' -> evalDieOp'' (MkDieOpOption doo') die is
+  DieOpOptionKD kd lhw -> evalDieOpHelpKD kd lhw is
+  Reroll once o i -> foldr rerollF (return []) is
+    where
+      rerollF g@(i', b) isRngCount' = do
+        is' <- isRngCount'
+        (iEval, _) <- evalShow i
+        if b && applyCompare o (NE.head i') iEval
+          then do
+            (v, _) <- evalShow die
+            let ret = (v <| i', b)
+            if once
+              then return (ret : is')
+              else rerollF ret (return is')
+          else return (g : is')
 
 -- | Given a list of dice values, separate them into kept values and dropped values
 -- respectively.
