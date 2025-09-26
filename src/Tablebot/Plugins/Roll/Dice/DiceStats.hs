@@ -163,17 +163,24 @@ instance Range Dice where
   range' (Dice b d mdor) = do
     b' <- range b
     d' <- range d
-    let e = DM.do
-          diecount <- b'
-          getDiceExperiment diecount d'
     adjustDice <- rangeDiceExperiment d' mdor
-    return $! sum DM.<$> adjustDice e
+    return $! sum DM.<$> adjustDice (getDiceDistrbutionFrom b' d')
 
--- | Get the distribution of values from a given number of (identically
--- distributed) values and the distribution of that value.
-getDiceExperiment :: Integer -> Distribution -> DistributionSortedList
-getDiceExperiment i d =
-  DM.sequenceSL (replicate (fromInteger i) d)
+-- | Share previous distributions, since often when we're calculating sets of
+-- dice it's not going to be each die has unrelated values; if we calculate the
+-- lower values then let's calculate the higher values with those lower values.
+getDiceDistrbutionFrom ::
+  Distribution -> -- distribution of number of dice
+  Distribution -> -- distribution of a die
+  DistributionSortedList
+getDiceDistrbutionFrom dieNumber die =
+  dieNumber DM.>>= \dieCount ->
+    M.findWithDefault (DM.sequenceSL (genericReplicate dieCount die)) dieCount allDistributions
+  where
+    maximumRoll = maybe 0 fst $ M.lookupMax $ D.toMap dieNumber
+    allDistributions = M.fromList $ takeWhile ((<= maximumRoll) . fst) (zip [0 ..] $ allDistributions' (DM.return mempty))
+      where
+        allDistributions' prev = prev : allDistributions' (die DM.>>= \a -> SL.insert a DM.<$> prev)
 
 -- | Go through each operator on dice and modify the distribution of values
 -- based on those operations.
@@ -196,7 +203,7 @@ rangeDieOpExperiment die (MkDieOpOption doo) = case doo of
       let (count, cutdownRolls) = countTriggers limit rolls
       if count == 0
         then DM.return rolls
-        else (cutdownRolls <>) DM.<$> getDiceExperiment count newDie
+        else (cutdownRolls <>) DM.<$> getDiceDistrbutionFrom (DM.return count) newDie
     where
       mkNewDie limitValue
         | rro = die
@@ -250,10 +257,7 @@ instance RangeList ListValues where
   rangeList' (MultipleValues nb b) = do
     nbd <- range nb
     bd <- range b
-    return $
-      DM.do
-        valNum <- nbd
-        SL.toList DM.<$> getDiceExperiment valNum bd
+    return $ SL.toList DM.<$> getDiceDistrbutionFrom nbd bd
   rangeList' (LVFunc fi avs) = rangeFunction fi avs
   rangeList' (ListValuesMisc m) = rangeList m
   rangeList' b@(LVVar _) = evaluationException "cannot find range of variable" [parseShow b]
