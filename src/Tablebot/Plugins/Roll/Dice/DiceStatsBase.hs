@@ -67,7 +67,13 @@ distributionRenderable d = toRenderable $ do
   layout_x_axis . laxis_title .= "value"
   layout_y_axis . laxis_title .= "probability (%)"
   layout_x_axis . laxis_generate .= scaledIntAxis' r
-  layout_y_axis . laxis_override .= \ad@AxisData {_axis_labels = axisLabels} -> ad {_axis_labels = (second (\s -> if '.' `elem` s then s else s ++ ".0") <$>) <$> axisLabels}
+  layout_y_axis
+    . laxis_override
+    .= \ad@AxisData {_axis_labels = axisLabels} ->
+      ad
+        { _axis_labels =
+            (second (\s -> if '.' `elem` s then s else s ++ ".0") <$>) <$> axisLabels
+        }
   layout_all_font_styles .= defFontStyle
   pb <- (bars @Integer @Double) (barNames d) pts
   let pb' = set plot_bars_spacing (BarsFixGap 10 5) pb
@@ -79,7 +85,7 @@ distributionRenderable d = toRenderable $ do
     ds = removeNullMap . D.toMap . fst <$> d
     allIntegers = let s = S.unions $ M.keysSet <$> ds in [S.findMin s .. S.findMax s]
     insertEmpty k = M.insertWith (\_ a -> a) k 0
-    ds' = M.unionsWith (++) $ M.map (: []) <$> (applyAll (insertEmpty <$> allIntegers) <$> ds)
+    ds' = M.unionsWith (++) $ M.map (: []) . applyAll (insertEmpty <$> allIntegers) <$> ds
     pts = second (fromRational . (* 100) <$>) <$> M.toList ds'
     r = (fst $ M.findMin ds', fst $ M.findMax ds')
     applyAll [] = id
