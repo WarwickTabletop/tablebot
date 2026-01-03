@@ -186,7 +186,7 @@ getDiceDistrbutionFrom dieNumber die =
 -- based on those operations.
 rangeDiceExperiment :: (MonadException m) => Distribution -> [DieOpOption] -> m (DistributionSortedList -> DistributionSortedList)
 rangeDiceExperiment die =
-  fmap (appEndo . fold) . traverse (rangeDieOpExperiment die)
+  fmap (appEndo . fold . reverse) . traverse (rangeDieOpExperiment die)
 
 -- | Perform one dice operation on a set of values, returning
 -- a modified distribution of dice rolls.
