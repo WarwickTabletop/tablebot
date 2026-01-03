@@ -192,7 +192,7 @@ executable tablebot-exe
       Paths_tablebot
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts "-with-rtsopts=-Iw10 -N"
+  ghc-options: -threaded -rtsopts -Wall "-with-rtsopts=-Iw10 -N"
   build-depends:
       Chart
     , Chart-diagrams
@@ -251,11 +251,12 @@ test-suite tablebot-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Dice.Gen
       Dice.RoundtripSpec
       Paths_tablebot
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-tool-depends:
       tasty-discover:tasty-discover
   build-depends:
