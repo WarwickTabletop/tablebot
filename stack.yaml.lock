@@ -40,15 +40,15 @@ packages:
   original:
     hackage: svg-builder-0.1.1
 - completed:
-    commit: 569d6452e4bffedb2c0d3795885fccdb22a4d29d
+    commit: 313eb7a280b010fda1e21876da4171503c76516f
     git: https://github.com/L0neGamer/haskell-distribution.git
     name: distribution
     pantry-tree:
-      sha256: df46a8ef68d35f55bdcf3d6c6e5578cad5680306a7bef4e52da8631cc171c1fc
+      sha256: b1d8fce7d72787aa7de1c14b65c6a5c633e079da2a1e77b129e0270574231301
       size: 808
     version: 1.1.1.1
   original:
-    commit: 569d6452e4bffedb2c0d3795885fccdb22a4d29d
+    commit: 313eb7a280b010fda1e21876da4171503c76516f
     git: https://github.com/L0neGamer/haskell-distribution.git
 - completed:
     commit: f22e3cdd7b77977fe3e9ec75fccd9a0f79c47f97

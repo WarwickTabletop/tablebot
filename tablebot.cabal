@@ -78,6 +78,8 @@ library
       Tablebot.Plugins.Roll.Dice.DiceParsing
       Tablebot.Plugins.Roll.Dice.DiceStats
       Tablebot.Plugins.Roll.Dice.DiceStatsBase
+      Tablebot.Plugins.Roll.Dice.DistributionMonad
+      Tablebot.Plugins.Roll.Dice.SortedList
       Tablebot.Plugins.Roll.Plugin
       Tablebot.Plugins.Say
       Tablebot.Plugins.Shibe
@@ -190,7 +192,7 @@ executable tablebot-exe
       Paths_tablebot
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts "-with-rtsopts=-Iw10 -N"
+  ghc-options: -threaded -rtsopts -Wall "-with-rtsopts=-Iw10 -N"
   build-depends:
       Chart
     , Chart-diagrams
@@ -249,10 +251,14 @@ test-suite tablebot-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Dice.Gen
+      Dice.RoundtripSpec
       Paths_tablebot
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  build-tool-depends:
+      tasty-discover:tasty-discover
   build-depends:
       Chart
     , Chart-diagrams
@@ -275,6 +281,9 @@ test-suite tablebot-test
     , exception-transformers
     , extra
     , filepath
+    , hedgehog
+    , hspec
+    , hspec-hedgehog
     , http-client
     , http-conduit
     , load-env
@@ -295,6 +304,10 @@ test-suite tablebot-test
     , scientific
     , split
     , tablebot
+    , tasty
+    , tasty-discover
+    , tasty-hedgehog
+    , tasty-hspec
     , template-haskell
     , text
     , text-icu

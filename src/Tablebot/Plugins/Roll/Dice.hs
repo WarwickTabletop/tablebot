@@ -83,7 +83,8 @@ module Tablebot.Plugins.Roll.Dice (evalProgram, evalInteger, evalList, ListValue
 
 import Tablebot.Plugins.Roll.Dice.DiceData
   ( Converter (promote),
-    Die (Die),
+    Die (..),
+    DieOf (..),
     Expr,
     ListValues (..),
     NumBase (Value),
@@ -94,4 +95,4 @@ import Tablebot.Plugins.Roll.Dice.DiceParsing ()
 
 -- | The default expression to evaluate if no expression is given.
 defaultRoll :: Expr
-defaultRoll = promote (Die (Value 20))
+defaultRoll = promote (MkDie (Die (Value 20)))

@@ -112,6 +112,7 @@ executables:
     ghc-options:
       - -threaded
       - -rtsopts
+      - -Wall
       - "\"-with-rtsopts=-Iw10 -N\""
     dependencies:
       - tablebot
@@ -124,5 +125,15 @@ tests:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+      - -Wall
     dependencies:
       - tablebot
+      - tasty
+      - tasty-discover
+      - tasty-hspec
+      - tasty-hedgehog
+      - hspec
+      - hedgehog
+      - hspec-hedgehog
+    build-tools:
+      - tasty-discover:tasty-discover

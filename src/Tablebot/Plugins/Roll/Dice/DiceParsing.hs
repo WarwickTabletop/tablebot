@@ -87,11 +87,9 @@ instance CanParse ListValues where
     do
       functionParser listFunctions LVFunc
       <|> (LVVar . ("l_" <>) <$> try (string "l_" *> variableName))
-      <|> ListValuesMisc
-      <$> (pars >>= checkVar)
-        <|> (try (pars <* char '#') >>= \nb -> MultipleValues nb <$> pars)
-        <|> LVBase
-      <$> pars
+      <|> (ListValuesMisc <$> (pars >>= checkVar))
+      <|> (MultipleValues <$> (try (pars <* char '#')) <*> pars)
+      <|> (LVBase <$> pars)
     where
       checkVar (MiscVar l)
         | T.isPrefixOf "l_" (varName l) = return (MiscVar l)
@@ -107,11 +105,7 @@ instance CanParse ListValuesBase where
               <* (char '}' <??> "could not find closing brace for list")
           )
         <|> LVBParen
-        . unnest
       <$> pars
-    where
-      unnest (Paren (LVBase (LVBParen e))) = e
-      unnest e = e
 
 -- | Helper function to try to parse the second part of a binary operator.
 binOpParseHelp :: (CanParse a) => Char -> (a -> a) -> Parser a
@@ -119,7 +113,7 @@ binOpParseHelp c con = try (skipSpace *> char c) *> skipSpace *> (con <$> pars)
 
 instance (CanParse b) => CanParse (If b) where
   pars = do
-    a <- string "if" *> skipSpace1 *> pars <* skipSpace1
+    a <- try (string "if" *> skipSpace1) *> pars <* skipSpace1
     t <- string "then" *> skipSpace1 *> pars <* skipSpace1
     e <- string "else" *> skipSpace1 *> pars
     return $ If a t e
@@ -163,7 +157,13 @@ functionParser m mainCons =
   do
     fi <- try (choice (string <$> functionNames) >>= \t -> return (m M.! t)) <?> "could not find function"
     let ft = funcInfoParameters fi
-    es <- skipSpace *> string "(" *> skipSpace *> parseArgValues ft <* skipSpace <* (string ")" <??> "could not find closing bracket on function call")
+    es <-
+      skipSpace
+        *> try (string "(" <??> ("could not find opening bracket for function call: \"" <> T.unpack (funcInfoName fi) <> "\""))
+        *> skipSpace
+        *> parseArgValues ft
+        <* skipSpace
+        <* (string ")" <??> "could not find closing bracket on function call")
     return $ mainCons fi es
   where
     functionNames = sortBy (\a b -> compare (T.length b) (T.length a)) $ M.keys m
@@ -183,12 +183,9 @@ instance CanParse Expo where
 
 instance CanParse NumBase where
   pars =
-    (NBParen . unnest <$> pars)
+    (NBParen <$> pars)
       <|> Value
       <$> integer <??> "could not parse integer"
-    where
-      unnest (Paren (Expr (SingBinOp (Term (SingBinOp (NoNeg (NoExpo (NoFunc (NBase (NBParen e)))))))))) = e
-      unnest e = e
 
 instance (CanParse a) => CanParse (Paren a) where
   pars = try (char '(') *> skipSpace *> (Paren <$> pars) <* skipSpace <* char ')'
@@ -200,39 +197,38 @@ instance CanParse Base where
         (DiceBase <$> parseDice nb)
           <|> return (NBase nb)
     )
-      <|> DiceBase
-      <$> parseDice (Value 1)
-        <|> (NumVar <$> try variableName)
+      <|> (DiceBase <$> try (parseDice (Value 1)))
+      <|> (NumVar <$> try variableName)
 
 instance CanParse Die where
   pars = do
     _ <- try (char 'd') <?> "could not find 'd' for die"
-    lazyFunc <- (try (char '!') $> LazyDie) <|> return id
-    lazyFunc
-      <$> ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
-              <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
-                      <|> (Die <$> pars <??> "could not parse base number for die")
-                  )
-          )
+    optional (char '!') >>= \case
+      Just _ -> MkDie . LazyDie <$> dieTypes
+      Nothing -> MkDie <$> dieTypes
+    where
+      dieTypes :: Parser (DieOf Strict)
+      dieTypes =
+        ( (CustomDie . LVBParen <$> try pars <|> Die . NBParen <$> pars)
+            <|> ( (CustomDie <$> pars <??> "could not parse list values for die")
+                    <|> (Die <$> pars <??> "could not parse base number for die")
+                )
+        )
 
 -- | Given a `NumBase` (the value on the front of a set of dice), construct a
 -- set of dice.
 parseDice :: NumBase -> Parser Dice
-parseDice nb = parseDice' <*> return (NBase nb)
+parseDice nb = parseDice' <&> ($ nb)
 
 -- | Helper for parsing Dice, where as many `Dice` as possible are parsed and a
 -- function that takes a `Base` value and returns a `Dice` value is returned.
 -- This `Base` value is meant to be first value that `Dice` have.
-parseDice' :: Parser (Base -> Dice)
+parseDice' :: Parser (NumBase -> Dice)
 parseDice' = do
   d <- (pars :: Parser Die)
-  mdor <- parseDieOpRecur
+  mdor <- many parseDieOpOption
 
-  ( do
-      bd <- try parseDice' <?> "trying to recurse dice failed"
-      return (\b -> bd (DiceBase $ Dice b d mdor))
-    )
-    <|> return (\b -> Dice b d mdor)
+  return (\b -> Dice b d mdor)
 
 -- | Parse a `/=`, `<=`, `>=`, `<`, `=`, `>` as an `AdvancedOrdering`.
 parseAdvancedOrdering :: Parser AdvancedOrdering
@@ -246,32 +242,29 @@ parseAdvancedOrdering = (try (choice opts) <?> "could not parse an ordering") >>
 parseLowHigh :: Parser LowHighWhere
 parseLowHigh = ((choice @[] $ char <$> "lhw") <??> "could not parse high, low or where") >>= helper
   where
-    helper 'h' = High <$> pars
-    helper 'l' = Low <$> pars
+    helper 'h' = LH High <$> pars
+    helper 'l' = LH Low <$> pars
     helper 'w' = parseAdvancedOrdering >>= \o -> pars <&> Where o
     helper c = failure' (T.singleton c) (S.fromList ["h", "l", "w"])
-
--- | Parse a bunch of die options into, possibly, a DieOpRecur.
-parseDieOpRecur :: Parser (Maybe DieOpRecur)
-parseDieOpRecur = do
-  dopo <- optional parseDieOpOption
-  maybe (return Nothing) (\dopo' -> Just . DieOpRecur dopo' <$> parseDieOpRecur) dopo
 
 -- | Parse a single die option.
 parseDieOpOption :: Parser DieOpOption
 parseDieOpOption = do
-  lazyFunc <- (try (char '!') $> DieOpOptionLazy) <|> return id
-  ( ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
-        <|> (try (string "rr") *> parseAdvancedOrdering >>= \o -> Reroll False o <$> pars)
-        <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
-                  <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
+  optional (char '!') >>= \case
+    Nothing -> MkDieOpOption <$> dooParse
+    Just _ -> MkDieOpOption . DieOpOptionLazy <$> dooParse
+  where
+    dooParse :: Parser (DieOpOptionOf Strict)
+    dooParse =
+      ( (try (string "ro") *> parseAdvancedOrdering >>= \o -> Reroll True o <$> pars)
+          <|> (try (string "rr") *> parseAdvancedOrdering >>= \o -> Reroll False o <$> pars)
+          <|> ( ( ((try (char 'k') *> parseLowHigh) <&> DieOpOptionKD Keep)
+                    <|> ((try (char 'd') *> parseLowHigh) <&> DieOpOptionKD Drop)
+                )
+                  <?> "could not parse keep/drop"
               )
-                <?> "could not parse keep/drop"
-            )
-    )
-      <&> lazyFunc
-    )
-    <?> "could not parse dieOpOption - expecting one of the options described in the doc (call `help roll` to access)"
+      )
+        <?> "could not parse dieOpOption - expecting one of the options described in the doc (call `help roll` to access)"
 
 -- | Parse a single `ArgType` into an `ArgValue`.
 parseArgValue :: ArgType -> Parser ArgValue
@@ -348,25 +341,26 @@ instance ParseShow Base where
   parseShow (NumVar t) = t
 
 instance ParseShow Die where
-  parseShow (Die b) = "d" <> parseShow b
-  parseShow (CustomDie lv) = "d" <> parseShow lv
-  -- parseShow (CustomDie is) = "d{" <> intercalate ", " (parseShow <$> is) <> "}"
-  parseShow (LazyDie d) = "d!" <> T.tail (parseShow d)
+  parseShow (MkDie die) = case die of
+    (Die b) -> "d" <> parseShow b
+    (CustomDie lv) -> "d" <> parseShow lv
+    (LazyDie d) -> "d!" <> T.tail (parseShow (MkDie d))
 
 instance ParseShow Dice where
   parseShow (Dice b d dor) = parseShow b <> parseShow d <> helper' dor
     where
       fromOrdering ao = M.findWithDefault "??" ao $ snd advancedOrderingMapping
       fromLHW (Where o i) = "w" <> fromOrdering o <> parseShow i
-      fromLHW (Low i) = "l" <> parseShow i
-      fromLHW (High i) = "h" <> parseShow i
-      helper' Nothing = ""
-      helper' (Just (DieOpRecur dopo' dor')) = helper dopo' <> helper' dor'
-      helper (DieOpOptionLazy doo) = "!" <> helper doo
-      helper (Reroll True o i) = "ro" <> fromOrdering o <> parseShow i
-      helper (Reroll False o i) = "rr" <> fromOrdering o <> parseShow i
-      helper (DieOpOptionKD Keep lhw) = "k" <> fromLHW lhw
-      helper (DieOpOptionKD Drop lhw) = "d" <> fromLHW lhw
+      fromLHW (LH Low i) = "l" <> parseShow i
+      fromLHW (LH High i) = "h" <> parseShow i
+      helper' [] = ""
+      helper' (dopo' : dor') = helper dopo' <> helper' dor'
+      helper (MkDieOpOption doo) = case doo of
+        DieOpOptionLazy dooo -> "!" <> helper (MkDieOpOption dooo)
+        Reroll True o i -> "ro" <> fromOrdering o <> parseShow i
+        Reroll False o i -> "rr" <> fromOrdering o <> parseShow i
+        DieOpOptionKD Keep lhw -> "k" <> fromLHW lhw
+        DieOpOptionKD Drop lhw -> "d" <> fromLHW lhw
 
 instance (ParseShow a) => ParseShow (Var a) where
   parseShow (Var t a) = "var " <> t <> " = " <> parseShow a
